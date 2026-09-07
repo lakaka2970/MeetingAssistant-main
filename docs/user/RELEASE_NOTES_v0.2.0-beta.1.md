@@ -1,4 +1,4 @@
-# MeetingCopilot v0.2.0-beta.1
+# MeetingAssistant v0.2.0-beta.1
 
 首个提供 Windows 安装包的版本 · The first release with a Windows installer
 
@@ -13,10 +13,10 @@
 
 | 文件 | 类型 | 适合 |
 |---|---|---|
-| `MeetingCopilot-0.2.0-beta.1-win-x64.exe` | 安装版（NSIS，当前用户，无需管理员） | 常规使用。带开始菜单与桌面快捷方式，升级时原地覆盖 |
-| `MeetingCopilot-0.2.0-beta.1-win-x64-portable.exe` | 免安装版 | 不想安装、临时使用。首次启动需解压，比安装版慢几秒 |
+| `MeetingAssistant-0.2.0-beta.1-win-x64.exe` | 安装版（NSIS，当前用户，无需管理员） | 常规使用。带开始菜单与桌面快捷方式，升级时原地覆盖 |
+| `MeetingAssistant-0.2.0-beta.1-win-x64-portable.exe` | 免安装版 | 不想安装、临时使用。首次启动需解压，比安装版慢几秒 |
 
-两者功能完全一致。免安装版**不是完全绿色**：设置和会话仍写在 `%APPDATA%\MeetingCopilot\`，与安装版共用。需要数据也随身携带时，启动前设置环境变量 `MC_USERDATA` 指向自己的目录。
+两者功能完全一致。免安装版**不是完全绿色**：设置和会话仍写在 `%APPDATA%\MeetingAssistant\`，与安装版共用。需要数据也随身携带时，启动前设置环境变量 `MC_USERDATA` 指向自己的目录。
 
 macOS 本次**没有**提供安装包，可以从源码运行，见 [INSTALL_MACOS.en.md](INSTALL_MACOS.en.md)。
 
@@ -25,14 +25,14 @@ macOS 本次**没有**提供安装包，可以从源码运行，见 [INSTALL_MAC
 每个 `.exe` 旁边都有同名的 `.exe.sha256` 文件，内容是 CI 构建时算出的哈希。下载后在 PowerShell 里执行：
 
 ```powershell
-Get-FileHash .\MeetingCopilot-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
+Get-FileHash .\MeetingAssistant-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 ```
 
 把输出与 `.sha256` 文件里的值比对，一致再运行。
 
 ```text
-94bc35b9cfade1ef8ada3280f3be25db5a4fb84bb5cf5c3ea9a478bca2b4e8e2  MeetingCopilot-0.2.0-beta.1-win-x64.exe
-05b78dd6aa8ecf485110d0ea55794096f463daeb61578e9ede19477cb94add17  MeetingCopilot-0.2.0-beta.1-win-x64-portable.exe
+94bc35b9cfade1ef8ada3280f3be25db5a4fb84bb5cf5c3ea9a478bca2b4e8e2  MeetingAssistant-0.2.0-beta.1-win-x64.exe
+05b78dd6aa8ecf485110d0ea55794096f463daeb61578e9ede19477cb94add17  MeetingAssistant-0.2.0-beta.1-win-x64-portable.exe
 ```
 
 ### 首次使用四步
@@ -46,7 +46,7 @@ Get-FileHash .\MeetingCopilot-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 
 ### 这个版本新增了什么
 
-- **Windows 安装包**：NSIS 安装版 + 免安装版，附 SHA256 校验文件；升级和卸载都不会删除 `%APPDATA%\MeetingCopilot\` 里的数据。
+- **Windows 安装包**：NSIS 安装版 + 免安装版，附 SHA256 校验文件；升级和卸载都不会删除 `%APPDATA%\MeetingAssistant\` 里的数据。
 - **首次运行配置向导**：五步完成 BYOK 配置，含方案卡片、图文 Key 教程、剪贴板粘贴与音频检测；随时可在设置里重新运行。
 - **真实连接测试**：一次极小的真实请求即可分辨是 Key、网络还是账号的问题，14 个统一错误代码 + 对应建议，测试结果会持久化显示。
 - **服务状态与本地诊断**：状态栏芯片一眼看出转写 / AI / 声音是否可用；诊断报告在本机生成，不含 Key、转写和简历内容，可直接贴进 issue。
@@ -64,7 +64,7 @@ Get-FileHash .\MeetingCopilot-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 - **MiMo 极简方案为 Beta**：分段识别按整句返回，字幕跟随性弱于流式方案。
 - **macOS 隐身尽力而为**：新版 ScreenCaptureKit 仍可能捕获窗口。
 
-遇到问题：先看应用内「帮助与教程」和 [TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)，仍未解决就带上诊断信息到 [GitHub Issues](https://github.com/JWM0203/MeetingCopilot/issues)。
+遇到问题：先看应用内「帮助与教程」和 [TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)，仍未解决就带上诊断信息到 [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant/issues)。
 
 ---
 
@@ -74,10 +74,10 @@ Get-FileHash .\MeetingCopilot-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 
 | File | Type | Best for |
 |---|---|---|
-| `MeetingCopilot-0.2.0-beta.1-win-x64.exe` | Installer (NSIS, per-user, no admin) | Normal use. Start-menu and desktop shortcuts, upgrades in place |
-| `MeetingCopilot-0.2.0-beta.1-win-x64-portable.exe` | Portable | Not installing anything. Unpacks itself at launch, so the first start is a few seconds slower |
+| `MeetingAssistant-0.2.0-beta.1-win-x64.exe` | Installer (NSIS, per-user, no admin) | Normal use. Start-menu and desktop shortcuts, upgrades in place |
+| `MeetingAssistant-0.2.0-beta.1-win-x64-portable.exe` | Portable | Not installing anything. Unpacks itself at launch, so the first start is a few seconds slower |
 
-Both are functionally identical. Portable is *not* fully self-contained: settings and sessions still live in `%APPDATA%\MeetingCopilot\`, shared with an installed copy. For a travelling profile, set `MC_USERDATA` to your own folder before launching.
+Both are functionally identical. Portable is *not* fully self-contained: settings and sessions still live in `%APPDATA%\MeetingAssistant\`, shared with an installed copy. For a travelling profile, set `MC_USERDATA` to your own folder before launching.
 
 There is **no macOS build** in this release; macOS can be run from source — see [INSTALL_MACOS.en.md](INSTALL_MACOS.en.md).
 
@@ -86,14 +86,14 @@ There is **no macOS build** in this release; macOS can be run from source — se
 Every `.exe` ships with a matching `.exe.sha256` containing the hash CI computed at build time. After downloading, run in PowerShell:
 
 ```powershell
-Get-FileHash .\MeetingCopilot-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
+Get-FileHash .\MeetingAssistant-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 ```
 
 Compare it with the value in the `.sha256` file before running the installer.
 
 ```text
-94bc35b9cfade1ef8ada3280f3be25db5a4fb84bb5cf5c3ea9a478bca2b4e8e2  MeetingCopilot-0.2.0-beta.1-win-x64.exe
-05b78dd6aa8ecf485110d0ea55794096f463daeb61578e9ede19477cb94add17  MeetingCopilot-0.2.0-beta.1-win-x64-portable.exe
+94bc35b9cfade1ef8ada3280f3be25db5a4fb84bb5cf5c3ea9a478bca2b4e8e2  MeetingAssistant-0.2.0-beta.1-win-x64.exe
+05b78dd6aa8ecf485110d0ea55794096f463daeb61578e9ede19477cb94add17  MeetingAssistant-0.2.0-beta.1-win-x64-portable.exe
 ```
 
 ### First run, in four steps
@@ -107,7 +107,7 @@ Full walkthrough: [QUICK_START.en.md](QUICK_START.en.md).
 
 ### What is new in this release
 
-- **Windows installers**: NSIS plus portable, with SHA256 sidecar files. Upgrading and uninstalling both leave `%APPDATA%\MeetingCopilot\` alone.
+- **Windows installers**: NSIS plus portable, with SHA256 sidecar files. Upgrading and uninstalling both leave `%APPDATA%\MeetingAssistant\` alone.
 - **First-run setup wizard**: five steps through the whole bring-your-own-key setup, with plan cards, inline provider tutorials, clipboard paste and an audio check. Re-runnable at any time from Settings.
 - **Real connection tests**: one tiny live request tells you whether the key, the network or the account is at fault, with 14 normalized error codes and a concrete next action; verdicts persist across restarts.
 - **Service status and local diagnostics**: status-bar chips show at a glance whether transcription, answers and audio are working; the diagnostics report is built locally with no keys, transcripts or resume text in it.
@@ -125,4 +125,4 @@ Full walkthrough: [QUICK_START.en.md](QUICK_START.en.md).
 - **The MiMo minimal plan is Beta**: per-segment recognition returns whole sentences, so captions trail the streaming plan.
 - **Stealth on macOS is best-effort**: recent ScreenCaptureKit clients may still capture the window.
 
-Problems: start with the in-app **Help & guides** and [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md); if that does not solve it, bring the diagnostics report to [GitHub Issues](https://github.com/JWM0203/MeetingCopilot/issues).
+Problems: start with the in-app **Help & guides** and [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md); if that does not solve it, bring the diagnostics report to [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant/issues).

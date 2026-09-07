@@ -1,13 +1,13 @@
 {
-  "name": "meeting-copilot-audio",
+  "name": "meeting-assistant-audio",
   "version": "0.1.0",
   "private": true,
-  "description": "napi-rs build harness for MeetingCopilot native audio capture",
+  "description": "napi-rs build harness for MeetingAssistant native audio capture",
   "napi": {
-    "binaryName": "meeting-copilot-audio",
+    "binaryName": "meeting-assistant-audio",
     "outputs": ["../resources/native"],
     "package": {
-      "name": "@meeting-copilot/audio"
+      "name": "@meeting-assistant/audio"
     }
   },
   "scripts": {

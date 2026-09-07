@@ -93,7 +93,7 @@ export interface McApi {
   /** plaintext support report, built locally on request. Contains no keys, no
    * transcripts and no knowledge-base text — safe to paste into an issue. */
   getDiagnostics(): Promise<string>;
-  /** reveal %APPDATA%/MeetingCopilot (settings, sessions, knowledge) */
+  /** reveal %APPDATA%/MeetingAssistant (settings, sessions, knowledge) */
   openLogsFolder(): Promise<boolean>;
   // ---- upgrade P0: RAG knowledge layers + L2 notes ----
   /** embed-worker + index health (pull) */

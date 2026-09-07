@@ -28,14 +28,14 @@ Engineering details live in the [port SDD](macos-port-sdd.md).
 ## Install & run
 
 ```bash
-git clone https://github.com/JWM0203/MeetingCopilot.git
-cd MeetingCopilot
+git clone https://github.com/lakaka2970/MeetingAssistant.git
+cd MeetingAssistant
 npm install        # postinstall applies patches/ (transformers.js patch — do not remove)
 npm run build
 npm start
 ```
 
-## Audio: route the meeting into MeetingCopilot
+## Audio: route the meeting into MeetingAssistant
 
 To capture a meeting app (Zoom / Teams / …) instead of your built-in mic:
 
@@ -49,7 +49,7 @@ To capture a meeting app (Zoom / Teams / …) instead of your built-in mic:
 3. **Send system output to it**: System Settings → Sound → Output → select the
    Multi-Output Device. Sound now plays through your speakers *and* mirrors
    into BlackHole.
-4. **Pick BlackHole in MeetingCopilot**: press **▶ Start** (grant microphone
+4. **Pick BlackHole in MeetingAssistant**: press **▶ Start** (grant microphone
    permission on first use), then choose *BlackHole 2ch* in the input selector
    next to the button.
 
@@ -86,5 +86,5 @@ global hotkeys default to **Command+B** (hide/show) and **Command+Shift+S**
 
 ## Data locations
 
-- Settings / sessions / materials: `~/Library/Application Support/MeetingCopilot/` (plain JSON)
+- Settings / sessions / materials: `~/Library/Application Support/MeetingAssistant/` (plain JSON)
 - API keys: encrypted at rest via the macOS Keychain (`safeStorage`)

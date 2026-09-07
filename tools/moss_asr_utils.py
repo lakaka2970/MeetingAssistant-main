@@ -19,7 +19,7 @@ def transcript_text(raw: str) -> str:
 
     The model is prompt-sensitive and may occasionally return plain text.  In
     that case preserve the text instead of dropping an otherwise useful ASR
-    result.  Speaker labels are intentionally omitted because MeetingCopilot
+    result.  Speaker labels are intentionally omitted because MeetingAssistant
     already keeps system audio and microphone audio on separate channels.
     """
 

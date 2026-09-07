@@ -17,7 +17,7 @@ describe('isAllowedExternalUrl', () => {
     expect(isAllowedExternalUrl('https://help.aliyun.com/zh/model-studio/get-api-key#step-2')).toBe(
       true,
     );
-    expect(isAllowedExternalUrl('https://github.com/JWM0203/MeetingCopilot')).toBe(true);
+    expect(isAllowedExternalUrl('https://github.com/lakaka2970/MeetingAssistant')).toBe(true);
   });
 
   it('rejects plain http even on an allowlisted host', () => {

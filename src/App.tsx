@@ -788,7 +788,7 @@ export function App() {
     <I18nProvider lang={settings?.ui.lang}>
     <div className="app">
       <header className="titlebar">
-        <span className="brand">MeetingCopilot</span>
+        <span className="brand">MeetingAssistant</span>
         <div className="titlebar-actions">
           <button
             className={capturing ? 'btn btn-live' : 'btn btn-primary'}

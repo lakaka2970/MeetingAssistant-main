@@ -6,7 +6,7 @@ Target: Apple silicon macOS, while preserving existing Windows behavior
 
 ## 1. Context
 
-MeetingCopilot is currently Windows-only. Its Electron, React, LLM, cloud ASR,
+MeetingAssistant is currently Windows-only. Its Electron, React, LLM, cloud ASR,
 persistence, and IPC layers are mostly portable, but four assumptions block a
 useful macOS build:
 
@@ -167,7 +167,7 @@ pressure on the 8 GB target.
 
 Update both READMEs, review secrets/generated/binary/unrelated changes, run the
 matrix, commit on `codex/macos-cloud-local-adaptation`, push to a user-owned
-fork, open a focused PR against `JWM0203/MeetingCopilot:main`, and track review.
+fork, open a focused PR against `lakaka2970/MeetingAssistant:main`, and track review.
 
 ## 7. Required live credentials
 

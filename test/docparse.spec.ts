@@ -23,8 +23,8 @@ describe('extractDocText (deterministic resume/JD parsing)', () => {
   it('reads plain .md/.txt as utf8', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mc-doc-'));
     const p = join(dir, 'kb.md');
-    writeFileSync(p, '# 简历\n\n项目：MeetingCopilot', 'utf8');
-    expect(await extractDocText(p)).toBe('# 简历\n\n项目：MeetingCopilot');
+    writeFileSync(p, '# 简历\n\n项目：MeetingAssistant', 'utf8');
+    expect(await extractDocText(p)).toBe('# 简历\n\n项目：MeetingAssistant');
   });
 
   it('advertised extensions match parse support', () => {

@@ -1,4 +1,4 @@
-# MeetingCopilot native audio (napi-rs)
+# MeetingAssistant native audio (napi-rs)
 
 Native audio capture for the **optional** `audio.captureBackend = 'native'`
 path (upgrade P1.5). Windows: WASAPI shared-mode loopback of the default
@@ -10,7 +10,7 @@ the ASR host treats both paths the same.
 ## Status
 
 **This artifact is optional.** The app ships and runs perfectly without it:
-when `resources/native/meeting-copilot-audio.node` is missing, the loader
+when `resources/native/meeting-assistant-audio.node` is missing, the loader
 (electron/audio/nativeCapture.ts) reports `native unavailable` and the app
 falls back to the Web Audio path automatically. The default
 `audio.captureBackend` is `webaudio`.
@@ -28,7 +28,7 @@ Prereqs: Rust stable (`rustup`), Node >= 20. From the repo root:
 ```bash
 npm install            # brings in @napi-rs/cli via rust/package.json? no —
 cd rust && npm install # @napi-rs/cli lives here
-npm run build:release  # writes ../resources/native/meeting-copilot-audio.node
+npm run build:release  # writes ../resources/native/meeting-assistant-audio.node
 ```
 
 Then set 设置 → 高级 → 音频采集后端 to `native` (Windows) or use the mic on

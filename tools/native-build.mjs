@@ -1,6 +1,6 @@
 /**
  * Optional native audio build (upgrade P1.5): compiles rust/ into
- * resources/native/meeting-copilot-audio.node via @napi-rs/cli.
+ * resources/native/meeting-assistant-audio.node via @napi-rs/cli.
  *
  * Explicitly best-effort: no Rust toolchain or any build failure prints a
  * clear message and exits 0 UNLESS --strict is passed. The app runs fine
@@ -50,9 +50,9 @@ try {
     const p = join(outDir, junk);
     if (existsSync(p)) rmSync(p);
   }
-  const artifact = join(outDir, 'meeting-copilot-audio.node');
+  const artifact = join(outDir, 'meeting-assistant-audio.node');
   if (!existsSync(artifact)) {
-    throw new Error('build finished but meeting-copilot-audio.node is missing');
+    throw new Error('build finished but meeting-assistant-audio.node is missing');
   }
   console.log(`[native] built ${artifact}`);
 } catch (e) {

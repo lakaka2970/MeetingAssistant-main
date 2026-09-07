@@ -61,7 +61,7 @@ export class EmbedClient {
     this.setState('loading');
     this.initPromise = new Promise<EmbedReadyInfo>((resolve, reject) => {
       const child = utilityProcess.fork(join(__dirname, 'embedWorker.js'), [], {
-        serviceName: 'MeetingCopilot Embeddings',
+        serviceName: 'MeetingAssistant Embeddings',
         stdio: 'pipe',
       });
       this.child = child;

@@ -1,5 +1,5 @@
 /**
- * MeetingCopilot main process: overlay window, stealth, hotkeys,
+ * MeetingAssistant main process: overlay window, stealth, hotkeys,
  * settings, IPC hub, ASR worker host. PLAN.en.md §5.
  */
 import {
@@ -87,7 +87,7 @@ const MODEL_ID = 'onnx-community/whisper-large-v3-turbo-ONNX';
 /** tray 「检查更新」 (Phase 4). A real updater is Phase 5; until then the honest
  * answer is the releases page, opened through the same allowlist as every other
  * documentation link. */
-const RELEASES_URL = 'https://github.com/JWM0203/MeetingCopilot/releases/latest';
+const RELEASES_URL = 'https://github.com/lakaka2970/MeetingAssistant/releases/latest';
 
 /** Region-selection overlay: shows the captured screen as an opaque bg (so a
  * content-protected window never renders black locally) and lets the user drag
@@ -1527,7 +1527,7 @@ function bootstrap(): void {
    * Still a quit, tray or not: hiding the overlay does NOT close it, so this
    * only fires on a real teardown (app.quit() destroying the windows, or the
    * first-run wizard being closed before completion). A "close to tray" app
-   * would return here instead — MeetingCopilot deliberately has no window
+   * would return here instead — MeetingAssistant deliberately has no window
    * close button that leaves the app running headless without a window.
    */
   app.on('window-all-closed', () => {

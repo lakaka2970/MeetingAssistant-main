@@ -37,7 +37,7 @@ export class NativeAudioCapture {
   /** binding artifact resolution — resources/native next to the app */
   private resolveBindingPath(): string {
     if (!this.bindingPath) {
-      this.bindingPath = join(this.opts.resourceRoot, 'resources', 'native', 'meeting-copilot-audio.node');
+      this.bindingPath = join(this.opts.resourceRoot, 'resources', 'native', 'meeting-assistant-audio.node');
     }
     return this.bindingPath;
   }

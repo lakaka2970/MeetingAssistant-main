@@ -23,14 +23,14 @@ macOS 版保留了完整链路——流式转录、提词式回答、简历/JD �
 ## 安装与启动
 
 ```bash
-git clone https://github.com/JWM0203/MeetingCopilot.git
-cd MeetingCopilot
+git clone https://github.com/lakaka2970/MeetingAssistant.git
+cd MeetingAssistant
 npm install        # postinstall 自动应用 patches/（transformers.js 补丁，勿删）
 npm run build
 npm start
 ```
 
-## 音频：把会议声音接进 MeetingCopilot
+## 音频：把会议声音接进 MeetingAssistant
 
 要采集会议软件（腾讯会议 / Zoom / …）而不是内置麦克风：
 
@@ -40,7 +40,7 @@ npm start
    ```
 2. **创建多输出设备**，保证你自己还能听到会议声音：打开**音频 MIDI 设置** → `+` → *创建多输出设备* → 同时勾选你的扬声器/耳机**和** BlackHole 2ch。
 3. **把系统输出指向它**：系统设置 → 声音 → 输出 → 选择该多输出设备。此后声音照常从扬声器播放，同时镜像进 BlackHole。
-4. **在 MeetingCopilot 里选中 BlackHole**：点 **▶ 开始**（首次需授权麦克风），然后在按钮旁的输入下拉里选 *BlackHole 2ch*。
+4. **在 MeetingAssistant 里选中 BlackHole**：点 **▶ 开始**（首次需授权麦克风），然后在按钮旁的输入下拉里选 *BlackHole 2ch*。
 
 该通道已关闭回声消除/降噪/自动增益，虚拟设备的 PCM 原样进入转录；独立的 **🎤** 通道仍保留正常麦克风处理，用于你自己的声音。
 
@@ -63,5 +63,5 @@ npm start
 
 ## 数据位置
 
-- 设置 / 会话 / 资料：`~/Library/Application Support/MeetingCopilot/`（纯 JSON）
+- 设置 / 会话 / 资料：`~/Library/Application Support/MeetingAssistant/`（纯 JSON）
 - API key：经 macOS 钥匙串（`safeStorage`）加密落盘

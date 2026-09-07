@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Local MOSS-Transcribe-Diarize sidecar using MeetingCopilot's WS protocol.
+"""Local MOSS-Transcribe-Diarize sidecar using MeetingAssistant's WS protocol.
 
 MOSS-Transcribe-Diarize is a long-form, one-shot generative ASR model rather
 than a native streaming model.  This sidecar therefore buffers one utterance,

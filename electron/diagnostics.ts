@@ -133,7 +133,7 @@ export interface DiagnosticsFacts {
 }
 
 const HEADER = [
-  'MeetingCopilot Diagnostic Report',
+  'MeetingAssistant Diagnostic Report',
   'Generated locally. Sensitive content and API keys are excluded.',
 ];
 

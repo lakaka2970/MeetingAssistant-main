@@ -14,7 +14,7 @@ const { readFileSync, writeFileSync, existsSync } = require('fs');
 const { join } = require('path');
 
 // Must match electron/main.ts so app.getPath('userData') resolves identically.
-app.setName('MeetingCopilot');
+app.setName('MeetingAssistant');
 
 app
   .whenReady()

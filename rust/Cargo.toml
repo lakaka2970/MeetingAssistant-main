@@ -1,8 +1,8 @@
 [package]
-name = "meeting-copilot-audio"
+name = "meeting-assistant-audio"
 version = "0.1.0"
 edition = "2021"
-description = "Native audio capture for MeetingCopilot: Windows WASAPI loopback + mic, resampled to 16 kHz mono f32"
+description = "Native audio capture for MeetingAssistant: Windows WASAPI loopback + mic, resampled to 16 kHz mono f32"
 
 [lib]
 crate-type = ["cdylib"]

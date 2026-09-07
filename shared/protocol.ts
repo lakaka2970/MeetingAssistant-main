@@ -196,7 +196,7 @@ export interface SettingsFile {
   };
   asr: {
     language: AsrLanguage;
-    /** override models dir; default %APPDATA%/MeetingCopilot/models */
+    /** override models dir; default %APPDATA%/MeetingAssistant/models */
     modelsDir?: string;
     /** catalog provider behind the ACTIVE cloud slot; absent for local backends */
     providerId?: ProviderId;
@@ -245,7 +245,7 @@ export interface SettingsFile {
     theme: ThemeMode;
     /** UI display language; absent = follow OS locale (zh → zh, else en) */
     lang?: UiLang;
-    /** start MeetingCopilot with the OS session; DEFAULT OFF, user opt-in only */
+    /** start MeetingAssistant with the OS session; DEFAULT OFF, user opt-in only */
     autoLaunch?: boolean;
     /** the "still running in the tray" balloon was shown once; never repeated */
     trayNoticeShown?: boolean;

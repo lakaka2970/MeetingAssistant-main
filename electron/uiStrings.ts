@@ -25,7 +25,7 @@ const zh = {
   setupQuitConfirm: '退出',
   setupQuitCancel: '继续配置',
   tray: {
-    brand: 'MeetingCopilot',
+    brand: 'MeetingAssistant',
     showWindow: '显示窗口',
     hideWindow: '隐藏窗口',
     startCapture: '开始转写',
@@ -38,7 +38,7 @@ const zh = {
     quit: '退出',
     capturing: '转写中',
   } satisfies TrayMenuLabels,
-  trayNoticeTitle: 'MeetingCopilot 仍在运行',
+  trayNoticeTitle: 'MeetingAssistant 仍在运行',
   trayNoticeBody: '窗口已隐藏，可从系统托盘图标重新打开；托盘菜单里也能直接退出。',
 };
 
@@ -63,7 +63,7 @@ const en: MainDict = {
   setupQuitConfirm: 'Quit',
   setupQuitCancel: 'Keep setting up',
   tray: {
-    brand: 'MeetingCopilot',
+    brand: 'MeetingAssistant',
     showWindow: 'Show window',
     hideWindow: 'Hide window',
     startCapture: 'Start transcription',
@@ -76,7 +76,7 @@ const en: MainDict = {
     quit: 'Quit',
     capturing: 'transcribing',
   },
-  trayNoticeTitle: 'MeetingCopilot is still running',
+  trayNoticeTitle: 'MeetingAssistant is still running',
   trayNoticeBody:
     'The window is hidden — reopen it from the tray icon. The tray menu also has Quit.',
 };

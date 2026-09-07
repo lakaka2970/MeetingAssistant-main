@@ -1,5 +1,5 @@
 /**
- * MeetingCopilot native audio capture (upgrade P1.5): Windows WASAPI shared
+ * MeetingAssistant native audio capture (upgrade P1.5): Windows WASAPI shared
  * -mode loopback (the system mix, no virtual device) plus cross-platform mic
  * capture via cpal. Everything is downmixed to mono and resampled to 16 kHz
  * float32, emitted as ~100 ms frames (1600 samples) through a

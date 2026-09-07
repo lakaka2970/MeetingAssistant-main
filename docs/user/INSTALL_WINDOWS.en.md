@@ -19,12 +19,12 @@ For people using the packaged build. To run from source, see the Development sec
 
 ## Which file to download
 
-The [Releases page](https://github.com/JWM0203/MeetingCopilot/releases/latest) has two:
+The [Releases page](https://github.com/lakaka2970/MeetingAssistant/releases/latest) has two:
 
 | File | Type | Best for |
 |---|---|---|
-| `MeetingCopilot-<version>-win-x64.exe` | Installer (NSIS) | Normal use. Adds Start-menu and desktop shortcuts |
-| `MeetingCopilot-<version>-win-x64-portable.exe` | Portable | Not installing anything — a USB stick, or a locked-down machine |
+| `MeetingAssistant-<version>-win-x64.exe` | Installer (NSIS) | Normal use. Adds Start-menu and desktop shortcuts |
+| `MeetingAssistant-<version>-win-x64-portable.exe` | Portable | Not installing anything — a USB stick, or a locked-down machine |
 
 Each `.exe` also ships a matching `.exe.sha256` containing the hash CI computed at build time.
 
@@ -33,7 +33,7 @@ Each `.exe` also ships a matching `.exe.sha256` containing the hash CI computed 
 In PowerShell, from your downloads folder:
 
 ```powershell
-Get-FileHash .\MeetingCopilot-<version>-win-x64.exe -Algorithm SHA256
+Get-FileHash .\MeetingAssistant-<version>-win-x64.exe -Algorithm SHA256
 ```
 
 Compare the output with the value inside the `.sha256` file.
@@ -42,7 +42,7 @@ Compare the output with the value inside the `.sha256` file.
 
 ## Installing (installer build)
 
-1. Double-click `MeetingCopilot-<version>-win-x64.exe`.
+1. Double-click `MeetingAssistant-<version>-win-x64.exe`.
 2. This beta is **unsigned**, so SmartScreen shows "Windows protected your PC". Once you have confirmed the source, click "More info" → "Run anyway".
 3. The installer is one-click: it does not ask for a path and installs into your **user** profile (under `%LOCALAPPDATA%\Programs\`). It never touches `Program Files` and needs no administrator rights.
 4. Start-menu and desktop shortcuts are created automatically.
@@ -52,12 +52,12 @@ Compare the output with the value inside the `.sha256` file.
 
 - Double-click and it runs. No registry entries, no shortcuts.
 - It unpacks itself into a temporary folder at launch, so **the first start is slower** than the installed build by a few seconds.
-- Note that portable is *not* fully self-contained: settings, sessions and imported material still live in `%APPDATA%\MeetingCopilot\`, shared with an installed copy.
+- Note that portable is *not* fully self-contained: settings, sessions and imported material still live in `%APPDATA%\MeetingAssistant\`, shared with an installed copy.
 - For a genuinely portable profile, point `MC_USERDATA` at your own folder before launching:
 
   ```powershell
-  $env:MC_USERDATA = "D:\MeetingCopilotData"
-  .\MeetingCopilot-<version>-win-x64-portable.exe
+  $env:MC_USERDATA = "D:\MeetingAssistantData"
+  .\MeetingAssistant-<version>-win-x64-portable.exe
   ```
 
   Everything is then written there. This is an advanced option; normal use needs no environment variables.
@@ -68,12 +68,12 @@ Compare the output with the value inside the `.sha256` file.
 
 | Content | Path |
 |---|---|
-| Settings (including encrypted API keys) | `%APPDATA%\MeetingCopilot\settings.json` |
-| Sessions (transcript + answers + imported material) | `%APPDATA%\MeetingCopilot\sessions.json` |
-| Global knowledge base | `%APPDATA%\MeetingCopilot\knowledge.md` |
-| Local Whisper models (if used) | `%APPDATA%\MeetingCopilot\models\` |
+| Settings (including encrypted API keys) | `%APPDATA%\MeetingAssistant\settings.json` |
+| Sessions (transcript + answers + imported material) | `%APPDATA%\MeetingAssistant\sessions.json` |
+| Global knowledge base | `%APPDATA%\MeetingAssistant\knowledge.md` |
+| Local Whisper models (if used) | `%APPDATA%\MeetingAssistant\models\` |
 
-Type `%APPDATA%\MeetingCopilot` into the Explorer address bar, or use Settings → Advanced → Diagnostics → "Open the data folder".
+Type `%APPDATA%\MeetingAssistant` into the Explorer address bar, or use Settings → Advanced → Diagnostics → "Open the data folder".
 
 **API keys are not stored in clear text**: they are encrypted with Windows DPAPI before being written to `settings.json`, which binds them to the current Windows user — after switching accounts or reinstalling Windows you have to enter them again.
 
@@ -82,14 +82,14 @@ Type `%APPDATA%\MeetingCopilot` into the Explorer address bar, or use Settings �
 ## Upgrading
 
 1. Download the new installer and run it; it uninstalls the old build and installs the new one.
-2. `%APPDATA%\MeetingCopilot\` is left alone, so **settings, keys and sessions all survive**.
+2. `%APPDATA%\MeetingAssistant\` is left alone, so **settings, keys and sessions all survive**.
 3. This release has no auto-updater. The tray's "Check for updates" opens the Releases page in your browser and lets you decide.
 
 ## Uninstalling
 
 - Uninstall from Settings → Apps, or from the Start menu.
 - **Uninstalling does not delete your data** (`deleteAppDataOnUninstall: false`), and neither does an upgrade.
-- To remove everything, delete `%APPDATA%\MeetingCopilot\` by hand afterwards. Check first that you do not still want the stored sessions.
+- To remove everything, delete `%APPDATA%\MeetingAssistant\` by hand afterwards. Check first that you do not still want the stored sessions.
 
 ---
 

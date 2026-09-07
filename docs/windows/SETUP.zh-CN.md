@@ -2,7 +2,7 @@
 
 [English](SETUP.md) · [macOS 指南](../macos/SETUP.zh-CN.md)
 
-MeetingCopilot 诞生于 Windows：通过**系统回环音频**直接采集对方声音（无需机器人入会，任何会议软件都适用），并可用内容保护让窗口在屏幕共享中隐身。
+MeetingAssistant 诞生于 Windows：通过**系统回环音频**直接采集对方声音（无需机器人入会，任何会议软件都适用），并可用内容保护让窗口在屏幕共享中隐身。
 
 ## 环境要求
 
@@ -19,8 +19,8 @@ MeetingCopilot 诞生于 Windows：通过**系统回环音频**直接采集对�
 ## 安装与启动
 
 ```bash
-git clone https://github.com/JWM0203/MeetingCopilot.git
-cd MeetingCopilot
+git clone https://github.com/lakaka2970/MeetingAssistant.git
+cd MeetingAssistant
 npm install        # postinstall 自动应用 patches/（transformers.js 补丁，勿删）
 npm run build
 start.bat          # 或 npm start
@@ -62,7 +62,7 @@ C:/ProgramData/miniconda3/Scripts/conda.exe run -n moss-asr python -m pip instal
 
 ## 本地 Whisper turbo（离线兜底）
 
-把 [`onnx-community/whisper-large-v3-turbo-ONNX`](https://huggingface.co/onnx-community/whisper-large-v3-turbo-ONNX) 放到 `%APPDATA%/MeetingCopilot/models/onnx-community/whisper-large-v3-turbo-ONNX/`（`encoder_model_fp16.onnx`、`decoder_model_merged_quantized.onnx` 及 config/tokenizer 等文件）。编码器经 DirectML 跑在 GPU 上。
+把 [`onnx-community/whisper-large-v3-turbo-ONNX`](https://huggingface.co/onnx-community/whisper-large-v3-turbo-ONNX) 放到 `%APPDATA%/MeetingAssistant/models/onnx-community/whisper-large-v3-turbo-ONNX/`（`encoder_model_fp16.onnx`、`decoder_model_merged_quantized.onnx` 及 config/tokenizer 等文件）。编码器经 DirectML 跑在 GPU 上。
 
 ## 隐身
 
@@ -70,5 +70,5 @@ C:/ProgramData/miniconda3/Scripts/conda.exe run -n moss-asr python -m pip instal
 
 ## 数据位置
 
-- 设置 / 会话 / 资料：`%APPDATA%/MeetingCopilot/`（纯 JSON）
+- 设置 / 会话 / 资料：`%APPDATA%/MeetingAssistant/`（纯 JSON）
 - API key：Windows DPAPI（`safeStorage`）加密落盘

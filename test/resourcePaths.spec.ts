@@ -7,14 +7,14 @@ import { mossPythonCandidates, pythonCandidates } from '../electron/funasrSideca
 // import in that module stays inert here because we never touch `app`.
 describe('resolveResourceRoot', () => {
   it('uses the repo root in development', () => {
-    expect(resolveResourceRoot(false, 'C:\\ignored\\resources', 'C:\\repo\\MeetingCopilot')).toBe(
-      'C:\\repo\\MeetingCopilot',
+    expect(resolveResourceRoot(false, 'C:\\ignored\\resources', 'C:\\repo\\MeetingAssistant')).toBe(
+      'C:\\repo\\MeetingAssistant',
     );
   });
 
   it('uses resourcesPath when packaged (never the app.asar path)', () => {
-    const appPath = 'C:\\Program Files\\MeetingCopilot\\resources\\app.asar';
-    const resourcesPath = 'C:\\Program Files\\MeetingCopilot\\resources';
+    const appPath = 'C:\\Program Files\\MeetingAssistant\\resources\\app.asar';
+    const resourcesPath = 'C:\\Program Files\\MeetingAssistant\\resources';
     expect(resolveResourceRoot(true, resourcesPath, appPath)).toBe(resourcesPath);
     expect(resolveResourceRoot(true, resourcesPath, appPath)).not.toContain('app.asar');
   });
@@ -25,32 +25,32 @@ describe('resolveResourceRoot', () => {
   it('resolves the packaged sidecar scripts outside the asar archive', () => {
     const winRoot = resolveResourceRoot(
       true,
-      'C:\\Program Files\\MeetingCopilot\\resources',
-      'C:\\Program Files\\MeetingCopilot\\resources\\app.asar',
+      'C:\\Program Files\\MeetingAssistant\\resources',
+      'C:\\Program Files\\MeetingAssistant\\resources\\app.asar',
     );
     expect(win32.join(winRoot, 'tools', 'funasr_stream_server.py')).toBe(
-      'C:\\Program Files\\MeetingCopilot\\resources\\tools\\funasr_stream_server.py',
+      'C:\\Program Files\\MeetingAssistant\\resources\\tools\\funasr_stream_server.py',
     );
 
     const macRoot = resolveResourceRoot(
       true,
-      '/Applications/MeetingCopilot.app/Contents/Resources',
-      '/Applications/MeetingCopilot.app/Contents/Resources/app.asar',
+      '/Applications/MeetingAssistant.app/Contents/Resources',
+      '/Applications/MeetingAssistant.app/Contents/Resources/app.asar',
     );
     expect(posix.join(macRoot, 'tools', 'moss_asr_server.py')).toBe(
-      '/Applications/MeetingCopilot.app/Contents/Resources/tools/moss_asr_server.py',
+      '/Applications/MeetingAssistant.app/Contents/Resources/tools/moss_asr_server.py',
     );
   });
 });
 
 describe('python discovery under a packaged resource root', () => {
-  const packagedRoot = 'C:\\Program Files\\MeetingCopilot\\resources';
+  const packagedRoot = 'C:\\Program Files\\MeetingAssistant\\resources';
 
   it('still offers the conda default and PATH fallbacks when no .venv ships', () => {
     const candidates = pythonCandidates(packagedRoot, 'win32', undefined);
     // the .venv entry is a dev convenience that simply will not exist here;
     // resolvePython only probes, so it must not shadow the later candidates
-    expect(candidates[0]).toBe('C:\\Program Files\\MeetingCopilot\\resources\\.venv\\Scripts\\python.exe');
+    expect(candidates[0]).toBe('C:\\Program Files\\MeetingAssistant\\resources\\.venv\\Scripts\\python.exe');
     expect(candidates).toContain('C:\\ProgramData\\miniconda3\\envs\\funasr\\python.exe');
     expect(candidates.at(-1)).toBe('python');
   });
