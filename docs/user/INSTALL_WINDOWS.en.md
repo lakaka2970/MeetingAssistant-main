@@ -19,7 +19,7 @@ For people using the packaged build. To run from source, see the Development sec
 
 ## Which file to download
 
-The [Releases page](https://github.com/lakaka2970/MeetingCopilot-main/releases/latest) has two:
+The [Releases page](https://github.com/lakaka2970/MeetingAssistant-main/releases/latest) has two:
 
 | File | Type | Best for |
 |---|---|---|

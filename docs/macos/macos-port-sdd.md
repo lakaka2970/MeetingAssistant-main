@@ -167,7 +167,7 @@ pressure on the 8 GB target.
 
 Update both READMEs, review secrets/generated/binary/unrelated changes, run the
 matrix, commit on `codex/macos-cloud-local-adaptation`, push to a user-owned
-fork, open a focused PR against `lakaka2970/MeetingCopilot-main:main`, and track review.
+fork, open a focused PR against `lakaka2970/MeetingAssistant-main:main`, and track review.
 
 ## 7. Required live credentials
 

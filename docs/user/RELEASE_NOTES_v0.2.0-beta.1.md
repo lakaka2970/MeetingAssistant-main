@@ -64,7 +64,7 @@ Get-FileHash .\MeetingAssistant-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 - **MiMo 极简方案为 Beta**：分段识别按整句返回，字幕跟随性弱于流式方案。
 - **macOS 隐身尽力而为**：新版 ScreenCaptureKit 仍可能捕获窗口。
 
-遇到问题：先看应用内「帮助与教程」和 [TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)，仍未解决就带上诊断信息到 [GitHub Issues](https://github.com/lakaka2970/MeetingCopilot-main/issues)。
+遇到问题：先看应用内「帮助与教程」和 [TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)，仍未解决就带上诊断信息到 [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant-main/issues)。
 
 ---
 
@@ -125,4 +125,4 @@ Full walkthrough: [QUICK_START.en.md](QUICK_START.en.md).
 - **The MiMo minimal plan is Beta**: per-segment recognition returns whole sentences, so captions trail the streaming plan.
 - **Stealth on macOS is best-effort**: recent ScreenCaptureKit clients may still capture the window.
 
-Problems: start with the in-app **Help & guides** and [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md); if that does not solve it, bring the diagnostics report to [GitHub Issues](https://github.com/lakaka2970/MeetingCopilot-main/issues).
+Problems: start with the in-app **Help & guides** and [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md); if that does not solve it, bring the diagnostics report to [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant-main/issues).

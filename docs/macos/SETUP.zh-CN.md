@@ -23,8 +23,8 @@ macOS 版保留了完整链路——流式转录、提词式回答、简历/JD �
 ## 安装与启动
 
 ```bash
-git clone https://github.com/lakaka2970/MeetingCopilot-main.git
-cd MeetingCopilot-main
+git clone https://github.com/lakaka2970/MeetingAssistant-main.git
+cd MeetingAssistant-main
 npm install        # postinstall 自动应用 patches/（transformers.js 补丁，勿删）
 npm run build
 npm start

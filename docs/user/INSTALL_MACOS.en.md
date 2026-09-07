@@ -18,8 +18,8 @@ The app itself is macOS-aware: the wizard, the tray, cloud transcription, AI ans
 ## Run from source
 
 ```bash
-git clone https://github.com/lakaka2970/MeetingCopilot-main.git
-cd MeetingCopilot-main
+git clone https://github.com/lakaka2970/MeetingAssistant-main.git
+cd MeetingAssistant-main
 npm install        # postinstall applies patches/ — do not remove it
 npm run build
 npm start

@@ -263,7 +263,7 @@ const geminiHelp: ProviderHelp = {
 };
 
 const customHelp: ProviderHelp = {
-  docsUrl: 'https://github.com/lakaka2970/MeetingCopilot-main',
+  docsUrl: 'https://github.com/lakaka2970/MeetingAssistant-main',
   stepsZh: [
     '准备一个 OpenAI 兼容的服务地址（以 /v1 结尾）与模型名称。',
     '在高级设置中填写 Base URL、模型与 API Key。',

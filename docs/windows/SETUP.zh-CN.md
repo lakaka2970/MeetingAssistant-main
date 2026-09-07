@@ -19,8 +19,8 @@ MeetingAssistant 诞生于 Windows：通过**系统回环音频**直接采集对
 ## 安装与启动
 
 ```bash
-git clone https://github.com/lakaka2970/MeetingCopilot-main.git
-cd MeetingCopilot-main
+git clone https://github.com/lakaka2970/MeetingAssistant-main.git
+cd MeetingAssistant-main
 npm install        # postinstall 自动应用 patches/（transformers.js 补丁，勿删）
 npm run build
 start.bat          # 或 npm start
