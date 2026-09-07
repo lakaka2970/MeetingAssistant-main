@@ -1,0 +1,19 @@
+# Normalize line endings: store LF in the repository and convert to the
+# platform's native ending on checkout (CRLF on Windows). One convention
+# everywhere, no more "LF will be replaced by CRLF" noise.
+* text=auto
+
+# Binary assets must never be line-ending-normalized.
+*.ico binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.wav binary
+*.mp4 binary
+*.pdf binary
+*.node binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
