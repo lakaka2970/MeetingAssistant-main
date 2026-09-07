@@ -21,8 +21,8 @@ window from screen shares via content protection.
 ## Install & run
 
 ```bash
-git clone https://github.com/lakaka2970/MeetingAssistant.git
-cd MeetingAssistant
+git clone https://github.com/lakaka2970/MeetingCopilot-main.git
+cd MeetingCopilot-main
 npm install        # postinstall applies patches/ (transformers.js patch — do not remove)
 npm run build
 start.bat          # or: npm start

@@ -28,8 +28,8 @@ Engineering details live in the [port SDD](macos-port-sdd.md).
 ## Install & run
 
 ```bash
-git clone https://github.com/lakaka2970/MeetingAssistant.git
-cd MeetingAssistant
+git clone https://github.com/lakaka2970/MeetingCopilot-main.git
+cd MeetingCopilot-main
 npm install        # postinstall applies patches/ (transformers.js patch — do not remove)
 npm run build
 npm start

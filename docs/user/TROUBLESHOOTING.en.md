@@ -64,7 +64,7 @@ This affects only the local sidecar ASR and local Whisper backends. **Cloud tran
 ## 5. Windows says "Windows protected your PC"
 
 - This beta is **not code-signed**, and SmartScreen shows that warning for every unsigned app.
-- After confirming the file came from the [official Releases page](https://github.com/lakaka2970/MeetingAssistant/releases/latest), click "More info" → "Run anyway".
+- After confirming the file came from the [official Releases page](https://github.com/lakaka2970/MeetingCopilot-main/releases/latest), click "More info" → "Run anyway".
 - Better: verify the SHA256. Every `.exe` ships with a matching `.exe.sha256` containing the hash CI computed. Run `Get-FileHash .\MeetingAssistant-<version>-win-x64.exe -Algorithm SHA256` in PowerShell and compare.
 - Code signing is planned for a later release. Until then, download only from the official release page.
 
@@ -93,5 +93,5 @@ If another app already owns that hotkey, registration fails silently — the tra
 ## Still stuck
 
 1. Settings → Advanced → "Diagnostics" → "Copy diagnostics". The report is built locally and contains **no API keys, resume/JD text or transcripts**, so it is safe to paste into a public issue.
-2. Open an issue at [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant/issues) with the report and: what you did, what you expected, what happened instead.
+2. Open an issue at [GitHub Issues](https://github.com/lakaka2970/MeetingCopilot-main/issues) with the report and: what you did, what you expected, what happened instead.
 3. If a provider is involved, include the error code and request id from "Test connection".

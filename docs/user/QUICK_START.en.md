@@ -21,7 +21,7 @@ MeetingAssistant is **bring-your-own-key**: no accounts, no server, no fee colle
 
 ## Step 1 — download and install
 
-1. Open the [Releases page](https://github.com/lakaka2970/MeetingAssistant/releases/latest).
+1. Open the [Releases page](https://github.com/lakaka2970/MeetingCopilot-main/releases/latest).
 2. Download `MeetingAssistant-<version>-win-x64.exe` (installer) or `...-win-x64-portable.exe` (portable). The difference and the install locations are in [INSTALL_WINDOWS.en.md](INSTALL_WINDOWS.en.md).
 3. This beta is not code-signed, so Windows SmartScreen shows "Windows protected your PC". Once you have confirmed the file came from the official release page above, click **More info → Run anyway**.
 4. Verify the download first if you can: every `.exe` ships with a matching `.exe.sha256` file containing the hash CI computed at build time.
@@ -115,4 +115,4 @@ The tray menu also has Start/Stop transcription, New session, Settings, Service 
 
 1. Open **Help & guides** in the app (tray menu, or Settings → Help & guides). It works offline.
 2. Read [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md) for the full error-code table.
-3. Still stuck: Settings → Advanced → Diagnostics, copy the report (it has no keys, resume text or transcripts) and open an issue at [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant/issues).
+3. Still stuck: Settings → Advanced → Diagnostics, copy the report (it has no keys, resume text or transcripts) and open an issue at [GitHub Issues](https://github.com/lakaka2970/MeetingCopilot-main/issues).

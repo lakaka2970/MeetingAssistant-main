@@ -3,11 +3,11 @@
   "version": "0.2.0-beta.1",
   "description": "Real-time meeting/interview assistant for Windows and macOS: streaming ASR (local FunASR / cloud) and first-person answers via BYOK LLM",
   "main": "./out/main/index.js",
-  "author": "JWM0203",
+  "author": "lakaka2970",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lakaka2970/MeetingAssistant.git"
+    "url": "https://github.com/lakaka2970/MeetingCopilot-main.git"
   },
   "private": true,
   "scripts": {
