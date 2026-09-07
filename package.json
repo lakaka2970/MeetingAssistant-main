@@ -1,0 +1,59 @@
+{
+  "name": "meeting-assistant",
+  "version": "0.2.0-beta.1",
+  "description": "Real-time meeting/interview assistant for Windows and macOS: streaming ASR (local FunASR / cloud) and first-person answers via BYOK LLM",
+  "main": "./out/main/index.js",
+  "author": "JWM0203",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JWM0203/MeetingCopilot.git"
+  },
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "postinstall": "patch-package",
+    "test": "vitest run",
+    "test:python": "node tools/run-python-tests.mjs",
+    "native:build": "node tools/native-build.mjs",
+    "test:all": "npm test && npm run test:python",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "verify:patched": "node tools/verify-patched.mjs",
+    "dist:dir": "npm run build && npm run verify:patched && electron-builder --dir",
+    "dist:win": "npm run build && npm run verify:patched && electron-builder --win nsis portable --publish never",
+    "harness": "node tools/asr-harness.mjs",
+    "smoke:llm": "vite-node tools/llm-smoke.ts",
+    "smoke:rag": "vite-node tools/rag-smoke.ts",
+    "smoke:asr:realtime": "node tools/rt-asr-smoke.mjs",
+    "smoke:e2e:llm": "node tools/e2e-llm.mjs",
+    "smoke:e2e:local": "node tools/e2e-local-lifecycle.mjs",
+    "smoke:packaged": "node tools/packaged-smoke.mjs"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "3.8.1",
+    "jszip": "^3.10.1",
+    "katex": "^0.18.5",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@types/ws": "^8.5.13",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "41.1.1",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^3.1.0",
+    "patch-package": "^8.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "vitest": "^3.1.0"
+  }
+}

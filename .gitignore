@@ -1,0 +1,34 @@
+node_modules/
+.venv/
+__pycache__/
+out/
+dist/
+release/
+models/
+*.log
+.vite/
+*.tsbuildinfo
+
+# local npm registry mirror config (China-specific; see README for setup tips)
+.npmrc
+
+# internal working notes -- not part of the release
+HANDOFF.md
+PLAN.en.md
+PLAN.zh.md
+
+# optional native audio module (rust/, built via `npm run native:build`):
+# the compiled binary drops into resources/native/, and cargo's build output
+# (rust/target/) is large and machine-local — only the .node artifact is
+# ignored so the Cargo.toml / src stay in the repo.
+resources/native/*.node
+rust/target/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo

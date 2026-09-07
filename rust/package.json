@@ -1,0 +1,20 @@
+{
+  "name": "meeting-copilot-audio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "napi-rs build harness for MeetingCopilot native audio capture",
+  "napi": {
+    "binaryName": "meeting-copilot-audio",
+    "outputs": ["../resources/native"],
+    "package": {
+      "name": "@meeting-copilot/audio"
+    }
+  },
+  "scripts": {
+    "build:debug": "napi build --output-dir ../resources/native",
+    "build:release": "napi build --release --platform --output-dir ../resources/native"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  }
+}
