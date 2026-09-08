@@ -22,6 +22,10 @@ import {
   type RagSource,
 } from './vector-store';
 import { CustomNotesManager, MAX_NOTES_CHARS } from '../knowledge/customNotes';
+import { parseQaRecord } from '../../shared/qaPairs';
+import { QA_DIRECT_MIN_COSINE, selectQaHits, type QaHitView } from './qaSelect';
+
+export { QA_DIRECT_MIN_COSINE, QA_DIRECT_MIN_LEXICAL } from './qaSelect';
 
 export interface RagSettingsView {
   enabled: boolean;
@@ -46,6 +50,13 @@ export interface RetrieveResult {
   hits: { text: string; source: string; ref?: string; score: number }[];
   /** claimed-fact hits (upgrade P3) — feed the consistency hint */
   facts: { text: string; score: number }[];
+  /**
+   * Prepared-answer direct hits, best first. These are NOT context for the
+   * model to paraphrase: the UI shows the stored answer verbatim and the LLM
+   * only enriches around it, which is why the gate is much stricter than `hits`
+   * (the selection itself lives in ./qaSelect, where it is unit-tested).
+   */
+  qa: QaHitView[];
   ms: number;
 }
 
@@ -208,6 +219,27 @@ export class RagService {
     return this.ensureStore().removeWhere((r) => r.sessionId === sessionId);
   }
 
+  /**
+   * Drop one session slot's indexed chunks after the user removed the document
+   * from the answer pane. The Q&A pairs that came from that slot are dropped
+   * with it (they carry `metadata.qa_from`), otherwise a removed resume would
+   * keep serving its prepared answers forever.
+   */
+  dropSessionSlot(slot: 'resume' | 'jd', sessionId?: string): number {
+    if (!this.storeLoaded) return 0;
+    const store = this.ensureStore();
+    const sameSession = (r: RagRecord): boolean =>
+      (r.sessionId ?? undefined) === (sessionId ?? undefined);
+    const docs = store.removeWhere((r) => r.source === slot && sameSession(r));
+    const pairs = store.removeWhere(
+      (r) =>
+        r.source === 'qa' &&
+        sameSession(r) &&
+        (r.metadata as { qa_from?: unknown } | undefined)?.qa_from === slot,
+    );
+    return docs + pairs;
+  }
+
   // ---- retrieval (L3) ----
 
   /**
@@ -221,8 +253,9 @@ export class RagService {
     const t0 = Date.now();
     const q = query.trim();
     const s = this.deps.getSettings();
-    if (!s.enabled || q.length < MIN_QUERY_CHARS) return { hits: [], facts: [], ms: 0 };
-    if (this.embedder.state !== 'ready') return { hits: [], facts: [], ms: Date.now() - t0 };
+    const empty: RetrieveResult = { hits: [], facts: [], qa: [], ms: 0 };
+    if (!s.enabled || q.length < MIN_QUERY_CHARS) return { ...empty, ms: 0 };
+    if (this.embedder.state !== 'ready') return { ...empty, ms: Date.now() - t0 };
     try {
       const qvec = await this.embedder.embedOne(q, 15_000);
       const store = this.ensureStore();
@@ -232,28 +265,39 @@ export class RagService {
         ref: h.record.ref,
         score: Number(h.score.toFixed(4)),
       });
+      // prepared answers first: they are served to the user directly, so they
+      // must not also ride in as RAG context (the block would appear twice)
+      const qa = selectQaHits(
+        q,
+        store.search(qvec, {
+          topK: 3,
+          minScore: QA_DIRECT_MIN_COSINE,
+          sessionId,
+          sources: ['qa'],
+        }),
+      );
       const hits = store
         .search(qvec, {
           topK: topK ?? s.topK,
           minScore: s.minScore,
           sessionId,
-          excludeSources: ['fact'],
+          excludeSources: ['fact', 'qa'],
         })
         .map(toView);
       const facts = store
         .search(qvec, { topK: 4, minScore: Math.max(0.35, s.minScore), sessionId, sources: ['fact'] })
         .map(toView);
-      return { hits, facts, ms: Date.now() - t0 };
+      return { hits, facts, qa, ms: Date.now() - t0 };
     } catch (e) {
       console.warn('[rag] retrieve failed:', (e as Error).message);
-      return { hits: [], facts: [], ms: Date.now() - t0 };
+      return { hits: [], facts: [], qa: [], ms: Date.now() - t0 };
     }
   }
 
   /** renderer search playground: bypasses the min-question-length gate */
   async searchForUi(query: string, sessionId?: string): Promise<RetrieveResult> {
     const t0 = Date.now();
-    if (!(await this.ensureReady())) return { hits: [], facts: [], ms: Date.now() - t0 };
+    if (!(await this.ensureReady())) return { hits: [], facts: [], qa: [], ms: Date.now() - t0 };
     const qvec = await this.embedder.embedOne(query, 15_000);
     const s = this.deps.getSettings();
     const store = this.ensureStore();
@@ -265,7 +309,45 @@ export class RagService {
         ref: h.record.ref,
         score: Number(h.score.toFixed(4)),
       }));
-    return { hits, facts: [], ms: Date.now() - t0 };
+    return { hits, facts: [], qa: [], ms: Date.now() - t0 };
+  }
+
+  /**
+   * Prepared Q&A inside the L2 notes: the notes themselves ride the stable
+   * prompt prefix, but their question/answer blocks become direct-hit records
+   * too, so a note like 「问：… 答：…」 behaves exactly like one in a document.
+   */
+  ingestNotes(text: string): Promise<IngestResult | null> {
+    return this.ingest({ text, source: 'custom_note', ref: 'notes', replace: true });
+  }
+
+  /** true when the notes (or their Q&A) are already in the index */
+  hasNotesRecords(): boolean {
+    if (!this.storeLoaded || !this.store) return false;
+    return this.store
+      .allRecords()
+      .some((r) => r.source === 'custom_note' || (r.source === 'qa' && r.ref === 'notes'));
+  }
+
+  /**
+   * Every prepared answer the index currently holds — what a direct hit can
+   * serve. Without a session only the global pairs are listed; with one, that
+   * interview's own resume/JD pairs come too (same scope rule as retrieval).
+   */
+  listQa(sessionId?: string): { question: string; answer: string; ref?: string; sessionId?: string }[] {
+    if (!this.storeLoaded || !this.store) return [];
+    const out: { question: string; answer: string; ref?: string; sessionId?: string }[] = [];
+    for (const r of this.store.allRecords()) {
+      if (r.source !== 'qa') continue;
+      if (r.sessionId !== undefined && r.sessionId !== sessionId) continue;
+      const md = r.metadata as { question?: unknown; answer?: unknown } | undefined;
+      const parsed = parseQaRecord(r.text);
+      const question = typeof md?.question === 'string' && md.question ? md.question : parsed.question;
+      const answer = typeof md?.answer === 'string' && md.answer ? md.answer : parsed.answer;
+      if (!question || !answer) continue;
+      out.push({ question, answer, ref: r.ref, sessionId: r.sessionId });
+    }
+    return out.sort((a, b) => a.question.localeCompare(b.question));
   }
 
   /** replace this session's claimed-fact records (upgrade P3) */
@@ -304,7 +386,12 @@ export class RagService {
       let done = 0;
       for (let i = 0; i < records.length; i += batch) {
         const slice = records.slice(i, i + batch);
-        const vectors = await this.embedder.embed(slice.map((r) => r.text));
+        // a 'qa' record is embedded as its QUESTION, not as the pair text
+        const embedText = (r: RagRecord): string =>
+          r.source === 'qa' && typeof r.metadata?.question === 'string' && r.metadata.question
+            ? (r.metadata.question as string)
+            : r.text;
+        const vectors = await this.embedder.embed(slice.map(embedText));
         for (let j = 0; j < slice.length; j++) {
           const r: RagRecord = slice[j];
           fresh.add({

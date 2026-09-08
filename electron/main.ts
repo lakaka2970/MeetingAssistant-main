@@ -40,11 +40,13 @@ import { isRendererCommand, type TrayCommand, type TrayMenuState } from '../shar
 import { KnowledgeStore } from './knowledge';
 import { KnowledgeFileStore } from './knowledgeFiles';
 import { SessionStore } from './sessions';
-import { RagService } from './rag/service';
+import { RagService, MIN_QUERY_CHARS } from './rag/service';
 import { SkillsManager } from './skills/manager';
 import { extractMemoFacts, formatFactsHint } from './consistency/facts';
 import { NativeAudioCapture } from './audio/nativeCapture';
 import { decideRoute, ocrDataUrl } from './vision/ocrPrefilter';
+import { formatWebLines, webSearch, webSources } from './websearch';
+import { DEFAULT_SEARCH_PROVIDER } from '../shared/searchProviders';
 import type { RagHitView } from '../shared/protocol';
 import { DOC_EXTENSIONS, LIBRARY_EXTENSIONS, extractDocText, isLibraryExtension } from './docparse';
 import { basename } from 'path';
@@ -425,10 +427,45 @@ function bootstrap(): void {
           true,
         );
       }
-      // E2E: exercise the FULL renderer->IPC->main->LLM->stream->renderer path.
+      // E2E: exercise the FULL path a user takes — type in the answer box,
+      // press Enter, renderer turn -> IPC -> knowledge routing -> LLM -> stream
+      // -> DOM. Reports the prepared-answer hit with its latency and what the
+      // pane actually rendered (KaTeX / markdown), so the knowledge-first
+      // design and the formula rendering are both checkable from the console.
       if (process.env.MC_E2E_LLM) {
         const q = process.env.MC_E2E_LLM;
-        const js = `(async()=>{const d=[];const done=new Promise(r=>{const off=window.mc.onLlmEvent(e=>{if(e.kind==='delta')d.push(e.text);else if(e.kind==='done'){off();r({ok:true,text:e.text||d.join('')});}else if(e.kind==='error'){off();r({ok:false,error:e.message});}});});window.mc.llmAsk({requestId:'e2e-llm',mode:'free',freeQuestion:${JSON.stringify(q)},recentTranscript:[]});return await done;})()`;
+        const js = `(async()=>{
+  const inp=document.querySelector('.answer-input input');
+  if(!inp)return{ok:false,error:'answer input not found (window not painted yet?)'};
+  if(inp.disabled)return{ok:false,error:'answer input disabled (no LLM key?)'};
+  let kb=null;let st=null;
+  for(let i=0;i<180;i++){
+    st=await window.mc.ragStatus().catch(()=>null);
+    if(st&&!st.enabled){kb={pairs:0,disabled:true};break;}
+    try{const l=await window.mc.ragQaList();if(l&&l.length){kb={pairs:l.length};break;}}catch(_){}
+    if(st&&st.state==='error'){kb={pairs:0,error:st.lastError};break;}
+    await new Promise(r=>setTimeout(r,500));
+  }
+  if(!kb)kb={pairs:0,exhausted:true};
+  const d=[];let qa=null,web=null,rid=null;let tQa=null,tFirst=null;
+  const out=new Promise(r=>{const off=window.mc.onLlmEvent(e=>{
+    if(rid===null)rid=e.requestId;
+    if(e.requestId!==rid)return;
+    if(e.kind==='delta'){if(tFirst===null)tFirst=performance.now();d.push(e.text);}
+    else if(e.kind==='qa'){qa=e.hit;tQa=performance.now();}
+    else if(e.kind==='web'){web=e.sources;}
+    else if(e.kind==='done'){off();r({ok:true,text:e.text||d.join('')});}
+    else if(e.kind==='error'){off();r({ok:false,error:e.message});}});});
+  const t0=performance.now();
+  inp.value=${JSON.stringify(q)};
+  inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+  const res=await out;
+  await new Promise(r=>setTimeout(r,400));
+  const turn=[...document.querySelectorAll('.turn')].pop();
+  const body=turn?turn.querySelector('.turn-body'):null;
+  const dom=body?{turn:true,katex:body.querySelectorAll('.katex').length,mathErr:body.querySelectorAll('.katex-error').length,qa:!!turn.querySelector('.turn-qa'),qaText:(turn.querySelector('.turn-qa-body')?.textContent||'').slice(0,80),md:body.innerHTML.includes('**'),rawDollar:/\\$[^$]*\\$/.test(body.textContent),textLen:(body.textContent||'').length}:null;
+  return {...res,q:${JSON.stringify(q)},rid,qa,web,dom,kb,rag:{enabled:st?.enabled,state:st?.state,modelKey:st?.modelKey,modelLocal:st?.modelLocal,downloadPct:st?.downloadPct,chunks:st?.chunks,bySource:st?.bySource,lastError:st?.lastError},ms:{qa:qa&&tQa!==null?Math.round(tQa-t0):null,firstToken:tFirst!==null?Math.round(tFirst-t0):null,done:Math.round(performance.now()-t0)}};
+})()`;
         void win?.webContents
           .executeJavaScript(js, true)
           .then((r) => console.log('[e2e-llm]', JSON.stringify(r)))
@@ -513,6 +550,18 @@ function bootstrap(): void {
     // warm the embedding model at launch when documents are imported, so the
     // first question recalls them without a cold-start model download
     if (knowledgeFiles.list().length > 0) void rag.ensureReady();
+    // notes written before the Q&A scan existed (or by an older build) still
+    // carry prepared answers — index them once, in the background, on launch
+    if (rag.notes.chars > 0) {
+      void (async () => {
+        if (await rag.ensureReady()) {
+          if (!rag.hasNotesRecords()) {
+            const res = await rag.ingestNotes(rag.notes.text);
+            if (res?.qa) console.log(`[rag] notes backfill: ${res.qa} prepared answers indexed`);
+          }
+        }
+      })();
+    }
     createWindow();
   }
 
@@ -1050,8 +1099,25 @@ function bootstrap(): void {
         return null;
       }
     });
+    // removing a session's resume/JD must also drop its indexed chunks and the
+    // prepared Q&A parsed from them, or a replaced document keeps answering
+    ipcMain.handle(IPC.knowledgeDropSlot, (_e, p: { slot: 'resume' | 'jd'; sessionId?: string }) => {
+      const slot = p?.slot === 'jd' ? 'jd' : 'resume';
+      const dropped = rag.dropSessionSlot(slot, p?.sessionId);
+      if (dropped) console.log(`[rag] ${slot} cleared: dropped ${dropped} chunks`);
+      return { dropped };
+    });
     ipcMain.handle(IPC.sessionsLoad, () => sessionStore.load());
     ipcMain.on(IPC.sessionsSave, (_e, data) => sessionStore.save(data));
+    // the renderer owns the JSON file, so a delete has to also reach the vector
+    // index: otherwise the session's resume/JD/facts keep answering questions
+    ipcMain.handle(IPC.sessionDelete, (_e, sessionId: string) => {
+      const id = String(sessionId ?? '');
+      if (!id) return { dropped: 0 };
+      const dropped = rag.dropSession(id);
+      if (dropped) console.log(`[rag] session deleted: dropped ${dropped} chunks`);
+      return { dropped };
+    });
 
     // ---- upgrade P0: RAG knowledge layers + L2 notes IPC ----
     ipcMain.handle(IPC.ragStatus, () => rag.status());
@@ -1065,6 +1131,10 @@ function bootstrap(): void {
       console.log(`[rag] reindex finished: ${r.records} records, failed=${r.failed}`);
       return rag.status();
     });
+    // the pairs a direct hit can serve — read from the live index, no embedding
+    ipcMain.handle(IPC.ragQaList, (_e, p: { sessionId?: string } = {}) =>
+      rag.listQa(p?.sessionId),
+    );
     ipcMain.handle(IPC.notesGet, () => ({
       text: rag.notes.text,
       chars: rag.notes.chars,
@@ -1074,6 +1144,9 @@ function bootstrap(): void {
       const res = rag.notes.setNotes(String(p?.text ?? ''));
       // notes ride the stable prefix → prewarm the new prefix promptly
       if (res.ok) lastPrefix = null;
+      // their 问:/答: blocks are prepared answers: keep the direct-hit records
+      // in step with the text (replace-semantics on ref 'notes')
+      if (res.ok) void rag.ingestNotes(rag.notes.text);
       return res;
     });
     ipcMain.handle(IPC.skillsList, () =>
@@ -1224,23 +1297,8 @@ function bootstrap(): void {
         !!settings.data.vision.model &&
         !!settings.getVisionApiKey();
 
-      // upgrade P0: L3 semantic recall — segment/continuous only, served ONLY
-      // by an already-ready worker (never blocks a question on a download)
-      let ragContext: string[] | undefined;
-      let factsHint: string | undefined;
-      if (!isTranslate && !useVision && payload.mode !== 'free') {
-        const q = payload.question || payload.recentTranscript.at(-1) || '';
-        const r = await rag.retrieve(q, payload.sessionId);
-        if (r.hits.length) {
-          ragContext = r.hits.map(
-            (h: RagHitView) => `[${h.source}${h.ref ? '|' + h.ref : ''}] ${h.text}`,
-          );
-        }
-        // upgrade P3: recalled claimed facts keep long sessions self-consistent
-        if (r.facts.length) factsHint = formatFactsHint(r.facts.map((f) => f.text));
-        if (ragContext || factsHint) console.log(`[rag] ${r.hits.length} hits, ${r.facts.length} facts in ${r.ms}ms`);
-      }
-      // upgrade P3: /trigger skills steer free-ask behaviour
+      // upgrade P3: /trigger skills steer free-ask behaviour — resolved before
+      // retrieval so the knowledge base sees the real question, not the trigger
       let skillInstruction: string | undefined;
       let freeQuestion = payload.freeQuestion;
       if (payload.mode === 'free' && freeQuestion) {
@@ -1249,6 +1307,76 @@ function bootstrap(): void {
           skillInstruction = skill.instruction;
           freeQuestion = skills.stripTrigger(freeQuestion, skill) ?? '';
           console.log(`[skills] matched ${skill.trigger} (${skill.name})`);
+        }
+      }
+
+      // ---- knowledge-first answer routing ----
+      // 1. prepared Q&A direct hit  → the answer is shown verbatim at once and
+      //    the model only enriches it (no network, tens of ms)
+      // 2. semantic recall hits     → normal RAG context
+      // 3. nothing relevant         → BYOK web search (when configured), then
+      //    the model answers from the retrieved pages
+      // Served ONLY by an already-ready worker: a question must never block on
+      // a model download. Free-ask goes through the same routing — that is
+      // where a typed prepared question is most likely to hit.
+      let ragContext: string[] | undefined;
+      let factsHint: string | undefined;
+      let qaHit: { question: string; answer: string } | undefined;
+      let webLines: string[] | undefined;
+      if (!isTranslate) {
+        const q =
+          payload.mode === 'free'
+            ? freeQuestion ?? ''
+            : payload.question || payload.recentTranscript.at(-1) || '';
+        const r = await rag.retrieve(q, payload.sessionId);
+        // upgrade P3: recalled claimed facts keep long sessions self-consistent
+        if (r.facts.length) factsHint = formatFactsHint(r.facts.map((f) => f.text));
+        const top = r.qa[0];
+        if (top) {
+          qaHit = { question: top.question, answer: top.answer };
+          sendEv({
+            requestId: payload.requestId,
+            kind: 'qa',
+            hit: {
+              question: top.question,
+              answer: top.answer,
+              ref: top.ref,
+              score: top.score,
+              exact: top.exact,
+            },
+          });
+          console.log(
+            `[rag] prepared answer hit (${top.exact ? 'literal' : 'semantic'} ${top.score}) in ${r.ms}ms`,
+          );
+        } else if (r.hits.length) {
+          ragContext = r.hits.map(
+            (h: RagHitView) => `[${h.source}${h.ref ? '|' + h.ref : ''}] ${h.text}`,
+          );
+        } else if (q.length >= MIN_QUERY_CHARS) {
+          // a real question the knowledge base has nothing on — try the web.
+          // Too-short utterances (greetings, "嗯？") never leave the machine.
+          const ws = settings.data.webSearch;
+          const apiKey = settings.getWebSearchApiKey();
+          if (ws?.enabled && apiKey) {
+            const provider = ws.providerId ?? DEFAULT_SEARCH_PROVIDER;
+            const w = await webSearch({
+              provider,
+              apiKey,
+              query: q,
+              maxResults: ws.maxResults,
+              timeoutMs: ws.timeoutMs,
+            });
+            if (w.hits.length) {
+              webLines = formatWebLines(w.hits);
+              sendEv({ requestId: payload.requestId, kind: 'web', sources: webSources(w.hits) });
+              console.log(`[websearch] ${provider}: ${w.hits.length} hits in ${w.ms}ms`);
+            } else {
+              console.warn(`[websearch] ${provider}: no hits (${w.error ?? 'empty'}) ${w.ms}ms`);
+            }
+          }
+        }
+        if (ragContext || factsHint || qaHit || webLines) {
+          console.log(`[rag] retrieve ${r.ms}ms: qa=${r.qa.length} hits=${r.hits.length}`);
         }
       }
 
@@ -1264,6 +1392,8 @@ function bootstrap(): void {
         memo: isTranslate ? undefined : payload.memo,
         notes: isTranslate ? undefined : rag.notes.text,
         ragContext: isTranslate ? undefined : ragContext,
+        qaHit: isTranslate ? undefined : qaHit,
+        webLines: isTranslate ? undefined : webLines,
         consistencyHint: isTranslate ? undefined : factsHint,
         skillInstruction,
         background: isTranslate ? undefined : payload.background || (hasMaterial ? undefined : knowledge.text),

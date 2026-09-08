@@ -27,6 +27,13 @@ import {
   type EndpointTarget,
 } from '../../shared/providerTestRequests';
 import { sanitizeApiKeyInput } from '../../shared/keyInput';
+import {
+  DEFAULT_SEARCH_MAX_RESULTS,
+  DEFAULT_SEARCH_PROVIDER,
+  SEARCH_PROVIDERS,
+  SEARCH_PROVIDER_IDS,
+  type SearchProviderId,
+} from '../../shared/searchProviders';
 import { listMics } from '../audio/micCapture';
 import { useT } from '../i18n';
 import { ConnectionResult } from './providers/ConnectionResult';
@@ -180,6 +187,13 @@ export function SettingsPanel({
   const [routeCoding, setRouteCoding] = useState(settings.llm.routing.byKind.coding ?? '');
   const [routeQuality, setRouteQuality] = useState(settings.llm.routing.byKind.behavioral ?? '');
   const [routeFallback, setRouteFallback] = useState(settings.llm.routing.fallbackChain[0] ?? '');
+  // web-search fallback (knowledge-base miss): off until a key is stored
+  const wsKey = useKeySlot();
+  const [wsEnabled, setWsEnabled] = useState(!!settings.webSearch?.enabled);
+  const [wsProvider, setWsProvider] = useState<SearchProviderId>(
+    settings.webSearch?.providerId ?? DEFAULT_SEARCH_PROVIDER,
+  );
+  const [wsMax, setWsMax] = useState(settings.webSearch?.maxResults ?? DEFAULT_SEARCH_MAX_RESULTS);
 
   /**
    * Live secret-free snapshot. The props seed the form once (uncontrolled by
@@ -244,10 +258,12 @@ export function SettingsPanel({
   /** a save that would persist at least one NEW plaintext key (a deletion is
    * `''`, which never writes a secret and therefore needs no warning) */
   const savesAKey = (): boolean =>
-    [llmKey, visionKey, cloudKey, rtKey, routeCodingKey, routeQualityKey, routeFallbackKey].some((s) => {
-      const v = s.patchValue();
-      return v !== undefined && v !== '';
-    });
+    [llmKey, visionKey, cloudKey, rtKey, routeCodingKey, routeQualityKey, routeFallbackKey, wsKey].some(
+      (s) => {
+        const v = s.patchValue();
+        return v !== undefined && v !== '';
+      },
+    );
 
   /** routing lanes whose provider differs from the primary need their own key */
   const primaryProviderId = (): string =>
@@ -281,6 +297,7 @@ export function SettingsPanel({
       const visionApiKey = visionKey.patchValue();
       const cloudApiKey = cloudKey.patchValue();
       const rtApiKey = rtKey.patchValue();
+      const wsApiKey = wsKey.patchValue();
       // upgrade P1: collect routing-lane key writes keyed by preset id
       const laneKeys: Record<string, { apiKey?: string }> = {};
       const laneKeyEntries: [string, string | undefined][] = [
@@ -364,6 +381,12 @@ export function SettingsPanel({
           micDeviceId: micDeviceId || undefined,
           captureBackend,
         },
+        webSearch: {
+          enabled: wsEnabled,
+          providerId: wsProvider,
+          maxResults: wsMax,
+          ...(wsApiKey !== undefined ? { apiKey: wsApiKey } : {}),
+        },
       });
       llmKey.reset();
       visionKey.reset();
@@ -372,6 +395,7 @@ export function SettingsPanel({
       routeCodingKey.reset();
       routeQualityKey.reset();
       routeFallbackKey.reset();
+      wsKey.reset();
       onSaved(next);
     } finally {
       setSaving(false);
@@ -918,6 +942,109 @@ export function SettingsPanel({
             <option value="on">{t.settings.autoLaunchOn}</option>
           </select>
           <span className="settings-inline-hint">{t.settings.ocrPrefilterHint}</span>
+        </div>
+
+        <div className="settings-section">{t.settings.webSearchSection}</div>
+        <div className="settings-hint">{t.settings.webSearchHint}</div>
+        <div className="settings-row">
+          <label>{t.settings.webSearchEnabled}</label>
+          <select
+            value={wsEnabled ? 'on' : 'off'}
+            onChange={(e) => setWsEnabled(e.target.value === 'on')}
+          >
+            <option value="off">{t.settings.autoLaunchOff}</option>
+            <option value="on">{t.settings.autoLaunchOn}</option>
+          </select>
+          <span className="settings-inline-hint">{t.settings.webSearchEnabledHint}</span>
+        </div>
+        <div className="settings-row">
+          <label>{t.settings.webSearchProvider}</label>
+          <select
+            value={wsProvider}
+            onChange={(e) => setWsProvider(e.target.value as SearchProviderId)}
+          >
+            {SEARCH_PROVIDER_IDS.map((id) => (
+              <option key={id} value={id}>
+                {t.uiLang === 'zh' ? SEARCH_PROVIDERS[id].labelZh : SEARCH_PROVIDERS[id].labelEn}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="settings-row">
+          <label>{t.settings.webSearchApiKey}</label>
+          {live.webSearch?.apiKeySet && !wsKey.editing && !wsKey.pendingDelete ? (
+            <span className="settings-inline-hint">
+              {t.settings.keyConfigured}（{live.webSearch.apiKeyHint ?? ''}） ·{' '}
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  wsKey.setEditing(true);
+                  wsKey.setValue('');
+                }}
+              >
+                {t.settings.keyReplace}
+              </button>
+            </span>
+          ) : (
+            <input
+              type="password"
+              value={wsKey.value}
+              onChange={(e) => wsKey.setValue(e.target.value)}
+              placeholder={
+                live.webSearch?.apiKeySet
+                  ? t.settings.keyNewPlaceholder
+                  : `${SEARCH_PROVIDERS[wsProvider].name} API Key`
+              }
+              spellCheck={false}
+              autoComplete="off"
+            />
+          )}
+          {wsKey.pendingDelete && (
+            <span className="settings-inline-hint">{t.settings.keyPendingDelete}</span>
+          )}
+        </div>
+        <div className="settings-actions">
+          {live.webSearch?.apiKeySet && !wsKey.pendingDelete && (
+            <button className="btn btn-sm" onClick={() => wsKey.setPendingDelete(true)}>
+              {t.settings.keyDelete}
+            </button>
+          )}
+          {(wsKey.editing || wsKey.pendingDelete) && (
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                wsKey.reset();
+              }}
+            >
+              {t.settings.keyUndoDelete}
+            </button>
+          )}
+          <a
+            className="settings-inline-hint"
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              void window.mc.openExternal(SEARCH_PROVIDERS[wsProvider].keyUrl);
+            }}
+          >
+            {t.settings.webSearchGetKey}
+          </a>
+          <span className="settings-inline-hint">
+            {t.uiLang === 'zh'
+              ? SEARCH_PROVIDERS[wsProvider].billingZh
+              : SEARCH_PROVIDERS[wsProvider].billingEn}
+          </span>
+        </div>
+        <div className="settings-row">
+          <label>{t.settings.webSearchMax}</label>
+          <select value={String(wsMax)} onChange={(e) => setWsMax(Number(e.target.value))}>
+            {[3, 5, 8, 10].map((n) => (
+              <option key={n} value={String(n)}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <span className="settings-inline-hint">{t.settings.webSearchMaxHint}</span>
         </div>
 
         <div className="settings-section">{t.settings.asrSection}</div>

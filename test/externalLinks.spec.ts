@@ -66,7 +66,9 @@ describe('isAllowedExternalUrl', () => {
       [
         'ai.google.dev',
         'aistudio.google.com',
+        'api-dashboard.search.brave.com',
         'api-docs.deepseek.com',
+        'app.tavily.com',
         'bailian.console.aliyun.com',
         'bigmodel.cn',
         'console.groq.com',
@@ -79,6 +81,7 @@ describe('isAllowedExternalUrl', () => {
         'open.bigmodel.cn',
         'platform.deepseek.com',
         'platform.xiaomimimo.com',
+        'serpapi.com',
       ].sort(),
     );
   });

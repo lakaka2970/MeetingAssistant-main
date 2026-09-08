@@ -188,11 +188,13 @@ export function buildDiagnosticsReport(f: DiagnosticsFacts): string {
           ? `local sidecar / ${asr.localRealtime?.model ?? 'unknown'}`
           : 'local whisper';
 
-  const keySlots: [ProviderSlot, boolean][] = [
+  const keySlots: [string, boolean][] = [
     ['llm', !!s.llm.apiKeyEnc],
     ['vision', !!s.vision.apiKeyEnc],
     ['asr-cloud', !!asr.cloud?.apiKeyEnc],
     ['asr-realtime', !!asr.realtime?.apiKeyEnc],
+    // the search key is reported as presence only, like every other slot
+    ['web-search', !!s.webSearch?.apiKeyEnc],
   ];
 
   const verifications: [ProviderSlot, ProviderVerification | undefined][] = [

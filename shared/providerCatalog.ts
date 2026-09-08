@@ -100,6 +100,10 @@ export const EXTERNAL_LINK_ALLOWED_HOSTS: readonly string[] = [
   'aistudio.google.com',
   'ai.google.dev',
   'github.com',
+  // web-search fallback providers (shared/searchProviders.ts) — key pages only
+  'app.tavily.com',
+  'api-dashboard.search.brave.com',
+  'serpapi.com',
 ];
 
 // ---------- per-provider help ----------

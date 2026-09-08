@@ -19,7 +19,9 @@ import {
   clampMemo,
   clampTranscript,
   classifyQuestion,
+  formatQaBlock,
   formatRagContext,
+  formatWebBlock,
   isLikelyQuestion,
   langDirective,
   questionHint,
@@ -670,5 +672,92 @@ describe('prompt cache safety (upgrade P0: notes / RAG / consistency layering)',
     expect(msgs).toHaveLength(2);
     expect(msgs[0].content).not.toContain('【个人背景】');
     expect(msgs[0].content).not.toContain('【知识库召回】');
+  });
+});
+
+describe('prepared-answer + web-fallback blocks (knowledge-first routing)', () => {
+  const resume = '项目经历：实时转录系统。';
+
+  it('formatQaBlock quotes the prepared answer and forbids rewriting it', () => {
+    const block = formatQaBlock('你如何处理团队冲突', '我先复述对方立场，再找共同目标。');
+    expect(block).toContain('【我的标准答案】');
+    expect(block).toContain('你如何处理团队冲突');
+    expect(block).toContain('我先复述对方立场，再找共同目标。');
+    expect(block).toContain('原样保留');
+  });
+
+  it('formatWebBlock demands sources and drops empty input', () => {
+    expect(formatWebBlock([])).toBe('');
+    const block = formatWebBlock(['1] 标题 — 摘要 (https://a.example)']);
+    expect(block).toContain('【网络检索】');
+    expect(block).toContain('https://a.example');
+    expect(block).toContain('来源：');
+  });
+
+  it('segment mode: the QA block stays OUT of the stable prefix (cache safe)', () => {
+    const plain = buildStablePrefix(resume, '', 'chinese', undefined);
+    const msgs = buildAnswerMessages({
+      mode: 'segment',
+      question: '你如何处理团队冲突？',
+      recentTranscript: [],
+      resume,
+      qaHit: { question: '你如何处理团队冲突', answer: '我先复述对方立场。' },
+    });
+    expect(msgs[0].content).toBe(plain);
+    const last = msgs[msgs.length - 1].content as string;
+    expect(last).toContain('【我的标准答案】');
+    // and the ask line switches from "answer this" to "enrich my prepared answer"
+    expect(last).toContain('准备的答案');
+    expect(last).not.toContain('题型：');
+  });
+
+  it('segment mode without a hit keeps the ordinary question hint path', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'segment',
+      question: '讲讲 Redis 的持久化原理',
+      recentTranscript: [],
+      resume,
+    });
+    const last = msgs[msgs.length - 1].content as string;
+    expect(last).toContain('题型：技术题');
+    expect(last).not.toContain('【我的标准答案】');
+  });
+
+  it('free mode puts the prepared answer FIRST among the reference blocks', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'free',
+      freeQuestion: '介绍一下你的项目难点',
+      recentTranscript: [],
+      resume,
+      qaHit: { question: '介绍一下你的项目难点', answer: '难点在丢帧治理。' },
+      webLines: ['1] 无关 — 不应出现 (https://b.example)'],
+    });
+    const sys = msgs[0].content as string;
+    expect(sys.indexOf('【我的标准答案】')).toBeGreaterThan(-1);
+    expect(sys).toContain('难点在丢帧治理。');
+    expect(sys.indexOf('【我的标准答案】')).toBeLessThan(sys.indexOf('【本人资料'));
+  });
+
+  it('free mode falls back to web lines when the knowledge base missed', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'free',
+      freeQuestion: 'Rust 的 async trait 怎么用',
+      recentTranscript: [],
+      webLines: ['1] Async traits in Rust — stabilized in 1.75 (https://rust.example)'],
+    });
+    const sys = msgs[0].content as string;
+    expect(sys).toContain('【网络检索】');
+    expect(sys).toContain('https://rust.example');
+    expect(sys).not.toContain('【我的标准答案】');
+  });
+
+  it('an empty prepared answer never produces a block', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'segment',
+      question: 'q',
+      recentTranscript: [],
+      qaHit: { question: 'q', answer: '   ' },
+    });
+    expect(JSON.stringify(msgs)).not.toContain('【我的标准答案】');
   });
 });

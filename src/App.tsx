@@ -353,6 +353,10 @@ export function App() {
             if (t.id !== ev.requestId) return t;
             if (ev.kind === 'delta') return { ...t, text: t.text + ev.text };
             if (ev.kind === 'done') return { ...t, text: ev.text || t.text, status: 'done' };
+            // a prepared answer arrives before any token: show it at once and
+            // let the stream below it be the AI's enrichment
+            if (ev.kind === 'qa') return { ...t, qa: ev.hit };
+            if (ev.kind === 'web') return { ...t, web: ev.sources };
             return { ...t, status: 'error', error: ev.message };
           }),
         })),
@@ -648,17 +652,26 @@ export function App() {
     setCurrentId(s.id);
   }, []);
 
+  /**
+   * Delete one conversation for good: the record in sessions.json, its turns
+   * and transcript, and its vector material in main (resume/JD/facts —
+   * otherwise a deleted interview keeps answering future questions). Reads the
+   * refs instead of nesting setState calls (React updaters must stay pure).
+   */
   const deleteSession = useCallback((id: string) => {
-    setSessions((list) => {
-      const next = list.filter((s) => s.id !== id);
-      if (next.length === 0) {
-        const s = newSession(tRef.current.app.sessionN(1));
-        setCurrentId(s.id);
-        return [s];
-      }
-      setCurrentId((cur) => (cur === id ? next[0].id : cur));
-      return next;
-    });
+    const target = sessionsRef.current.find((s) => s.id === id);
+    if (!target) return;
+    if (!window.confirm(tRef.current.answer.deleteConfirm(target.name))) return;
+    void window.mc.deleteSession(id).catch(() => {});
+    const next = sessionsRef.current.filter((s) => s.id !== id);
+    if (next.length === 0) {
+      const fresh = newSession(tRef.current.app.sessionN(1));
+      setSessions([fresh]);
+      setCurrentId(fresh.id);
+      return;
+    }
+    setSessions(next);
+    if (currentIdRef.current === id) setCurrentId(next[0].id);
   }, []);
 
   const renameSession = useCallback(
@@ -738,11 +751,15 @@ export function App() {
 
   const clearKb = useCallback(
     (slot: KbSlot) => {
-      patchSession(currentIdRef.current, (s) =>
+      const sid = currentIdRef.current;
+      patchSession(sid, (s) =>
         slot === 'resume'
           ? { ...s, resumeName: undefined, resumeText: undefined }
           : { ...s, jdName: undefined, jdText: undefined },
       );
+      // the vector index has to forget the document too, including the prepared
+      // answers parsed from it — otherwise a "removed" resume keeps answering
+      void window.mc.dropKnowledgeSlot(slot, sid || undefined).catch(() => {});
       // prefix went stale; reheats now if capturing, else at the next ▶
       window.mc.prewarm({
         resume: slot === 'resume' ? undefined : currentMaterial().resume,
@@ -927,7 +944,7 @@ export function App() {
 
       {showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
 
-      {showKnowledge && <KnowledgePanel onClose={() => setShowKnowledge(false)} />}
+      {showKnowledge && <KnowledgePanel onClose={() => setShowKnowledge(false)} sessionId={currentId} />}
 
       {showHelp && (
         <HelpPanel

@@ -53,4 +53,34 @@ describe('splitMath (answer-body math delimiters)', () => {
       { type: 'text', text: ' done' },
     ]);
   });
+
+  // ---- the sigmoid bug: models pad `$ … $` and the raw delimiters showed ----
+
+  it('typesets a space-padded $ … $ whose body carries a LaTeX signal', () => {
+    const segs = splitMath('sigmoid 函数为 $ \\sigma(x) = \\frac{1}{1 + e^{-x}} $，值域连续');
+    expect(segs).toEqual([
+      { type: 'text', text: 'sigmoid 函数为 ' },
+      { type: 'math', tex: ' \\sigma(x) = \\frac{1}{1 + e^{-x}} ', display: false },
+      { type: 'text', text: '，值域连续' },
+    ]);
+  });
+
+  it('accepts a padded inline body with only a relation (a = b)', () => {
+    const segs = splitMath('其中 $ a = b $ 成立');
+    expect(segs[1]).toEqual({ type: 'math', tex: ' a = b ', display: false });
+  });
+
+  it('keeps a padded body without any math signal as prose', () => {
+    // "$ 5 $" / "$ 20 $" are numbers, not formulas
+    expect(splitMath('总计 $ 20 $ 元')).toEqual([{ type: 'text', text: '总计 $ 20 $ 元' }]);
+  });
+
+  it('still typesets the real sigmoid answer shape (padded inline + display block)', () => {
+    const text =
+      '**Sigmoid 函数：**\n\n$$ \\sigma(z) = \\frac{1}{1 + e^{-z}} $$\n\n导数满足 $ \\sigma\' = \\sigma (1 - \\sigma) $。';
+    const segs = splitMath(text);
+    const math = segs.filter((s) => s.type === 'math');
+    expect(math).toHaveLength(2);
+    expect(math.every((m) => m.type === 'math')).toBe(true);
+  });
 });

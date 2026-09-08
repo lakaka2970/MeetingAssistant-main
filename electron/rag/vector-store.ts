@@ -24,7 +24,9 @@ export type RagSource =
   | 'doc'
   | 'custom_note'
   | 'fact'
-  | 'transcript';
+  | 'transcript'
+  /** a prepared Q&A pair parsed out of the knowledge base (direct answers) */
+  | 'qa';
 
 export interface RagRecord {
   id: number;

@@ -3,8 +3,15 @@
  * replace-semantics per (source, sessionId, ref) so re-importing a file never
  * duplicates and stale chunks never linger. Runs in the main process; the
  * heavy part (embedding) happens in the utility worker via EmbedClient.
+ *
+ * Every ingested document is ALSO scanned for prepared Q&A pairs (interview
+ * prep notes). Those become dedicated 'qa' records: the vector is the
+ * QUESTION alone (so a spoken question matches the question, not the answer's
+ * prose) while the record keeps the full pair in `metadata`, which is what the
+ * answer pane shows verbatim on a direct hit.
  */
 import { chunkText } from './chunker';
+import { extractQaPairs, formatQaRecord, type QaPair } from '../../shared/qaPairs';
 import type { RagSource, VectorStore } from './vector-store';
 import type { EmbedClient } from './embedClient';
 
@@ -20,12 +27,16 @@ export interface IngestOptions {
   replace?: boolean;
   chunkSize?: number;
   overlap?: number;
+  /** false = skip the prepared-Q&A scan (used for the transcript stream) */
+  qa?: boolean;
 }
 
 export interface IngestResult {
   total: number;
   added: number;
   skipped: number;
+  /** prepared Q&A pairs stored alongside the chunks (same replace scope) */
+  qa: number;
 }
 
 export class RagIngestor {
@@ -36,12 +47,20 @@ export class RagIngestor {
 
   async ingest(opts: IngestOptions): Promise<IngestResult> {
     const chunks = chunkText(opts.text, { chunkSize: opts.chunkSize, overlap: opts.overlap });
-    if (!chunks.length) return { total: 0, added: 0, skipped: 0 };
+    const pairs = opts.qa === false ? [] : extractQaPairs(opts.text);
+    if (!chunks.length && !pairs.length) return { total: 0, added: 0, skipped: 0, qa: 0 };
 
     if (opts.replace) {
       this.store.removeWhere(
         (r) =>
           r.source === opts.source &&
+          (r.sessionId ?? undefined) === (opts.sessionId ?? undefined) &&
+          (r.ref ?? undefined) === (opts.ref ?? undefined),
+      );
+      // the pairs live under source 'qa' in the same scope — replace them too
+      this.store.removeWhere(
+        (r) =>
+          r.source === 'qa' &&
           (r.sessionId ?? undefined) === (opts.sessionId ?? undefined) &&
           (r.ref ?? undefined) === (opts.ref ?? undefined),
       );
@@ -63,7 +82,40 @@ export class RagIngestor {
         if (record) added++;
       }
     }
-    return { total: chunks.length, added, skipped: chunks.length - added };
+    const qa = await this.ingestQaPairs(pairs, opts);
+    return { total: chunks.length, added, skipped: chunks.length - added, qa };
+  }
+
+  /** one record per pair: text = the whole pair, embedding = the question */
+  async ingestQaPairs(
+    pairs: QaPair[],
+    scope: { source?: RagSource; sessionId?: string; ref?: string } = {},
+  ): Promise<number> {
+    if (!pairs.length) return 0;
+    let added = 0;
+    for (let i = 0; i < pairs.length; i += EMBED_BATCH) {
+      const batch = pairs.slice(i, i + EMBED_BATCH);
+      const vectors = await this.embedder.embed(batch.map((p) => p.question));
+      for (let j = 0; j < batch.length; j++) {
+        const p = batch[j];
+        const record = this.store.add({
+          source: 'qa',
+          sessionId: scope.sessionId,
+          ref: scope.ref,
+          text: formatQaRecord(p.question, p.answer),
+          metadata: {
+            qa: true,
+            question: p.question,
+            answer: p.answer,
+            via: p.via,
+            qa_from: scope.source ?? 'knowledge',
+          },
+          embedding: vectors[j],
+        });
+        if (record) added++;
+      }
+    }
+    return added;
   }
 
   /** per-session dual-slot material (resume / JD), replace-semantics */
@@ -92,7 +144,7 @@ export class RagIngestor {
    */
   async ingestFacts(sessionId: string, facts: string[]): Promise<IngestResult> {
     this.store.removeWhere((r) => r.source === 'fact' && r.sessionId === sessionId);
-    if (!facts.length) return { total: 0, added: 0, skipped: 0 };
+    if (!facts.length) return { total: 0, added: 0, skipped: 0, qa: 0 };
     let added = 0;
     for (let i = 0; i < facts.length; i += EMBED_BATCH) {
       const batch = facts.slice(i, i + EMBED_BATCH);
@@ -109,7 +161,7 @@ export class RagIngestor {
         if (record) added++;
       }
     }
-    return { total: facts.length, added, skipped: facts.length - added };
+    return { total: facts.length, added, skipped: facts.length - added, qa: 0 };
   }
 
   /** drop a session's material (session deleted) */

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { KbSlot, StoredSession } from '../../shared/protocol';
+import type { KbSlot, QaHitView, StoredSession, WebSourceView } from '../../shared/protocol';
 import { useT } from '../i18n';
 import { MathText } from './MathText';
 
@@ -12,6 +12,10 @@ export interface AnswerTurn {
   text: string;
   status: 'streaming' | 'done' | 'error';
   error?: string;
+  /** prepared answer the knowledge base matched; shown above the AI text */
+  qa?: QaHitView;
+  /** web sources behind an answer the knowledge base could not cover */
+  web?: WebSourceView[];
 }
 
 /**
@@ -19,6 +23,10 @@ export interface AnswerTurn {
  * as a scrolling session (never replaced); each meeting is its own session
  * with its own knowledge base. The 📷 screenshot button only appears in
  * multimodal mode (it needs a vision model).
+ *
+ * A turn can carry a knowledge-base hit: the prepared answer is printed
+ * verbatim first (it is what the user came here to say) and the streamed AI
+ * text under it is the enrichment of that answer.
  */
 export function AnswerSession({
   sessions,
@@ -211,12 +219,39 @@ export function AnswerSession({
                   <span className="answer-error">{turn.error}</span>
                 ) : (
                   <>
+                    {turn.qa && (
+                      <div className="turn-qa" data-exact={turn.qa.exact ? '1' : '0'}>
+                        <div className="turn-qa-head">
+                          <span className="turn-qa-badge">
+                            {turn.qa.exact ? t.answer.qaBadgeExact : t.answer.qaBadge}
+                          </span>
+                          <span className="turn-qa-q" title={turn.qa.question}>
+                            {turn.qa.question}
+                          </span>
+                          {turn.qa.ref && <span className="turn-qa-ref">{turn.qa.ref}</span>}
+                        </div>
+                        <div className="turn-qa-body">
+                          <MathText text={turn.qa.answer} />
+                        </div>
+                      </div>
+                    )}
+                    {turn.qa && <div className="turn-qa-note">{t.answer.qaEnrichedNote}</div>}
                     {turn.text ? (
                       <MathText text={turn.text} />
                     ) : (
                       turn.kind === 'vision' ? t.answer.visionWaiting : t.answer.genWaiting
                     )}
                     {turn.status === 'streaming' && <span className="cursor">▍</span>}
+                    {!!turn.web?.length && (
+                      <div className="turn-web">
+                        <span className="turn-web-badge">{t.answer.webBadge}</span>
+                        {turn.web.map((s, i) => (
+                          <span key={i} className="turn-web-src" title={s.url}>
+                            {i + 1}. {s.title}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </>
                 )}
               </div>

@@ -93,6 +93,14 @@ const zh = {
     renameTitle: '重命名当前会话',
     newTitle: '新建会话',
     deleteTitle: '删除当前会话',
+    deleteConfirm: (name: string) =>
+      `删除会话「${name}」？其对话、转录与已索引的简历/JD 都会一并清除，不可恢复。`,
+    /** knowledge-base Q&A direct hit */
+    qaBadge: '📚 知识库命中',
+    qaBadgeExact: '📚 命中你准备的答案',
+    qaEnrichedNote: '↓ 以下是 AI 在其基础上充实的回答',
+    /** web-search fallback sources */
+    webBadge: '🌐 网络来源',
     resume: '简历',
     resumeSetTitle: (name: string, chars: number) =>
       `简历：${name}（${chars}字）点击更换（.md/.txt/.docx/.pdf）`,
@@ -154,9 +162,18 @@ const zh = {
     sourceFact: '已声称事实',
     sourceTranscript: '会话转录',
     sourceDoc: '导入文档',
+    sourceQa: '准备的答案',
     // document library (multi-file import)
     libraryTitle: '文档库（语义召回）',
     libraryHint: '导入多个文件或整个文件夹，回答时按问题语义召回相关片段。支持 .md / .txt / .docx / .pdf / .pptx；旧版 .doc / .ppt 请先转成 .docx / .pptx。',
+    qaTitle: '准备的答案（自动识别）',
+    qaHint:
+      '文档或笔记里写成「问：… 答：…」「Q: … A: …」「【问题】…【回答】…」的段落会被识别成问答对。面试官的问题命中时，右栏先原样亮出你准备的答案，再由 AI 在其基础上充实——这条路径完全离线，最快。',
+    qaEmpty: '还没有识别到问答对。在简历 / JD / 文档 / 笔记里按上面的写法准备几道题即可。',
+    qaBtn: '查看已识别的问答对',
+    qaCount: (n: number) => `已识别 ${n} 条准备的答案`,
+    qaThisSession: '本场面试',
+    qaGlobal: '全局',
     importFilesBtn: '导入文件…',
     importDirBtn: '导入文件夹…',
     importing: '导入中…',
@@ -469,6 +486,16 @@ const zh = {
     visionApiKey: '视觉 API Key',
     visionProxy: '视觉代理（被墙的模型如 Gemini 填 127.0.0.1:7897；MiMo 直连留空）',
     visionProxyPlaceholder: '留空 = 直连',
+    webSearchSection: '网络检索兜底',
+    webSearchHint:
+      '只有当知识库里找不到相关内容时，才会把问题发给搜索引擎；命中知识库的问题一律离线作答，不联网、不加延迟。默认关闭，需自带 Key。',
+    webSearchEnabled: '启用网络兜底',
+    webSearchEnabledHint: '知识库无命中时才联网；关闭则一律只用本地资料回答。',
+    webSearchProvider: '检索服务商',
+    webSearchApiKey: '检索 API Key',
+    webSearchGetKey: '前往服务商获取 Key',
+    webSearchMax: '每次检索条数',
+    webSearchMaxHint: '越多上下文越全，但回答越慢；2.5 秒内拿不到结果会自动放弃。',
     asrSection: '转录（ASR）',
     macAudioHint:
       'macOS 不支持 Electron 的 Windows 回环采集。点击标题栏“开始”后可选择普通输入；若要采集会议/系统声音，请先安装并选择 BlackHole 等虚拟音频设备。',
@@ -602,6 +629,14 @@ const en: Dict = {
     renameTitle: 'Rename current session',
     newTitle: 'New session',
     deleteTitle: 'Delete current session',
+    deleteConfirm: (name: string) =>
+      `Delete session “${name}”? Its answers, transcript and indexed resume/JD are removed permanently and cannot be restored.`,
+    /** knowledge-base Q&A direct hit */
+    qaBadge: '📚 Knowledge-base hit',
+    qaBadgeExact: '📚 Your prepared answer',
+    qaEnrichedNote: '↓ Below: the same answer enriched by the AI',
+    /** web-search fallback sources */
+    webBadge: '🌐 Web sources',
     resume: 'Resume',
     resumeSetTitle: (name: string, chars: number) =>
       `Resume: ${name} (${chars} chars) — click to replace (.md/.txt/.docx/.pdf)`,
@@ -664,9 +699,18 @@ const en: Dict = {
     sourceFact: 'claimed facts',
     sourceTranscript: 'transcript',
     sourceDoc: 'documents',
+    sourceQa: 'prepared answers',
     // document library (multi-file import)
     libraryTitle: 'Document library (semantic recall)',
     libraryHint: 'Import several files or a whole folder; answers recall relevant passages per question. Supports .md / .txt / .docx / .pdf / .pptx; convert legacy .doc / .ppt to .docx / .pptx first.',
+    qaTitle: 'Prepared answers (auto-detected)',
+    qaHint:
+      'Passages written as 「问：… 答：…」, 「Q: … A: …」 or 「【问题】…【回答】…」 in a document or note become a question/answer pair. When an interview question matches one, the right pane shows your prepared answer first and the AI only enriches it — that path is fully offline and the fastest of all.',
+    qaEmpty: 'No question/answer pairs detected yet. Prepare a few in your resume, JD, documents or notes using the formats above.',
+    qaBtn: 'Show detected question/answer pairs',
+    qaCount: (n: number) => `${n} prepared answers detected`,
+    qaThisSession: 'this interview',
+    qaGlobal: 'global',
     importFilesBtn: 'Import files…',
     importDirBtn: 'Import folder…',
     importing: 'importing…',
@@ -981,6 +1025,16 @@ const en: Dict = {
     visionApiKey: 'Vision API Key',
     visionProxy: 'Vision proxy (for blocked providers like Gemini: 127.0.0.1:7897; empty for direct)',
     visionProxyPlaceholder: 'empty = direct',
+    webSearchSection: 'Web-search fallback',
+    webSearchHint:
+      'Only questions the knowledge base cannot answer are sent to a search engine; anything your KB covers is answered offline, with no network and no extra latency. Off by default, bring your own key.',
+    webSearchEnabled: 'Enable web fallback',
+    webSearchEnabledHint: 'Goes online only on a knowledge-base miss; off = local material only.',
+    webSearchProvider: 'Search provider',
+    webSearchApiKey: 'Search API key',
+    webSearchGetKey: 'Get a key from the provider',
+    webSearchMax: 'Results per query',
+    webSearchMaxHint: 'More results mean richer context but slower answers; a search that misses the 2.5 s deadline is dropped.',
     asrSection: 'Transcription (ASR)',
     macAudioHint:
       'Electron cannot use Windows loopback capture on macOS. Select an ordinary input after clicking Start; for meeting/system audio, install and select a virtual device such as BlackHole.',

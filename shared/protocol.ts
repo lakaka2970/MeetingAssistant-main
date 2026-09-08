@@ -10,6 +10,8 @@ import type { QuestionKind } from './textHeuristics';
 export type { QuestionKind } from './textHeuristics';
 import type { TrayRendererCommand } from './trayMenu';
 export type { TrayCommand, TrayRendererCommand } from './trayMenu';
+import type { SearchProviderId } from './searchProviders';
+export type { SearchProviderId } from './searchProviders';
 
 // ---------- Settings ----------
 
@@ -277,6 +279,23 @@ export interface SettingsFile {
      * '' = default huggingface.co */
     remoteHost?: string;
   };
+  /**
+   * Web search fallback for questions the knowledge base could not answer.
+   * Off by default and BYOK: no search request ever leaves the machine until
+   * the user stores a key here (electron/websearch.ts).
+   */
+  webSearch: {
+    enabled?: boolean;
+    providerId?: SearchProviderId;
+    /** encrypted-at-rest (safeStorage, base64); never exposed raw to renderer */
+    apiKeyEnc?: string;
+    /** last <=4 characters, computed main-side at save time */
+    apiKeyHint?: string;
+    /** results per query, 1-10; default 5 */
+    maxResults?: number;
+    /** hard deadline for one search; default 2500ms */
+    timeoutMs?: number;
+  };
 }
 
 /** What the renderer is allowed to see (no secrets). */
@@ -370,6 +389,14 @@ export interface PublicSettings {
     minScore: number;
     remoteHost: string;
   };
+  /** web-search fallback — public view (key metadata only, never the key) */
+  webSearch: {
+    enabled: boolean;
+    providerId: SearchProviderId;
+    apiKeySet: boolean;
+    apiKeyHint?: string;
+    maxResults: number;
+  };
 }
 
 /** renderer -> main settings update. Plaintext apiKey in transit only.
@@ -441,6 +468,14 @@ export interface SettingsPatch {
     minScore?: number;
     remoteHost?: string;
   };
+  webSearch?: {
+    enabled?: boolean;
+    providerId?: SearchProviderId;
+    /** plaintext key in transit only; '' clears it */
+    apiKey?: string;
+    maxResults?: number;
+    timeoutMs?: number;
+  };
 }
 
 // ---------- ASR events (main -> renderer) ----------
@@ -509,6 +544,31 @@ export interface StoredTurn {
   text: string;
   status: 'streaming' | 'done' | 'error';
   error?: string;
+  /**
+   * Prepared-answer direct hit shown above the AI answer (knowledge-base Q&A).
+   * Persisted with the turn so a re-read of an old interview shows what the KB
+   * said, not just what the model rewrote.
+   */
+  qa?: QaHitView;
+  /** web sources behind an answer the knowledge base could not cover */
+  web?: WebSourceView[];
+}
+
+/** one knowledge-base Q&A direct hit (rendered verbatim, then enriched) */
+export interface QaHitView {
+  question: string;
+  answer: string;
+  /** document the pair came from (file name / 'notes'), for the badge */
+  ref?: string;
+  /** retrieval confidence in [0,1] (cosine, or 1 for a literal question match) */
+  score: number;
+  /** true when the question matched literally, not just semantically */
+  exact: boolean;
+}
+
+export interface WebSourceView {
+  title: string;
+  url: string;
 }
 
 export interface StoredSession {
@@ -566,6 +626,11 @@ export interface LlmAskPayload {
 
 export type LlmEvent =
   | { requestId: string; kind: 'delta'; text: string }
+  /** a knowledge-base Q&A direct hit: the renderer shows it immediately, the
+   * streamed deltas below are the AI's enrichment of it */
+  | { requestId: string; kind: 'qa'; hit: QaHitView }
+  /** the KB missed and the web search ran: the sources behind the answer */
+  | { requestId: string; kind: 'web'; sources: WebSourceView[] }
   | {
       requestId: string;
       kind: 'done';
@@ -624,6 +689,19 @@ export interface KnowledgeFile {
 export interface KnowledgeFilesState {
   files: KnowledgeFile[];
   chars: number;
+}
+
+/**
+ * One auto-detected prepared answer (knowledge-base Q&A pair), as listed by
+ * the knowledge panel. `sessionId` absent = global (a document / note), set =
+ * it came from that interview's own resume / JD.
+ */
+export interface PreparedQaView {
+  question: string;
+  answer: string;
+  /** document the pair came from (file name, or 'notes') */
+  ref?: string;
+  sessionId?: string;
 }
 
 /** result of importing a set of files / a directory into the library */
@@ -709,10 +787,17 @@ export const IPC = {
   /** invoke: (KbSlot) => {name,text,chars} | null — pick a resume/JD document
    * (.md/.txt/.docx/.pdf, parsed deterministically) for the CURRENT session */
   knowledgePick: 'knowledge:pick',
+  /** invoke: ({slot, sessionId}) => { dropped: number } — a session removed its
+   * resume/JD, so its indexed chunks AND its prepared Q&A must go too */
+  knowledgeDropSlot: 'knowledge:drop-slot',
   /** invoke: () => SessionsFile — load persisted sessions */
   sessionsLoad: 'sessions:load',
   /** send: (SessionsFile) — persist sessions (debounced by renderer) */
   sessionsSave: 'sessions:save',
+  /** invoke: (sessionId) => { dropped: number } — a session was deleted in the
+   * UI: drop its RAG material (resume/JD/facts) so the index stays in lock-step
+   * with sessions.json. The renderer removes the record from the file itself. */
+  sessionDelete: 'sessions:delete',
   /** invoke: () => string|null — full-screen capture, drag a region (stealth overlay), returns cropped dataURL */
   regionPick: 'region:pick',
   /** invoke (overlay→main): () => string|null — the captured full-screen image to draw */
@@ -790,6 +875,9 @@ export const IPC = {
   ragSearch: 'rag:search',
   /** invoke: ({model?}) => RagStatus — re-embed every stored chunk (model switch) */
   ragReindex: 'rag:reindex',
+  /** invoke: ({sessionId?}) => PreparedQaView[] — the Q&A pairs the knowledge
+   * base auto-detected (what a direct hit can serve), for the knowledge panel */
+  ragQaList: 'rag:qa-list',
   /** invoke: () => { text, chars } — L2 personal notes (userData/notes.md) */
   notesGet: 'notes:get',
   /** invoke: ({text}) => { ok, chars, error? } — strict 8000-char cap */

@@ -15,6 +15,13 @@ export interface EmbedClientEvents {
 
 export type EmbedClientState = 'idle' | 'loading' | 'ready' | 'error';
 
+/**
+ * How long the worker may stay completely silent after `init` before the client
+ * gives up: long enough for a cold ONNX session on a slow CPU, short enough
+ * that a stuck knowledge base reports itself instead of spinning at `loading`.
+ */
+export const INIT_SILENCE_TIMEOUT_MS = 90_000;
+
 export interface EmbedReadyInfo {
   modelKey: string;
   dim: number;
@@ -35,6 +42,16 @@ export class EmbedClient {
   private chain: Promise<unknown> = Promise.resolve();
   private initPromise: Promise<EmbedReadyInfo> | null = null;
   private initKey = '';
+  /**
+   * Watchdog for a worker that starts but never answers. Without it an ONNX
+   * session that stalls in the utilityProcess (seen on Windows: the child gets
+   * `init`, then emits nothing at all) leaves the knowledge base stuck at
+   * `loading` forever — silently, with no way for the UI or the answer path to
+   * know the retrieval layer is dead. Reset on every download-progress event so
+   * a slow first fetch of a 600 MB model is never cut off; only true silence
+   * fails.
+   */
+  private initWatchdog: ReturnType<typeof setTimeout> | null = null;
 
   state: EmbedClientState = 'idle';
   ready: EmbedReadyInfo | null = null;
@@ -43,9 +60,35 @@ export class EmbedClient {
   constructor(private readonly events: EmbedClientEvents = {}) {}
 
   private setState(s: EmbedClientState): void {
+    if (s !== 'loading') this.clearWatchdog();
     if (this.state === s) return;
     this.state = s;
     this.events.onState?.(s);
+  }
+
+  private clearWatchdog(): void {
+    if (this.initWatchdog) clearTimeout(this.initWatchdog);
+    this.initWatchdog = null;
+  }
+
+  private armWatchdog(child: Electron.UtilityProcess, reject: (e: Error) => void): void {
+    this.clearWatchdog();
+    this.initWatchdog = setTimeout(() => {
+      this.initWatchdog = null;
+      const err = new Error(
+        `embed worker silent for ${INIT_SILENCE_TIMEOUT_MS / 1000}s (model load or download stalled)`,
+      );
+      this.lastError = err.message;
+      this.setState('error');
+      this.failAll(err);
+      this.initPromise = null;
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+      reject(err);
+    }, INIT_SILENCE_TIMEOUT_MS);
   }
 
   /**
@@ -68,9 +111,12 @@ export class EmbedClient {
       child.stdout?.on('data', (d: Buffer) => process.stdout.write(d));
       child.stderr?.on('data', (d: Buffer) => process.stderr.write(d));
       const t0 = Date.now();
-      child.on('message', (msg: EmbedWorkerOut) => this.onMessage(msg, resolve, reject, t0));
+      child.on('message', (msg: EmbedWorkerOut) =>
+        this.onMessage(msg, resolve, reject, t0, child),
+      );
       child.on('exit', (code) => {
         this.child = null;
+        this.clearWatchdog();
         const err = new Error(
           code === 0 ? 'embed worker stopped' : `embed worker exited with code ${code}`,
         );
@@ -83,6 +129,7 @@ export class EmbedClient {
         }
       });
       this.post({ type: 'init', modelKey: opts.modelKey, modelsDir: opts.modelsDir, remoteHost: opts.remoteHost });
+      this.armWatchdog(child, reject);
     });
     return this.initPromise;
   }
@@ -92,6 +139,7 @@ export class EmbedClient {
     resolveReady: (v: EmbedReadyInfo) => void,
     rejectReady: (e: Error) => void,
     t0: number,
+    child: Electron.UtilityProcess,
   ): void {
     switch (msg.type) {
       case 'ready': {
@@ -129,6 +177,8 @@ export class EmbedClient {
         break;
       }
       case 'progress':
+        // bytes moving = the worker is alive; restart the silence window
+        this.armWatchdog(child, rejectReady);
         this.events.onDownloadProgress?.({ file: msg.file, pct: msg.pct });
         break;
     }

@@ -11,6 +11,7 @@ import {
   type NotesSaveResult,
   type OnboardingProgressPatch,
   type OnboardingState,
+  type PreparedQaView,
   type ProviderTestRequest,
   type ProviderTestResult,
   type PublicSettings,
@@ -43,8 +44,12 @@ export interface McApi {
   /** pick a resume/JD document for the current session (.md/.txt/.docx/.pdf);
    * sessionId also lands the parsed text in the RAG index (upgrade P0) */
   pickKnowledge(slot: KbSlot, sessionId?: string): Promise<{ name: string; text: string; chars: number } | null>;
+  /** drop a session slot's indexed chunks + its prepared Q&A */
+  dropKnowledgeSlot(slot: KbSlot, sessionId?: string): Promise<{ dropped: number }>;
   loadSessions(): Promise<SessionsFile>;
   saveSessions(data: SessionsFile): void;
+  /** drop a deleted session's vector material (resume/JD/facts) in main */
+  deleteSession(sessionId: string): Promise<{ dropped: number }>;
   setStealth(on: boolean): Promise<boolean>;
   sendPcm(buf: ArrayBuffer, captureTs: number, channel: 'them' | 'me'): void;
   captureStarted(): void;
@@ -102,6 +107,8 @@ export interface McApi {
   ragSearch(p: { query: string; sessionId?: string }): Promise<{ hits: RagHitView[]; ms: number }>;
   /** re-embed every stored chunk; pass a model to switch first */
   ragReindex(model?: string): Promise<RagStatus>;
+  /** the prepared Q&A pairs the knowledge base auto-detected */
+  ragQaList(sessionId?: string): Promise<PreparedQaView[]>;
   /** pushed whenever the embed worker state changes */
   onRagStatus(cb: (s: RagStatus) => void): () => void;
   /** L2 personal notes (userData/notes.md); strict 8000-char cap */
@@ -132,8 +139,10 @@ const api: McApi = {
   removeKnowledgeFile: (ref) => ipcRenderer.invoke(IPC.knowledgeRemoveFile, ref),
   clearKnowledgeFiles: () => ipcRenderer.invoke(IPC.knowledgeFilesClear),
   pickKnowledge: (slot, sessionId) => ipcRenderer.invoke(IPC.knowledgePick, slot, sessionId),
+  dropKnowledgeSlot: (slot, sessionId) => ipcRenderer.invoke(IPC.knowledgeDropSlot, { slot, sessionId }),
   loadSessions: () => ipcRenderer.invoke(IPC.sessionsLoad),
   saveSessions: (data) => ipcRenderer.send(IPC.sessionsSave, data),
+  deleteSession: (sessionId) => ipcRenderer.invoke(IPC.sessionDelete, sessionId),
   setStealth: (on) => ipcRenderer.invoke(IPC.stealthSet, on),
   sendPcm: (buf, captureTs, channel) => ipcRenderer.send(IPC.capturePcm, buf, captureTs, channel),
   captureStarted: () => ipcRenderer.send(IPC.captureStarted),
@@ -178,6 +187,7 @@ const api: McApi = {
   ragStatus: () => ipcRenderer.invoke(IPC.ragStatus),
   ragSearch: (p) => ipcRenderer.invoke(IPC.ragSearch, p),
   ragReindex: (model) => ipcRenderer.invoke(IPC.ragReindex, { model }),
+  ragQaList: (sessionId) => ipcRenderer.invoke(IPC.ragQaList, { sessionId }),
   onRagStatus: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, s: RagStatus) => cb(s);
     ipcRenderer.on(IPC.ragStatusPush, listener);

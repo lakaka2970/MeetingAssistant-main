@@ -131,6 +131,41 @@ export function buildStablePrefix(
 export const MAX_NOTES_PROMPT_CHARS = 4000;
 /** RAG recall block budget in the fast context (chars) */
 export const MAX_RAG_CONTEXT_CHARS = 2000;
+/** a prepared answer is quoted in full up to this size (it is the payload) */
+export const MAX_QA_ANSWER_CHARS = 4000;
+
+/**
+ * The prepared-answer block (knowledge-base Q&A direct hit). The user wrote
+ * this answer themselves, so it is authoritative: the model keeps every fact
+ * and only enriches the wording. It rides the FAST context (per-question) —
+ * putting it in the stable prefix would break the provider's prefix cache on
+ * every different question.
+ */
+export function formatQaBlock(question: string, answer: string): string {
+  return [
+    `【我的标准答案】（知识库命中「${question.trim().slice(0, 120)}」，这是我提前准备的答案）`,
+    answer.trim().slice(0, MAX_QA_ANSWER_CHARS),
+    '—— 要求：其中的人物、数字、项目、结论必须原样保留、不得改写或质疑；',
+    '   在此基础上把它充实成我可以照着念的完整回答：补足一两个支撑细节、让前后衔接自然；',
+    '   不要新增我没准备的事实，也不要把原文另抄一遍后再接一段。',
+  ].join('\n');
+}
+
+/**
+ * The web-search block (knowledge-base miss fallback). Only used when nothing
+ * in the KB answered, so the model has no local basis: it must stay inside the
+ * retrieved material and name where it came from.
+ */
+export function formatWebBlock(lines: string[]): string {
+  const body = lines.map((l) => l.trim()).filter(Boolean);
+  if (!body.length) return '';
+  return [
+    '【网络检索】（我的知识库里没有相关内容，以下是刚检索到的网页摘要，回答必须以它们为准）',
+    ...body,
+    '—— 要求：只讲检索材料支持的内容，没把握的地方直接说没把握；',
+    '   最后用一行「来源：」列出最关键的 1-3 个链接。',
+  ].join('\n');
+}
 
 /** one advisory line appended to the user message; '' when unknown */
 export function questionHint(kind: QuestionKind): string {
@@ -222,6 +257,14 @@ export interface AnswerPromptInput {
   notes?: string;
   /** L3 RAG recall lines, already formatted, most relevant first (upgrade P0) */
   ragContext?: string[];
+  /**
+   * Prepared-answer direct hit from the knowledge base. When present the UI has
+   * already shown the verbatim answer, so the model's job is enrichment only —
+   * see {@link formatQaBlock}.
+   */
+  qaHit?: { question: string; answer: string };
+  /** web-search summary lines (KB-miss fallback) — see {@link formatWebBlock} */
+  webLines?: string[];
   /** consistency conflict warnings (upgrade P3) — fast context, advisory */
   consistencyHint?: string;
   /** matched /trigger skill directive (upgrade P3, free mode only) */
@@ -341,12 +384,16 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
   // transcript + KB are offered only as optional reference.
   if (input.mode === 'free') {
     const refs: string[] = [];
+    const qa = input.qaHit;
+    if (qa?.answer.trim()) refs.push(formatQaBlock(qa.question, qa.answer));
     if (resume) refs.push(`【本人资料（简历）】\n${resume.slice(0, MAX_BACKGROUND_CHARS)}`);
     if (jd) refs.push(`【岗位JD】\n${jd.slice(0, MAX_BACKGROUND_CHARS)}`);
     const notes = (input.notes ?? '').trim();
     if (notes) refs.push(`【个人背景】\n${notes.slice(0, MAX_NOTES_PROMPT_CHARS)}`);
     const ragBlock = formatRagContext(input.ragContext ?? []);
     if (ragBlock) refs.push(ragBlock);
+    const webBlock = formatWebBlock(input.webLines ?? []);
+    if (webBlock) refs.push(webBlock);
     const skill = (input.skillInstruction ?? '').trim();
     if (skill) refs.push(`【技能指令】（必须遵守）\n${skill}`);
     if (context.length) refs.push(`【最近的对话转录】\n${context.join('\n')}`);
@@ -381,13 +428,23 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
   const hint = q ? questionHint(classifyQuestion(q)) : '';
   // fast-context knowledge: RAG recall + consistency warnings are per-question
   // and MUST NOT touch the stable prefix (prefix-cache safety, upgrade P0)
+  const qa = input.qaHit;
+  const qaBlock = qa?.answer.trim() ? formatQaBlock(qa.question, qa.answer) : '';
   const ragBlock = formatRagContext(input.ragContext ?? []);
+  const webBlock = formatWebBlock(input.webLines ?? []);
   const consistency = (input.consistencyHint ?? '').trim();
-  const knowledgeBlock = [ragBlock, consistency ? `【一致性提醒】\n${consistency}` : '']
+  const knowledgeBlock = [
+    qaBlock,
+    ragBlock,
+    webBlock,
+    consistency ? `【一致性提醒】\n${consistency}` : '',
+  ]
     .filter(Boolean)
     .join('\n\n');
   const ask = q
-    ? `面试官刚才说：\n“${q}”\n${hint ? hint + '\n' : ''}请直接给出我可以照着念的回答。`
+    ? qaBlock
+      ? `面试官刚才说：\n“${q}”\n这道题我有准备的答案（见上）。请直接给出我照着念的最终版本：以准备的答案为主体并把它充实完整。`
+      : `面试官刚才说：\n“${q}”\n${hint ? hint + '\n' : ''}请直接给出我可以照着念的回答。`
     : '基于上面最近的转录，面试官最新的话需要我回应。请直接给出我可以照着念的回答。';
 
   msgs.push({ role: 'user', content: `${contextBlock}\n\n${knowledgeBlock ? knowledgeBlock + '\n\n' : ''}${ask}` });

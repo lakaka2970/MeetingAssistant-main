@@ -9,7 +9,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '../i18n';
 import { EMBEDDING_MODELS } from '../../shared/embeddingModels';
-import type { KnowledgeFilesState, RagHitView, RagStatus, SkillView } from '../../shared/protocol';
+import type {
+  KnowledgeFilesState,
+  PreparedQaView,
+  RagHitView,
+  RagStatus,
+  SkillView,
+} from '../../shared/protocol';
 
 const SOURCE_KEYS = {
   resume: 'sourceResume',
@@ -19,9 +25,17 @@ const SOURCE_KEYS = {
   custom_note: 'sourceNote',
   fact: 'sourceFact',
   transcript: 'sourceTranscript',
+  qa: 'sourceQa',
 } as const;
 
-export function KnowledgePanel({ onClose }: { onClose: () => void }) {
+export function KnowledgePanel({
+  onClose,
+  sessionId,
+}: {
+  onClose: () => void;
+  /** the interview currently open — its own resume/JD pairs are listed too */
+  sessionId?: string;
+}) {
   const t = useT();
   const [status, setStatus] = useState<RagStatus | null>(null);
   const [query, setQuery] = useState('');
@@ -38,6 +52,16 @@ export function KnowledgePanel({ onClose }: { onClose: () => void }) {
   const [library, setLibrary] = useState<KnowledgeFilesState>({ files: [], chars: 0 });
   const [importing, setImporting] = useState(false);
   const [importNotice, setImportNotice] = useState<string | null>(null);
+  /** the prepared Q&A pairs the index detected (what a direct hit can serve) */
+  const [qaList, setQaList] = useState<PreparedQaView[]>([]);
+  const [qaOpen, setQaOpen] = useState(false);
+
+  const refreshQa = useCallback(() => {
+    void window.mc
+      .ragQaList(sessionId)
+      .then(setQaList)
+      .catch(() => setQaList([]));
+  }, [sessionId]);
 
   const refreshStatus = useCallback(() => {
     void window.mc
@@ -48,6 +72,7 @@ export function KnowledgePanel({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     refreshStatus();
+    refreshQa();
     const off = window.mc.onRagStatus((s) => setStatus(s));
     void window.mc
       .notesGet()
@@ -65,14 +90,15 @@ export function KnowledgePanel({ onClose }: { onClose: () => void }) {
       .then(setLibrary)
       .catch(() => {});
     return off;
-  }, [refreshStatus]);
+  }, [refreshStatus, refreshQa]);
 
   const search = useCallback(async () => {
     const q = query.trim();
     if (!q) return;
     setSearching(true);
     try {
-      const r = await window.mc.ragSearch({ query: q });
+      // scoped like a real question: this interview's own material plus global
+      const r = await window.mc.ragSearch({ query: q, sessionId });
       setHits(r.hits);
       setSearchMs(r.ms);
     } catch {
@@ -80,7 +106,7 @@ export function KnowledgePanel({ onClose }: { onClose: () => void }) {
     } finally {
       setSearching(false);
     }
-  }, [query]);
+  }, [query, sessionId]);
 
   const saveNotes = useCallback(async () => {
     setNotesNotice(null);
@@ -90,13 +116,15 @@ export function KnowledgePanel({ onClose }: { onClose: () => void }) {
         setNotesNotice(t.knowledge.notesSaved);
         setNotesDirty(false);
         refreshStatus();
+        // main re-indexes the notes' Q&A in the background — give it a beat
+        setTimeout(refreshQa, 800);
       } else {
         setNotesNotice(t.knowledge.notesTooLong(notesMax));
       }
     } catch (e) {
       setNotesNotice((e as Error).message);
     }
-  }, [notes, notesMax, t, refreshStatus]);
+  }, [notes, notesMax, t, refreshStatus, refreshQa]);
 
   const reindex = useCallback(
     async (model?: string) => {
@@ -123,12 +151,13 @@ export function KnowledgePanel({ onClose }: { onClose: () => void }) {
       setImportNotice(t.knowledge.importResult(r));
       setLibrary(await window.mc.listKnowledgeFiles());
       refreshStatus();
+      refreshQa();
     } catch (e) {
       setImportNotice((e as Error).message);
     } finally {
       setImporting(false);
     }
-  }, [t, refreshStatus]);
+  }, [t, refreshStatus, refreshQa]);
 
   const importDir = useCallback(async () => {
     setImporting(true);
@@ -138,12 +167,13 @@ export function KnowledgePanel({ onClose }: { onClose: () => void }) {
       setImportNotice(t.knowledge.importResult(r));
       setLibrary(await window.mc.listKnowledgeFiles());
       refreshStatus();
+      refreshQa();
     } catch (e) {
       setImportNotice((e as Error).message);
     } finally {
       setImporting(false);
     }
-  }, [t, refreshStatus]);
+  }, [t, refreshStatus, refreshQa]);
 
   const removeFile = useCallback(
     async (ref: string) => {
@@ -249,6 +279,42 @@ export function KnowledgePanel({ onClose }: { onClose: () => void }) {
         <div className="settings-inline-hint">{t.knowledge.libraryEmpty}</div>
       )}
       {importNotice && <div className="settings-inline-hint">{importNotice}</div>}
+
+      {/* ---- prepared answers (auto-detected Q&A → direct hits) ---- */}
+      <div className="settings-section">{t.knowledge.qaTitle}</div>
+      <div className="settings-hint">{t.knowledge.qaHint}</div>
+      <div className="settings-actions">
+        <span className="settings-inline-hint">{t.knowledge.qaCount(qaList.length)}</span>
+        {qaList.length > 0 && (
+          <button className="btn" onClick={() => setQaOpen((v) => !v)}>
+            {t.knowledge.qaBtn}
+          </button>
+        )}
+      </div>
+      {qaList.length === 0 ? (
+        <div className="settings-inline-hint">{t.knowledge.qaEmpty}</div>
+      ) : (
+        qaOpen && (
+          <div className="knowledge-hits">
+            {qaList.map((p, i) => (
+              <div key={`${p.ref ?? ''}|${p.question}`} className="knowledge-hit">
+                <div
+                  className="knowledge-hit-meta"
+                  style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}
+                >
+                  <span style={{ fontWeight: 600 }}>{p.question}</span>
+                  <span style={{ flexShrink: 0 }}>
+                    {[p.ref, p.sessionId ? t.knowledge.qaThisSession : t.knowledge.qaGlobal]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </div>
+                <div className="knowledge-hit-text">{p.answer}</div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
 
       {/* ---- search playground ---- */}
       <div className="settings-section">{t.knowledge.searchTitle}</div>

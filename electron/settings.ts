@@ -22,6 +22,11 @@ import type {
 } from '../shared/protocol';
 import { defaultHotkeysForPlatform } from '../shared/platform';
 import { providerIdForEndpoint } from '../shared/providerCatalog';
+import {
+  DEFAULT_SEARCH_MAX_RESULTS,
+  DEFAULT_SEARCH_PROVIDER,
+  DEFAULT_SEARCH_TIMEOUT_MS,
+} from '../shared/searchProviders';
 
 export interface SecretCipher {
   available(): boolean;
@@ -117,6 +122,14 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       // the honest default and can be overridden (or pointed back at HF)
       remoteHost: 'https://hf-mirror.com',
     },
+    // web search stays OFF: it is the knowledge-base-miss fallback, needs a key
+    // the user must supply, and is the one answer path that leaves the machine
+    webSearch: {
+      enabled: false,
+      providerId: DEFAULT_SEARCH_PROVIDER,
+      maxResults: DEFAULT_SEARCH_MAX_RESULTS,
+      timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
+    },
   };
 }
 
@@ -158,6 +171,7 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
     ui: { ...defaults.ui, ...raw.ui },
     audio: { ...defaults.audio, ...raw.audio },
     rag: { ...defaults.rag, ...raw.rag },
+    webSearch: { ...defaults.webSearch, ...raw.webSearch },
   };
 }
 
@@ -407,6 +421,13 @@ export class SettingsStore {
     if (patch.ui) Object.assign(this.data.ui, stripUndefined(patch.ui));
     if (patch.audio) Object.assign(this.data.audio, stripUndefined(patch.audio));
     if (patch.rag) Object.assign(this.data.rag, stripUndefined(patch.rag));
+    if (patch.webSearch) {
+      const { apiKey, ...rest } = patch.webSearch;
+      this.data.webSearch = { ...this.data.webSearch, ...stripUndefined(rest) };
+      if (apiKey !== undefined) {
+        this.writeKey(this.data.webSearch, apiKey, false);
+      }
+    }
     this.save();
   }
 
@@ -543,6 +564,13 @@ export class SettingsStore {
         minScore: d.rag?.minScore ?? 0.2,
         remoteHost: d.rag?.remoteHost ?? 'https://hf-mirror.com',
       },
+      webSearch: {
+        enabled: !!d.webSearch?.enabled,
+        providerId: d.webSearch?.providerId ?? DEFAULT_SEARCH_PROVIDER,
+        apiKeySet: !!d.webSearch?.apiKeyEnc,
+        apiKeyHint: d.webSearch?.apiKeyHint,
+        maxResults: d.webSearch?.maxResults ?? DEFAULT_SEARCH_MAX_RESULTS,
+      },
     };
   }
 
@@ -590,6 +618,17 @@ export class SettingsStore {
 
   getRealtimeAsrApiKey(): string | undefined {
     const enc = this.data.asr.realtime?.apiKeyEnc;
+    if (!enc) return undefined;
+    try {
+      return this.cipher.decrypt(enc);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** the web-search key (KB-miss fallback); undefined = search never enabled */
+  getWebSearchApiKey(): string | undefined {
+    const enc = this.data.webSearch?.apiKeyEnc;
     if (!enc) return undefined;
     try {
       return this.cipher.decrypt(enc);
