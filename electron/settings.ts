@@ -130,6 +130,15 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       maxResults: DEFAULT_SEARCH_MAX_RESULTS,
       timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
     },
+    // 做题模式: banks start unbound; local OCR preferred; no web unless asked
+    exam: {
+      banks: {},
+      subMode: 'aptitude',
+      preferOcr: true,
+      webFallback: false,
+      hotkeyOpen: platform === 'darwin' ? 'Command+Alt+B' : 'Control+Alt+B',
+      hotkeyAsk: platform === 'darwin' ? 'Command+Alt+S' : 'Control+Alt+S',
+    },
   };
 }
 
@@ -172,6 +181,13 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
     audio: { ...defaults.audio, ...raw.audio },
     rag: { ...defaults.rag, ...raw.rag },
     webSearch: { ...defaults.webSearch, ...raw.webSearch },
+    exam: {
+      ...defaults.exam,
+      ...raw.exam,
+      // per-sub-mode bindings merge per key, and undefined must not delete a
+      // binding the user still has (the patch uses null for that instead)
+      banks: { ...defaults.exam.banks, ...raw.exam?.banks },
+    },
   };
 }
 
@@ -428,6 +444,22 @@ export class SettingsStore {
         this.writeKey(this.data.webSearch, apiKey, false);
       }
     }
+    if (patch.exam) {
+      const { banks, persona, ...rest } = patch.exam;
+      this.data.exam = { ...this.data.exam, ...stripUndefined(rest) };
+      if (banks) {
+        const next = { ...(this.data.exam.banks ?? {}) } as Record<string, string | undefined>;
+        for (const [mode, dir] of Object.entries(banks)) {
+          // undefined keeps the binding, null/'' removes it (the UI can unbind
+          // one sub-mode without touching the others)
+          if (dir === null || dir === '') delete next[mode];
+          else if (dir !== undefined) next[mode] = dir;
+        }
+        this.data.exam.banks = next;
+      }
+      if (persona === null) delete this.data.exam.persona;
+      else if (persona) this.data.exam.persona = persona;
+    }
     this.save();
   }
 
@@ -570,6 +602,16 @@ export class SettingsStore {
         apiKeySet: !!d.webSearch?.apiKeyEnc,
         apiKeyHint: d.webSearch?.apiKeyHint,
         maxResults: d.webSearch?.maxResults ?? DEFAULT_SEARCH_MAX_RESULTS,
+      },
+      exam: {
+        banks: d.exam?.banks ?? {},
+        subMode: d.exam?.subMode ?? 'aptitude',
+        persona: d.exam?.persona,
+        bounds: d.exam?.bounds,
+        preferOcr: d.exam?.preferOcr !== false,
+        webFallback: !!d.exam?.webFallback,
+        hotkeyOpen: d.exam?.hotkeyOpen ?? 'Control+Alt+B',
+        hotkeyAsk: d.exam?.hotkeyAsk ?? 'Control+Alt+S',
       },
     };
   }

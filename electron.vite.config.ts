@@ -66,6 +66,8 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'electron/preload.ts'),
           setup: resolve(__dirname, 'electron/setupPreload.ts'),
+          // the exam window's bridge shares no runtime module with the others
+          exam: resolve(__dirname, 'electron/examPreload.ts'),
         },
       },
     },
@@ -80,6 +82,7 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/index.html'),
           setup: resolve(__dirname, 'src/setup.html'),
+          exam: resolve(__dirname, 'src/exam.html'),
         },
       },
     },

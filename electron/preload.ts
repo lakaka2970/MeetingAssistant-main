@@ -8,6 +8,7 @@ import {
   type KnowledgeImportResult,
   type LlmAskPayload,
   type LlmEvent,
+  type LlmGateResult,
   type NotesSaveResult,
   type OnboardingProgressPatch,
   type OnboardingState,
@@ -120,6 +121,10 @@ export interface McApi {
   nativeCaptureStart(deviceId?: string): void;
   nativeCaptureStop(): void;
   onNativeCaptureError(cb: (message: string) => void): () => void;
+  /** raise the 做题模式 small window; that window has its own minimal bridge */
+  openExam(): Promise<boolean>;
+  /** 面试模式持续答 gate: answer this transcript line or stay quiet? */
+  gate(p: { requestId: string; line: string; recent: string[] }): Promise<LlmGateResult>;
   hide(): void;
   quit(): void;
 }
@@ -198,6 +203,8 @@ const api: McApi = {
   skillsList: () => ipcRenderer.invoke(IPC.skillsList),
   nativeCaptureStart: (deviceId) => ipcRenderer.send(IPC.nativeCaptureStart, deviceId),
   nativeCaptureStop: () => ipcRenderer.send(IPC.nativeCaptureStop),
+  openExam: () => ipcRenderer.invoke(IPC.examOpen),
+  gate: (p) => ipcRenderer.invoke(IPC.llmGate, p),
   onNativeCaptureError: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, message: string) => cb(message);
     ipcRenderer.on(IPC.nativeCaptureError, listener);

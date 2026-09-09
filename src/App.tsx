@@ -451,15 +451,38 @@ export function App() {
     prewarm(false);
   }, [currentId, prewarm]);
 
-  // continuous mode: only the OTHER party's questions trigger it (never my own
-  // mic), question-gated + append, per current session.
+  // Continuous mode: only the OTHER party's lines trigger it (never my own
+  // mic), and the decision is two-tier — the free `isLikelyQuestion` filter
+  // drops obvious non-questions without an IPC, and only what is left costs one
+  // tiny classifier call in main (which itself short-circuits on the obvious
+  // cases). That is what keeps 「发我一下链接」 from being answered while a real
+  // question is never held back: a failed or slow classifier falls back to
+  // answering, exactly the previous behaviour.
   const lastSeg = segments.length ? segments[segments.length - 1] : null;
+  const answeredRef = useRef<number>(-1);
   useEffect(() => {
     if (!continuous || !lastSeg) return;
     if ((lastSeg.speaker ?? 'them') !== 'them') return; // ignore my own voice
+    if (answeredRef.current === lastSeg.id) return; // this line is already handled
     if (!isLikelyQuestion(lastSeg.text)) return;
-    const timer = setTimeout(() => askLlm('continuous'), 1100);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    const go = (): void => {
+      if (cancelled || answeredRef.current === lastSeg.id) return;
+      answeredRef.current = lastSeg.id;
+      askLlm('continuous');
+    };
+    const timer = setTimeout(() => {
+      void window.mc
+        .gate({ requestId: `gate-${lastSeg.id}`, line: lastSeg.text, recent: segments.slice(-6).map((s) => s.text) })
+        .then((g) => {
+          if (g.verdict === 'answer') go();
+        })
+        .catch(go);
+    }, 1100);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [continuous, lastSeg?.id, lastSeg?.endTs]);
 
@@ -890,6 +913,13 @@ export function App() {
           </button>
           <button className="btn" onClick={() => setShowHud((v) => !v)} title={t.titlebar.hudTitle}>
             HUD
+          </button>
+          <button
+            className="btn"
+            onClick={() => void window.mc.openExam()}
+            title={t.titlebar.examTitle}
+          >
+            {t.titlebar.exam}
           </button>
           <button
             className={showKnowledge ? 'btn btn-on' : 'btn'}

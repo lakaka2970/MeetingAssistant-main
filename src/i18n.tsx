@@ -57,6 +57,8 @@ const zh = {
     stealthTitle: '隐身：窗口对录屏/共享/截图不可见',
     stealthMacTitle: '采集保护：macOS 新版 ScreenCaptureKit 仍可能捕获窗口，不能保证完全隐身',
     hudTitle: '延迟 HUD',
+    exam: '做题',
+    examTitle: '做题模式：小窗悬浮、对录屏不可见，框选屏幕题目 → 查本机题库 → 命中即答，未命中才交给 AI / 网络',
     settingsTitle: '设置',
     hideTitle: '隐藏窗口（快捷键再次呼出）',
     quitTitle: '退出',
@@ -593,6 +595,9 @@ const en: Dict = {
     stealthMacTitle:
       'Capture protection: recent macOS ScreenCaptureKit versions may still capture this window; full stealth is not guaranteed',
     hudTitle: 'Latency HUD',
+    exam: 'Exam',
+    examTitle:
+      'Exam mode: a small floating window invisible to screen capture — drag over the question, look it up in your local bank, answer at once; the AI and the web only cover what the bank lacks',
     settingsTitle: 'Settings',
     hideTitle: 'Hide window (press the hotkey to bring it back)',
     quitTitle: 'Quit',

@@ -1,0 +1,309 @@
+/* 做题模式 window — its own sheet: the small overlay reuses the same theme
+   variables as the main window (set on <html> by the panel) but a far tighter
+   layout, so it can live next to an OA page without covering it. */
+
+:root {
+  color-scheme: dark;
+  --exam-bg: rgba(16, 19, 26, 0.9);
+  --exam-card: rgba(255, 255, 255, 0.05);
+  --exam-border: rgba(255, 255, 255, 0.1);
+  --exam-text: #e8eaf0;
+  --exam-muted: #94a0b8;
+  --exam-dim: #6d7689;
+  --exam-accent: #2a6df4;
+  --exam-accent-text: #9dc0ff;
+  --exam-good: #86dda9;
+  --exam-warn: #ffc46b;
+  --exam-bad: #ff8a8a;
+}
+
+html[data-theme='light'] {
+  --exam-bg: rgba(250, 251, 253, 0.94);
+  --exam-card: rgba(20, 30, 50, 0.05);
+  --exam-border: rgba(20, 30, 50, 0.14);
+  --exam-text: #1c2434;
+  --exam-muted: #5a6474;
+  --exam-dim: #7a8496;
+  --exam-accent-text: #1b4fc0;
+  --exam-good: #1e7a43;
+  --exam-warn: #8a5a00;
+  --exam-bad: #b3261e;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font: 13px/1.5 system-ui, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  color: var(--exam-text);
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+.exam {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--exam-bg);
+  border: 1px solid var(--exam-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.exam-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--exam-border);
+  -webkit-app-region: drag;
+  cursor: grab;
+}
+
+.exam-title {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.exam-head .btn,
+.exam-modes {
+  -webkit-app-region: no-drag;
+}
+
+.exam-modes {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.exam-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exam-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.exam-card {
+  background: var(--exam-card);
+  border: 1px solid var(--exam-border);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.exam-answer {
+  border-left: 3px solid var(--exam-accent);
+}
+
+.exam-answer[data-origin='bank'] {
+  border-left-color: #2ea05c;
+}
+
+.exam-answer[data-origin='model+web'] {
+  border-left-color: #e08a2a;
+}
+
+.exam-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--exam-card);
+  color: var(--exam-accent-text);
+  border: 1px solid var(--exam-border);
+}
+
+.exam-badge.good {
+  color: var(--exam-good);
+}
+
+.exam-badge.warn {
+  color: var(--exam-warn);
+}
+
+.exam-q {
+  font-size: 12px;
+  color: var(--exam-muted);
+  max-height: 4.5em;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.exam-a {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  margin-top: 4px;
+}
+
+.exam-big {
+  font-size: 22px;
+  letter-spacing: 0.04em;
+}
+
+.exam-opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+  color: var(--exam-muted);
+  padding: 2px 4px;
+  border-radius: 5px;
+  user-select: text;
+  white-space: normal;
+}
+
+.exam-opt.hit {
+  color: var(--exam-good);
+  background: rgba(46, 160, 92, 0.14);
+}
+
+.exam-meta {
+  font-size: 11px;
+  color: var(--exam-dim);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.exam-label {
+  font-size: 11px;
+  color: var(--exam-dim);
+  margin-bottom: 2px;
+}
+
+.exam-hint {
+  font-size: 11px;
+  color: var(--exam-dim);
+  line-height: 1.45;
+}
+
+.exam-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid var(--exam-border);
+  border-radius: 6px;
+  color: var(--exam-text);
+  padding: 5px 7px;
+  font: inherit;
+  user-select: text;
+}
+
+.exam-input:focus {
+  outline: none;
+  border-color: var(--exam-accent);
+}
+
+.btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--exam-border);
+  color: var(--exam-text);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn-primary {
+  background: var(--exam-accent);
+  border-color: var(--exam-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background: #3b7bff;
+}
+
+.btn-on {
+  border-color: var(--exam-accent);
+  color: var(--exam-accent-text);
+  background: rgba(42, 109, 244, 0.2);
+}
+
+.btn-sm {
+  padding: 3px 7px;
+  font-size: 11px;
+  border-radius: 5px;
+}
+
+.btn-close {
+  color: var(--exam-bad);
+}
+
+.exam-cand {
+  text-align: left;
+  width: 100%;
+  padding: 5px 7px;
+  border-radius: 6px;
+  border: 1px dashed var(--exam-border);
+  background: transparent;
+  color: var(--exam-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.exam-cand:hover {
+  border-style: solid;
+  border-color: var(--exam-accent);
+}
+
+.exam-cand-q {
+  font-size: 12px;
+  line-height: 1.35;
+  display: block;
+  white-space: normal;
+}
+
+.exam-cand-a {
+  font-size: 11px;
+  color: var(--exam-good);
+}
+
+/* the answer body text is typeset: KaTeX spans and markdown-lite markup */
+.exam-a .katex-display {
+  margin: 4px 0;
+}
+
+.exam-a b {
+  font-weight: 700;
+}
+
+.exam-katex-warn {
+  color: var(--exam-bad);
+}

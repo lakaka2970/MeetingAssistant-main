@@ -12,6 +12,10 @@ import type { TrayRendererCommand } from './trayMenu';
 export type { TrayCommand, TrayRendererCommand } from './trayMenu';
 import type { SearchProviderId } from './searchProviders';
 export type { SearchProviderId } from './searchProviders';
+import type { ExamSubMode } from './bankStore';
+export type { ExamSubMode } from './bankStore';
+import type { Persona as ExamPersona } from './persona';
+export type { Persona as ExamPersona, TraitTarget as ExamTraitTarget } from './persona';
 
 // ---------- Settings ----------
 
@@ -296,6 +300,29 @@ export interface SettingsFile {
     /** hard deadline for one search; default 2500ms */
     timeoutMs?: number;
   };
+  /**
+   * 做题模式 (exam mode) — a separate small window for online assessments.
+   * Its banks and persona live here and NEVER enter the interview RAG index, so
+   * an 行测 pack can't start answering interview questions (shared/bankStore.ts).
+   */
+  exam: {
+    /** local question-bank directory per sub-mode (undefined = unbound) */
+    banks?: Partial<Record<ExamSubMode, string>>;
+    /** sub-mode the small window opens in */
+    subMode?: ExamSubMode;
+    /** fixed personality-test persona (targets + why), built by research or by hand */
+    persona?: ExamPersona;
+    /** where the user parked the small window */
+    bounds?: { x: number; y: number; width: number; height: number };
+    /** read the screen with local OCR first, vision model only as a fallback */
+    preferOcr?: boolean;
+    /** fall back to web search when neither the bank nor the model is sure */
+    webFallback?: boolean;
+    /** global hotkey that opens/raises the exam window */
+    hotkeyOpen?: string;
+    /** global hotkey for "capture the screen and answer" */
+    hotkeyAsk?: string;
+  };
 }
 
 /** What the renderer is allowed to see (no secrets). */
@@ -397,6 +424,17 @@ export interface PublicSettings {
     apiKeyHint?: string;
     maxResults: number;
   };
+  /** 做题模式 — banks/persona/window prefs (paths are the user's own, on their machine) */
+  exam: {
+    banks: Partial<Record<ExamSubMode, string>>;
+    subMode: ExamSubMode;
+    persona?: ExamPersona;
+    bounds?: { x: number; y: number; width: number; height: number };
+    preferOcr: boolean;
+    webFallback: boolean;
+    hotkeyOpen: string;
+    hotkeyAsk: string;
+  };
 }
 
 /** renderer -> main settings update. Plaintext apiKey in transit only.
@@ -475,6 +513,16 @@ export interface SettingsPatch {
     apiKey?: string;
     maxResults?: number;
     timeoutMs?: number;
+  };
+  exam?: {
+    banks?: Partial<Record<ExamSubMode, string | undefined>>;
+    subMode?: ExamSubMode;
+    persona?: ExamPersona | null;
+    bounds?: { x: number; y: number; width: number; height: number };
+    preferOcr?: boolean;
+    webFallback?: boolean;
+    hotkeyOpen?: string;
+    hotkeyAsk?: string;
   };
 }
 
@@ -569,6 +617,88 @@ export interface QaHitView {
 export interface WebSourceView {
   title: string;
   url: string;
+}
+
+// ---------- 做题模式 (exam mode): screen → bank → answer ----------
+
+/** one candidate the user's bank produced, before semantic confirmation */
+export interface ExamBankCandidateView {
+  subMode: ExamSubMode;
+  stem: string;
+  /** option letters + texts, as stored in the bank */
+  options: { key: string; text: string }[];
+  answer: string;
+  answerKey?: string;
+  explanation?: string;
+  /** the paper/note it came from */
+  ref: string;
+  section?: string;
+  /** lexical confidence from the bank index */
+  score: number;
+}
+
+/** how an exam answer was produced — the UI labels the result with it */
+export type ExamOrigin = 'bank' | 'bank+model' | 'model' | 'model+web' | 'none';
+
+export interface ExamAskPayload {
+  requestId: string;
+  subMode: ExamSubMode;
+  /** question text already known (typed, or transcribed earlier); empty = read the image */
+  question?: string;
+  /** cropped screenshot of the question */
+  imageDataUrl?: string;
+  /** extra instruction typed alongside the capture */
+  instruction?: string;
+  /** re-ask the same screen with a new instruction */
+  priorAnswer?: string;
+  /** the user picked this candidate manually after a "confirm" prompt */
+  forceCandidate?: ExamBankCandidateView;
+}
+
+export type ExamEvent =
+  | { requestId: string; kind: 'stage'; stage: 'reading' | 'searching' | 'thinking' | 'searching-web'; subMode?: ExamSubMode }
+  | { requestId: string; kind: 'question'; text: string; via: 'ocr' | 'vision' | 'typed' }
+  /** the bank has it and the confidence is high — this IS the answer */
+  | { requestId: string; kind: 'bank'; hit: ExamBankCandidateView; letter?: string }
+  /** several bank questions scored similarly: the user (or the model) must pick */
+  | { requestId: string; kind: 'ambiguous'; candidates: ExamBankCandidateView[] }
+  | { requestId: string; kind: 'delta'; text: string }
+  | { requestId: string; kind: 'done'; text: string; origin: ExamOrigin; ms: Record<string, number> }
+  | { requestId: string; kind: 'error'; message: string }
+
+export interface ExamBankStatusView {
+  subMode: ExamSubMode;
+  dir: string;
+  entries: number;
+  mc: number;
+  unanswered: number;
+  files: number;
+  scanned: number;
+  ms: number;
+  skipped: { name: string; reason: string }[];
+  /** repeated copies of the same question, folded into one record */
+  duplicates?: number;
+  /** questions where two of the user's own files give different answers */
+  conflicts?: number;
+}
+
+export interface ExamStatusView {
+  scanning: boolean;
+  current?: string;
+  banks: ExamBankStatusView[];
+  /** per sub-mode, straight from the store (dir/entries/mc) */
+  table: Record<ExamSubMode, { dir?: string; files: number; entries: number; mc: number; loadedAt?: number }>;
+}
+
+// ---------- continuous-mode question gate (面试模式) ----------
+
+export interface LlmGateResult {
+  requestId: string;
+  /** what the caller should do with this transcript line */
+  verdict: 'answer' | 'skip';
+  /** 'heuristic' = decided for free, 'model' = one classifier call */
+  via: 'heuristic' | 'model';
+  ms: number;
 }
 
 export interface StoredSession {
@@ -884,6 +1014,38 @@ export const IPC = {
   notesSet: 'notes:set',
   /** invoke: () => SkillView[] — loaded /trigger skills (upgrade P3) */
   skillsList: 'skills:list',
+  // ---- 做题模式 (exam mode) ----
+  /** invoke: () => void — open / raise the small exam window */
+  examOpen: 'exam:open',
+  /** invoke: () => void — hide it again (Esc / ✕ in the small window) */
+  examClose: 'exam:close',
+  /** send: (ExamAskPayload) — read the screen and answer; events stream on examEvent */
+  examAsk: 'exam:ask',
+  /** send: (requestId) — abandon the current exam answer */
+  examCancel: 'exam:cancel',
+  /** main -> exam window: ExamEvent stream */
+  examEvent: 'exam:event',
+  /** invoke: () => ExamStatusView — bank scan state per sub-mode */
+  examStatus: 'exam:status',
+  /** invoke: ({subMode}) => {dir}|null — pick a bank directory, then rescans in background */
+  examBind: 'exam:bind',
+  /** invoke: ({subMode?}) => ExamStatusView — rescan now (after the user edits files) */
+  examRescan: 'exam:rescan',
+  /** invoke: ({subMode, question}) => candidates — the panel's bank self-test */
+  examBankSearch: 'exam:bank-search',
+  /** invoke: ({role, company}) => ExamPersona|null — research what this employer wants */
+  examPersonaResearch: 'exam:persona-research',
+  /** invoke: ({persona}) => PublicSettings — save a hand-written persona */
+  examPersonaSet: 'exam:persona-set',
+  /** main -> exam window: BankProgress (scan state) */
+  examProgress: 'exam:progress',
+  /** invoke: (subMode) => true — remember which sub-mode the window was left in */
+  examSetMode: 'exam:set-mode',
+  /** main -> exam window: the ask hotkey was pressed — capture and answer */
+  examShot: 'exam:shot',
+  // ---- question gate (面试模式持续答) ----
+  /** invoke: ({requestId, line, recent}) => LlmGateResult — should this line be answered? */
+  llmGate: 'llm:gate',
   // ---- upgrade P1.5: optional native audio capture (Windows WASAPI loopback) ----
   /** send: (deviceId?) — main starts the native loopback capture and feeds
    * the ASR host directly; failures push nativeCaptureError (renderer then

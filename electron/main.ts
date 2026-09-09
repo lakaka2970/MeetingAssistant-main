@@ -44,13 +44,33 @@ import { RagService, MIN_QUERY_CHARS } from './rag/service';
 import { SkillsManager } from './skills/manager';
 import { extractMemoFacts, formatFactsHint } from './consistency/facts';
 import { NativeAudioCapture } from './audio/nativeCapture';
-import { decideRoute, ocrDataUrl } from './vision/ocrPrefilter';
+import { decideRoute, isOcrConfigured, ocrDataUrl } from './vision/ocrPrefilter';
 import { formatWebLines, webSearch, webSources } from './websearch';
 import { DEFAULT_SEARCH_PROVIDER } from '../shared/searchProviders';
+import { ExamBanks } from './exam/banks';
+import { createExamWindow, destroyExamWindow } from './examWindow';
+import {
+  buildExamAskMessages,
+  buildPersonaResearchMessages,
+  buildTranscribeMessages,
+  withScreenImage,
+} from './llm/examPrompts';
+import { parseSingleQuestion, type BankEntry } from '../shared/bankParse';
+import { decideBankAnswer, formatBankBlock, type ExamSubMode } from '../shared/bankStore';
+import { buildPersonaBlock, defaultPersona, parsePersona } from '../shared/persona';
+import { GATE_TIMEOUT_MS, gateMessages, heuristic, parseVerdict, GateMemory } from '../shared/questionGate';
+import type {
+  ExamAskPayload,
+  ExamBankCandidateView,
+  ExamEvent,
+  ExamOrigin,
+  ExamStatusView,
+  LlmGateResult,
+} from '../shared/protocol';
 import type { RagHitView } from '../shared/protocol';
 import { DOC_EXTENSIONS, LIBRARY_EXTENSIONS, extractDocText, isLibraryExtension } from './docparse';
 import { basename } from 'path';
-import { chatOnce, chatStream, type ChatResult } from './llm/adapter';
+import { chatOnce, chatStream, type ChatResult, type LlmConfig } from './llm/adapter';
 import {
   FailureBook,
   planBackends,
@@ -139,6 +159,11 @@ function bootstrap(): void {
   let sessionStore: SessionStore;
   let rag: RagService;
   let skills: SkillsManager;
+  /** 做题模式: its own window, its own banks, its own answer pipeline */
+  let examWin: BrowserWindow | null = null;
+  const examBanks = new ExamBanks();
+  /** one classifier call per transcript line, never twice for the same text */
+  const gateMemory = new GateMemory();
   let osLang: UiLang = 'zh';
   /** set by before-quit so window handlers stop prompting mid-shutdown */
   let quitting = false;
@@ -372,6 +397,31 @@ function bootstrap(): void {
     }
   }
 
+  /**
+   * Raise (or create) the exam window. Top level in bootstrap because both the
+   * global hotkeys and the tray reach it, not just the IPC handlers. Banks are
+   * scanned on first open — never on boot, so an unbound or huge folder cannot
+   * delay the interview window.
+   */
+  function openExamWindow(): BrowserWindow {
+    if (examWin && !examWin.isDestroyed()) {
+      examWin.show();
+      examWin.focus();
+      return examWin;
+    }
+    examWin = createExamWindow(settings).win;
+    examWin.on('closed', () => {
+      examWin = null;
+    });
+    const binds = (settings.data.exam?.banks ?? {}) as Partial<Record<ExamSubMode, string>>;
+    if (Object.keys(binds).length) {
+      void examBanks.bindAll(binds, (p) => {
+        if (examWin && !examWin.isDestroyed()) examWin.webContents.send(IPC.examProgress, p);
+      });
+    }
+    return examWin;
+  }
+
   function registerHotkeys(): void {
     globalShortcut.unregisterAll();
     const toggle = settings.data.ui.hotkeyToggle;
@@ -384,6 +434,21 @@ function bootstrap(): void {
       if (shot) {
         const ok = globalShortcut.register(shot, () => win?.webContents.send(IPC.shotHotkey));
         if (!ok) console.warn(`[main] shot hotkey ${shot} registration failed (in use?)`);
+      }
+      // 做题模式: one hotkey raises the small window, one captures + answers.
+      // The ask hotkey opens the window first so a cold press still works.
+      const examOpenKey = settings.data.exam?.hotkeyOpen;
+      if (examOpenKey) {
+        const ok = globalShortcut.register(examOpenKey, () => openExamWindow());
+        if (!ok) console.warn(`[main] exam hotkey ${examOpenKey} registration failed (in use?)`);
+      }
+      const examAskKey = settings.data.exam?.hotkeyAsk;
+      if (examAskKey) {
+        const ok = globalShortcut.register(examAskKey, () => {
+          const w = openExamWindow();
+          w.webContents.send(IPC.examShot);
+        });
+        if (!ok) console.warn(`[main] exam ask hotkey ${examAskKey} registration failed (in use?)`);
       }
     } catch (e) {
       console.warn('[main] hotkey register error:', (e as Error).message);
@@ -1152,6 +1217,386 @@ function bootstrap(): void {
     ipcMain.handle(IPC.skillsList, () =>
       skills.list().map((s) => ({ name: s.name, trigger: s.trigger, description: s.description })),
     );
+
+    // ---- 做题模式 (exam mode): screen → bank → answer ----
+    // Staged so the cheapest trustworthy source answers first: a bank hit is
+    // final for objective questions (no model, ~ms), the model only ever adds
+    // explanation or handles what the bank does not have, and the web is the
+    // last resort. Nothing here reads the interview session or the RAG index.
+    const examControllers = new Map<string, AbortController>();
+
+    const examSend = (ev: ExamEvent): void => {
+      if (examWin && !examWin.isDestroyed()) examWin.webContents.send(IPC.examEvent, ev);
+    };
+
+    const examStatusView = (): ExamStatusView => ({
+      scanning: examBanks.status.scanning,
+      current: examBanks.status.current,
+      banks: examBanks.reports().map((r) => ({
+        subMode: r.subMode,
+        dir: r.dir,
+        entries: r.entries,
+        mc: r.mc,
+        unanswered: r.unanswered,
+        files: r.files,
+        scanned: r.parsed,
+        ms: r.ms,
+        skipped: r.skipped,
+        duplicates: r.duplicates,
+        conflicts: r.conflicts,
+      })),
+      table: examBanks.statusTable(),
+    });
+
+    const bankView = (entry: BankEntry, subMode: ExamSubMode, score: number): ExamBankCandidateView => ({
+      subMode,
+      stem: entry.stem,
+      options: entry.options,
+      answer: entry.answer,
+      answerKey: entry.answerKey,
+      explanation: entry.explanation,
+      ref: entry.ref,
+      section: entry.tags[0],
+      score,
+    });
+
+    /**
+     * Can the screen be read at all? Two independent paths exist (local OCR,
+     * vision model) and neither is guaranteed to be set up, so say which is
+     * missing instead of reporting 「no question found」 when the real problem is
+     * that nothing can read the capture.
+     */
+    const examScreenReadable = (): { why?: string } => {
+      const ocrWanted = settings.data.vision.ocrPrefilter && settings.data.exam?.preferOcr !== false;
+      if (ocrWanted && isOcrConfigured()) return {};
+      const visionReady = !!(
+        settings.data.vision.baseUrl &&
+        settings.data.vision.model &&
+        settings.getVisionApiKey()
+      );
+      if (visionReady) return {};
+      return {
+        why:
+          '无法读屏：未配置视觉模型（设置 → 视觉），且本地 OCR 不可用（需 `npm i tesseract.js` 并在设置里开启截图 OCR 前置）。也可以直接把题干粘贴到下方输入框作答。',
+      };
+    };
+
+    /** the vision model reads the capture; local OCR is tried first when set up */
+    const readScreen = async (
+      imageDataUrl: string,
+      ac: AbortController,
+    ): Promise<{ text: string; via: 'ocr' | 'vision' } | null> => {
+      if (settings.data.vision.ocrPrefilter && settings.data.exam?.preferOcr !== false) {
+        const ocr = await ocrDataUrl(imageDataUrl);
+        if (ocr.ok && decideRoute(ocr.text) === 'text') return { text: ocr.text, via: 'ocr' };
+      }
+      const vBaseUrl = settings.data.vision.baseUrl;
+      const vModel = settings.data.vision.model;
+      const vKey = settings.getVisionApiKey();
+      if (!vBaseUrl || !vModel || !vKey) return null;
+      const text = await visionChat(
+        { baseUrl: vBaseUrl, model: vModel, apiKey: vKey, proxyUrl: settings.data.vision.proxyUrl },
+        withScreenImage(buildTranscribeMessages(), imageDataUrl),
+        ac.signal,
+      );
+      const clean = text.trim();
+      if (!clean || /NO_QUESTION/.test(clean)) return null;
+      return { text: clean, via: 'vision' };
+    };
+
+    ipcMain.on(IPC.examAsk, async (_e, payload: ExamAskPayload) => {
+      const t0 = Date.now();
+      const sendErr = (message: string): void =>
+        examSend({ requestId: payload.requestId, kind: 'error', message });
+      const ac = new AbortController();
+      examControllers.set(payload.requestId, ac);
+      const ms: Record<string, number> = {};
+      try {
+        // 1. the question as text
+        let question = (payload.question ?? '').trim();
+        if (!question && payload.imageDataUrl) {
+          examSend({ requestId: payload.requestId, kind: 'stage', stage: 'reading' });
+          const canRead = examScreenReadable();
+          const read = canRead.why === undefined ? await readScreen(payload.imageDataUrl, ac) : null;
+          if (!read) {
+            // two different failures, and the user needs to know which one: no
+            // OCR/vision configured at all (a setup gap they can fix), versus a
+            // capture that genuinely held no question
+            if (canRead.why) sendErr(canRead.why);
+            else examSend({ requestId: payload.requestId, kind: 'done', text: '', origin: 'none', ms });
+            return;
+          }
+          question = read.text;
+          ms.read = Date.now() - t0;
+        }
+        if (!question) {
+          sendErr('没有题目：请框选题目区域后再试');
+          return;
+        }
+        examSend({ requestId: payload.requestId, kind: 'question', text: question, via: payload.question ? 'typed' : 'vision' });
+
+        // 2. look it up in the bound banks
+        examSend({ requestId: payload.requestId, kind: 'stage', stage: 'searching' });
+        const screen = parseSingleQuestion(question);
+        const asked = screen.stem || question;
+        let subMode: ExamSubMode = payload.subMode;
+        let verdict = examBanks.search(subMode, asked);
+        if (verdict.mode === 'none') {
+          // the user can leave 其他 on; the first bank that answers wins
+          const alt = examBanks.searchAll(asked).find((x) => x.verdict.mode !== 'none');
+          if (alt) {
+            subMode = alt.mode;
+            verdict = alt.verdict;
+          }
+        }
+        ms.bank = Date.now() - t0 - (ms.read ?? 0);
+
+        // shared with the audit harness: exact stem + objective entry + a letter
+        // that anchors onto the screen + nothing contradicting it, or no free
+        // answer at all (the model gets the bank as context instead)
+        const wantsExplanation = !!(payload.instruction ?? '').trim() || !!payload.priorAnswer;
+        const screenOptions = screen.options.map((o) => o.text);
+        const decision = decideBankAnswer(verdict, screenOptions, { wantsExplanation });
+        const best = decision.best;
+        let bankBlock: string | undefined;
+        let hitView: ExamBankCandidateView | undefined;
+        let letter: string | undefined = decision.letter;
+        if (best) {
+          hitView = bankView(best.entry, subMode, best.score);
+          bankBlock = formatBankBlock(best, screenOptions);
+        }
+        // a choice card needs at least two candidates; one is not a choice
+        if (
+          verdict.mode !== 'none' &&
+          best &&
+          decision.near.length > 1 &&
+          (best.confidence !== 'exact' || decision.disagree)
+        ) {
+          examSend({
+            requestId: payload.requestId,
+            kind: 'ambiguous',
+            candidates: decision.near.map((h) => bankView(h.entry, subMode, h.score)),
+          });
+        }
+
+        // 3. an EXACT bank stem on an objective question IS the answer — say so
+        // at once. Anything weaker goes through the model with the bank as
+        // authority: a near-miss printed as a certainty would be answered wrong.
+        const exactObjective = decision.direct;
+        if (hitView && verdict.mode === 'bank' && exactObjective && !wantsExplanation) {
+          examSend({ requestId: payload.requestId, kind: 'bank', hit: hitView, letter });
+          ms.total = Date.now() - t0;
+          examSend({
+            requestId: payload.requestId,
+            kind: 'done',
+            text: hitView.answer,
+            origin: 'bank',
+            ms,
+          });
+          return;
+        }
+        if (hitView) examSend({ requestId: payload.requestId, kind: 'bank', hit: hitView, letter });
+
+        // 4. model answer (bank as authority/hint), web only when the bank was silent
+        examSend({ requestId: payload.requestId, kind: 'stage', stage: 'thinking' });
+        const llmKey = settings.getLlmApiKey() ?? '';
+        const llmCfg: LlmConfig = {
+          baseUrl: settings.data.llm.baseUrl,
+          model: settings.data.llm.model,
+          apiKey: llmKey,
+        };
+        if (!llmKey && settings.data.llm.providerId !== 'ollama') {
+          ms.total = Date.now() - t0;
+          // the bank hit above is still a complete answer for the user
+          if (hitView) {
+            examSend({ requestId: payload.requestId, kind: 'done', text: hitView.answer, origin: 'bank', ms });
+            return;
+          }
+          sendErr(T().noApiKey);
+          return;
+        }
+        let webLines: string[] | undefined;
+        let origin: ExamOrigin = hitView ? 'bank+model' : 'model';
+        if (!hitView && settings.data.exam?.webFallback) {
+          const ws = settings.data.webSearch;
+          const apiKey = settings.getWebSearchApiKey();
+          if (ws?.enabled && apiKey) {
+            examSend({ requestId: payload.requestId, kind: 'stage', stage: 'searching-web' });
+            const w = await webSearch({
+              provider: ws.providerId ?? DEFAULT_SEARCH_PROVIDER,
+              apiKey,
+              query: asked.slice(0, 120),
+              maxResults: ws.maxResults,
+              timeoutMs: ws.timeoutMs,
+            });
+            ms.web = w.ms;
+            if (w.hits.length) {
+              webLines = formatWebLines(w.hits);
+              origin = 'model+web';
+            }
+          }
+        }
+        const persona = settings.data.exam?.persona ?? defaultPersona();
+        const messages = buildExamAskMessages({
+          subMode,
+          question,
+          instruction: payload.instruction,
+          bankBlock,
+          personaBlock: subMode === 'personality' ? buildPersonaBlock(persona, {}) : undefined,
+          priorAnswer: payload.priorAnswer,
+          webLines,
+        });
+        const tAnswer = Date.now();
+        const r = await chatStream(llmCfg, messages, { onDelta: () => {} }, ac.signal);
+        ms.model = Date.now() - tAnswer;
+        ms.total = Date.now() - t0;
+        const text = r.text.trim();
+        if (!text && hitView) {
+          examSend({ requestId: payload.requestId, kind: 'done', text: hitView.answer, origin: 'bank', ms });
+          return;
+        }
+        examSend({ requestId: payload.requestId, kind: 'done', text, origin, ms });
+        console.log(
+          `[exam] ${subMode} ${origin} in ${ms.total}ms` +
+            ` (read=${ms.read ?? 0} bank=${ms.bank ?? 0} model=${ms.model ?? 0})`,
+        );
+      } catch (e) {
+        if ((e as Error)?.name === 'AbortError') return;
+        sendErr((e as Error).message);
+      } finally {
+        examControllers.delete(payload.requestId);
+      }
+    });
+
+    ipcMain.on(IPC.examCancel, (_e, requestId: string) => {
+      examControllers.get(String(requestId))?.abort();
+      examControllers.delete(String(requestId));
+    });
+
+    ipcMain.handle(IPC.examOpen, () => {
+      openExamWindow();
+      return true;
+    });
+    ipcMain.on(IPC.examClose, () => {
+      if (examWin && !examWin.isDestroyed()) examWin.hide();
+    });
+    ipcMain.handle(IPC.examSetMode, (_e, subMode: ExamSubMode) => {
+      if (!['aptitude', 'technical', 'personality', 'open'].includes(String(subMode))) return false;
+      settings.applyPatch({ exam: { subMode } });
+      return true;
+    });
+    ipcMain.handle(IPC.examStatus, () => examStatusView());
+    ipcMain.handle(IPC.examBind, async (_e, p: { subMode: ExamSubMode }) => {
+      const mode = (p?.subMode ?? 'aptitude') as ExamSubMode;
+      const r = await dialog.showOpenDialog({ title: T().examBindTitle, properties: ['openDirectory'] });
+      if (r.canceled || !r.filePaths[0]) return null;
+      settings.applyPatch({ exam: { banks: { [mode]: r.filePaths[0] } as Partial<Record<ExamSubMode, string>> } });
+      void examBanks.bind(mode, r.filePaths[0], (prog) => {
+        if (examWin && !examWin.isDestroyed()) examWin.webContents.send(IPC.examProgress, prog);
+      });
+      return { dir: r.filePaths[0] };
+    });
+    ipcMain.handle(IPC.examRescan, async (_e, p: { subMode?: ExamSubMode }) => {
+      const binds = (settings.data.exam?.banks ?? {}) as Partial<Record<ExamSubMode, string>>;
+      if (p?.subMode) await examBanks.bind(p.subMode, binds[p.subMode]);
+      else await examBanks.bindAll(binds);
+      return examStatusView();
+    });
+    ipcMain.handle(IPC.examBankSearch, (_e, p: { subMode: ExamSubMode; question: string }) => {
+      const mode = (p?.subMode ?? 'aptitude') as ExamSubMode;
+      const v = examBanks.search(mode, String(p?.question ?? ''));
+      const all = [v.best, ...v.others].filter(Boolean);
+      return all.map((h) => ({ ...bankView(h!.entry, mode, h!.score), confidence: h!.confidence }));
+    });
+    ipcMain.handle(IPC.examPersonaSet, (_e, p: { persona: unknown }) => {
+      const persona = p?.persona === null ? null : parsePersona(p?.persona);
+      settings.applyPatch({ exam: { persona: persona === null ? (null as never) : persona ?? undefined } });
+      return settings.getPublic();
+    });
+    ipcMain.handle(IPC.examPersonaResearch, async (_e, p: { role?: string; company?: string }) => {
+      const role = String(p?.role ?? '').trim();
+      const ws = settings.data.webSearch;
+      const apiKey = settings.getWebSearchApiKey();
+      const llmKey = settings.getLlmApiKey() ?? '';
+      const llmCfg: LlmConfig = {
+        baseUrl: settings.data.llm.baseUrl,
+        model: settings.data.llm.model,
+        apiKey: llmKey,
+      };
+      if (!llmKey && settings.data.llm.providerId !== 'ollama') {
+        console.warn('[exam-persona] no LLM key');
+        return null;
+      }
+      let webLines: string[] = [];
+      if (ws?.enabled && apiKey) {
+        const q = [role, p?.company, '性格测评 考察 特质 要求'].filter(Boolean).join(' ');
+        const w = await webSearch({
+          provider: ws.providerId ?? DEFAULT_SEARCH_PROVIDER,
+          apiKey,
+          query: q,
+          maxResults: ws.maxResults,
+        });
+        webLines = formatWebLines(w.hits);
+      }
+      try {
+        const r = await chatOnce(
+          llmCfg,
+          buildPersonaResearchMessages(role, p?.company, webLines),
+          { maxTokens: 700, temperature: 0.2 },
+        );
+        const json = r.text.slice(r.text.indexOf('{'), r.text.lastIndexOf('}') + 1);
+        const persona = parsePersona(JSON.parse(json));
+        if (!persona) return null;
+        settings.applyPatch({ exam: { persona: { ...persona, role: role || persona.role } } });
+        console.log(`[exam-persona] ${persona.targets.length} dims for ${role || '(none)'}`);
+        return { ...persona, role: role || persona.role };
+      } catch (e) {
+        console.warn('[exam-persona] research failed:', (e as Error).message);
+        return null;
+      }
+    });
+
+    // ---- question gate (面试模式持续答) ----
+    // Free heuristics decide the obvious cases; only a genuinely ambiguous line
+    // costs one tiny classification call, and a slow provider can never block an
+    // answer: the fallback is to answer, which is the pre-existing behaviour.
+    ipcMain.handle(IPC.llmGate, async (_e, p: { requestId: string; line: string; recent?: string[] }) => {
+      const line = String(p?.line ?? '').trim();
+      const t0 = Date.now();
+      const requestId = String(p?.requestId ?? '');
+      const h = heuristic(line);
+      if (h.verdict) {
+        const cached = gateMemory.get(line.slice(0, 120));
+        if (cached && cached !== 'pending') return { requestId, verdict: cached, via: 'heuristic', ms: 0 } as LlmGateResult;
+        gateMemory.set(line.slice(0, 120), h.verdict);
+        return { requestId, verdict: h.verdict, via: 'heuristic', ms: Date.now() - t0 } as LlmGateResult;
+      }
+      const apiKey = settings.getLlmApiKey();
+      if (!apiKey && settings.data.llm.providerId !== 'ollama')
+        return { requestId, verdict: 'answer', via: 'heuristic', ms: 0 } as LlmGateResult;
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), GATE_TIMEOUT_MS);
+      try {
+        const r = await chatOnce(
+          {
+            baseUrl: settings.data.llm.baseUrl,
+            model: settings.data.llm.model,
+            apiKey: apiKey ?? '',
+          },
+          gateMessages(line, (p?.recent ?? []).slice(-6)),
+          { maxTokens: 6, temperature: 0, signal: ac.signal },
+        );
+        const verdict = parseVerdict(r.text) ?? 'answer';
+        gateMemory.set(line.slice(0, 120), verdict);
+        const out: LlmGateResult = { requestId, verdict, via: 'model', ms: Date.now() - t0 };
+        if (out.ms > GATE_TIMEOUT_MS) console.warn(`[gate] slow classifier ${out.ms}ms`);
+        return out;
+      } catch (e) {
+        return { requestId, verdict: 'answer', via: 'heuristic', ms: Date.now() - t0 } as LlmGateResult;
+      } finally {
+        clearTimeout(timer);
+      }
+    });
 
     // ---- upgrade P1.5: optional native loopback capture ----
     ipcMain.on(IPC.nativeCaptureStart, (_e, deviceId?: string) => {

@@ -80,9 +80,11 @@ function cleanCaptured(s: string): string {
   return s.replace(/^(?:\*\*|__|`)+\s*/, '').replace(/\s*(?:\*\*|__|`)+$/, '').trim();
 }
 
-/** 问： / 问题： / Q: / Q1： / Question 2: / 【问题】 — captures the body */
+/** 问： / 问题： / Q: / Q1： / Question 2: / 题目：/ 题干： / 【问题】 — captures the body.
+ * 题目/题干 are included because a question bank writes them that way, and the
+ * two parsers must agree on where a question starts or a merged bank double-lists it. */
 const Q_MARKER =
-  /^(?:【\s*(?:问\s*题|问)\s*】|(?:Q(?:uestion)?|问\s*题|问)\s*\d*\s*[：:])\s*(.*)$/i;
+  /^(?:【\s*(?:问\s*题|题\s*目|题\s*干|问)\s*】|(?:Q(?:uestion)?|问\s*题|题\s*目|题\s*干|问)\s*\d*\s*[：:])\s*(.*)$/i;
 /** 答： / 回答： / 答案： / A: / A2： / Answer： / 【回答】 / 【答案】 */
 const A_MARKER =
   /^(?:【\s*(?:回\s*答|答\s*案|答)\s*】|(?:A(?:nswer)?|回\s*答|答\s*案|答)\s*\d*\s*[：:])\s*(.*)$/i;

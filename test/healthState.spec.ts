@@ -63,6 +63,14 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
     audio: { micEnabled: false, captureBackend: 'webaudio' },
     rag: { enabled: true, model: 'bge-m3', topK: 3, minScore: 0.2, remoteHost: 'https://hf-mirror.com' },
     webSearch: { enabled: false, providerId: 'tavily', apiKeySet: false, maxResults: 5 },
+    exam: {
+      banks: {},
+      subMode: 'aptitude',
+      preferOcr: true,
+      webFallback: false,
+      hotkeyOpen: 'Control+Alt+B',
+      hotkeyAsk: 'Control+Alt+S',
+    },
     ...over,
   };
 }

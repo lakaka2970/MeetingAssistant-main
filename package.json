@@ -29,6 +29,7 @@
     "smoke:rag": "vite-node tools/rag-smoke.ts",
     "smoke:qa": "node tools/qa-e2e.mjs",
     "qa:inventory": "vite-node tools/qa-corpus-detect.ts",
+    "exam:selftest": "vite-node tools/exam-selftest.ts",
     "smoke:asr:realtime": "node tools/rt-asr-smoke.mjs",
     "smoke:e2e:llm": "node tools/e2e-llm.mjs",
     "smoke:e2e:local": "node tools/e2e-local-lifecycle.mjs",

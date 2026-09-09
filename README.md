@@ -15,7 +15,13 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 ## ✨ 核心功能
 
 - **实时流式转写**：通过系统回环音频采集对方声音，**不碰会议软件**——Teams、Zoom、飞书、腾讯会议、任意视频都能用，不需要机器人入会、不需要抓包。
-- **第一人称 AI 回答**：在对方任意一句上点 **⚡答**，右栏流式生成可直接照着念的回答；打开 **持续答** 后，只有像问题的句子才会自动触发。
+- **第一人称 AI 回答**：在对方任意一句上点 **⚡答**，右栏流式生成可直接照着念的回答；打开 **持续答** 后，只有真的在提问才会自动触发——明显的寒暄与流程安排（「把这个链接发我一下」）由本地启发式免费挡掉，拿不准的一句才花一次极小的分类调用判断，判定超时或失败一律回退成"照答"。
+- **📝 做题模式（在线测评/笔试）**：标题栏 **做题** 打开一个**小窗悬浮面板**，它对录屏 / 共享 / 截图不可见（强制开启，无开关）。框选屏幕上的题目 → 读题 → **先查你本机的题库**：命中就直接把库里的答案和字母亮出来（**约 1ms，完全离线**），没命中才交给 AI，AI 也不确定时再按你的开关联网检索。四种题型各自绑定不同目录、各有答法：
+  - **行测/申论**、**代码/技术**：绑定本地题库目录（递归读取 `.md/.txt/.json/.csv/.pdf`）。真题包常见的**「题目卷 + 答案卷」成对 PDF**（`…-学生版.pdf` / `…-答案版.pdf`，答案卷里是 `N.【答案】D。解析：…` 或 `1~5 BACDB`）会按 **(节, 题号)** 自动配对——**两卷的节名对不上时宁可不配**，绝不把英语的答案配到数量关系上；屏幕把选项打乱时，答案按**选项文字重新锚定**回字母。
+  - **性格/心理测评**：先按"招聘方看重什么"生成一份**固定人设**（可用网络检索生成，也可手填），随后整场测评都照这份人设作答，并显式规避"全部非常符合"这类会触发装好/测谎校验的答法，反向表述的题自动把方向调转。
+  - **精度优先的取舍**：只有「原题级命中 + 客观题 + 能锚定到屏幕选项」才会免模型直答；相近题会同时列出来让你确认；库里没有的题一律走 AI（并按需联网），不会硬凑一个答案。成堆下载来的题库必然互相重复：同一道题自动合并（保留解析最全的那份），**不同文件答案互相矛盾的题会被标成“答案不一致”而不是猜一个**；题干只是一句通用指令（如图形推理的「选择最合适的一项填入问号处」）时也不直答——真正的题在图里，文字认不出来。
+  - **可以只绑一个总目录**：四个题型都指向同一个 `题库` 根目录也可以（本机是纯字面索引，多出的内容只会让候选变多，不影响命中速度）。代价是别的题型里的长篇资料可能作为「相近题」被列出来让你确认——它们永远不会被当成原题直接作答。
+  - **读屏有两条路**：装 `npm i tesseract.js`（约 2MB 语言包，全离线）则截图先在本机识别文字，读不到题再交给视觉模型；没装就需要一个**支持图片的 API Key**（Gemini / 智谱 / Groq / 百炼 / MiMo / Ollama 等）。两者都没有时框选会直接说明缺什么，此时可用「题库自检」右侧的 **作答这题**：把题干粘贴进去，同样走 题库 → AI → 网络 的完整链路。
 - **回答可控**：`答:中 / 答:EN` 切换回答语言；`纯文本 / 多模态` 在文本大模型与视觉模型（可**截图提问**）之间切换。
 - **公式与排版正常显示**：回答里的 `$…$` / `$$…$$` / `\(…\)` / `\[…\]` 由 KaTeX 排版（含 `$ … $` 这种两端带空格的写法），`**加粗**`、`*斜体*`、`` `代码` ``、`### 小标题` 也直接渲染，不再把 markdown 原样吐在屏幕上。
 - **贴合你的阅历**：右栏 **📄简历 / 📋JD** 导入资料（`.md/.txt/.docx/.pdf`），本地解析、本地建立索引，只在提问时作为上下文发给大模型——资料本身不离开你的电脑。不同面试是不同的会话，各自绑定自己的资料与答案库。
@@ -138,6 +144,8 @@ start.bat          # Windows 一键启动（自动构建），或 npm start
 | `npm run verify` | 类型检查 + 测试 + 构建（提交前推荐） |
 | `npm run dist:win` | 打包 Windows 安装包（NSIS + portable） |
 | `npm run smoke:*` | 各能力冒烟测试（ASR / LLM / RAG / E2E） |
+| `npm run qa:inventory -- <目录>` | 干跑面试知识库：看某目录能被识别出多少条「准备的答案」 |
+| `npm run exam:selftest -- <题库目录> [题目…]` | 干跑做题题库：绑定→配对→检索→给出答案与耗时（不调模型） |
 
 ### 可选：原生音频后端（Rust）
 
@@ -148,9 +156,9 @@ start.bat          # Windows 一键启动（自动构建），或 npm start
 ## 📁 项目结构
 
 ```
-electron/     # 主进程：悬浮窗、隐身、快捷键、设置、IPC、ASR/LLM/RAG 宿主、托盘
-src/          # 渲染进程（React）：转录面板、回答会话、知识库、设置、配置向导
-shared/       # 纯数据模块（渲染/主进程共用）：服务商目录、协议、平台差异
+electron/     # 主进程：悬浮窗、隐身、快捷键、设置、IPC、ASR/LLM/RAG 宿主、托盘、做题小窗与题库（electron/exam/）
+src/          # 渲染进程（React）：转录面板、回答会话、知识库、设置、配置向导、做题小窗（src/exam/）
+shared/       # 纯数据模块（渲染/主进程共用）：服务商目录、协议、平台、题库解析与检索、人设引擎、判题门控
 electron/asr/ # 语音识别后端路由（FunASR sidecar / MOSS / 云端 / Whisper）
 electron/llm/ # LLM 适配与路由（流式、多模态、失败回退）
 electron/rag/ # 简历/JD 索引与检索（本地解析，提问时注入上下文）
@@ -199,6 +207,9 @@ by your own BYOK (bring-your-own-key) LLM provider. It is local-first: the defau
 - Per-line ⚡Ans answers + 🎤 optional mic channel; text (`纯文本`) or multimodal/vision mode with screenshot Q&A
 - Knowledge panel: import your resume/JD (`.md/.txt/.docx/.pdf`), parsed and indexed locally, only sent to your LLM as context when asking; each session is one interview with its own material
 - Prepared answers surface first: `问：… 答：…` / `Q: … A: …` / `【问题】…【回答】…` blocks in your documents or notes are auto-detected and indexed by question; on a hit the pane prints your prepared answer verbatim (local, tens of ms) and the AI only enriches it — no network on that path
+- Exam mode (做题模式): a separate small floating window, forcibly invisible to screen capture, for online assessments. Drag over the question on screen → it is read (local OCR first, vision model otherwise) → **your local question bank answers it in ~1 ms, offline**; the LLM only covers what the bank lacks, and the web only on an explicit opt-in. Four sub-modes, each bound to its own folder: aptitude/essay, coding/technical, personality, other. Paired real-exam PDFs (`…-学生版.pdf` + `…-答案版.pdf`, keys like `N.【答案】D。解析：…` or `1~5 BACDB`) are joined by (section, number) and **refuse to pair when the two papers' sections disagree** — a wrong answer with confidence is the one outcome this must never produce; when the OA page shuffles the options, the answer is re-anchored onto the option text and the on-screen letter. Reading the screen needs either `npm i tesseract.js` (offline, tried first) or a vision-capable key; with neither, paste the stem into the bank field and use **Answer this** for the same bank → AI → web chain. Binding one shared parent folder to all four sub-modes is fine — the index is literal, so extra material can only ever surface as a "similar question" to confirm, never as a direct answer.
+- Two modes stay apart by construction: exam banks and the personality persona live in their own store and never enter the interview RAG index, so civil-service arithmetic cannot start answering interview questions, or the other way round.
+- Continuous answering is now gated: greetings and logistics never cost a model call, only a genuinely ambiguous line gets one tiny classifier request, and any timeout or failure falls back to answering.
 - Web search is the fallback, not the default: only a question the knowledge base cannot answer at all reaches your own search key (Tavily / Brave / SerpAPI, off by default), under a hard 2.5 s deadline, and the answer cites what came back
 - Journal maths render properly: `$…$`, `$$…$$`, `\(…\)`, `\[…\]` are typeset with KaTeX (space-padded `$ … $` included), and `**bold**`, `*italic*`, `` `code` `` and `### headings` are rendered instead of shown raw
 - Sessions are deletable: 🗑 drops the conversation, its transcript and everything its resume/JD contributed to the index, after a confirmation
