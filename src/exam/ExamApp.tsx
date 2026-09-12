@@ -43,6 +43,8 @@ export function ExamApp() {
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [candidates, setCandidates] = useState<ExamBankCandidateView[] | null>(null);
   const [error, setError] = useState<string>('');
+  /** a caveat from the reader (e.g. a second question on screen matched too) */
+  const [note, setNote] = useState<string>('');
   const [status, setStatus] = useState<ExamStatusView | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanCurrent, setScanCurrent] = useState('');
@@ -95,6 +97,9 @@ export function ExamApp() {
           break;
         case 'question':
           setAnswer((a) => (a ? { ...a, question: ev.text } : { question: ev.text, text: '', origin: 'none', streaming: true, ms: {} }));
+          break;
+        case 'note':
+          setNote(ev.text);
           break;
         case 'bank':
           setAnswer((a) => ({
@@ -150,6 +155,7 @@ export function ExamApp() {
   const ask = useCallback(
     async (opts: { imageDataUrl?: string; question?: string; force?: ExamBankCandidateView; again?: boolean } = {}) => {
       setError('');
+      setNote('');
       setCandidates(null);
       setCopied(false);
       const requestId = rid();
@@ -269,6 +275,7 @@ export function ExamApp() {
         </div>
 
         {error ? <div className="exam-card exam-badge warn">{error}</div> : null}
+        {note ? <div className="exam-hint">{note}</div> : null}
 
         {answer ? (
           <div className="exam-card exam-answer" data-origin={answer.origin}>

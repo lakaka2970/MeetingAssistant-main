@@ -245,6 +245,18 @@ export interface SettingsFile {
     hotkeyToggle: string;
     /** global hotkey for region-screenshot Q&A */
     hotkeyShot: string;
+    /**
+     * Global hotkey for "answer the latest line". Exists because in dual-screen
+     * mode the main window is hidden and the per-line ⚡答 button is
+     * unreachable — without it the phone could only ever show the transcript.
+     */
+    hotkeyAnswer?: string;
+    /**
+     * Start answering while the other party is still speaking, as soon as the
+     * in-flight line reads as a complete question, instead of waiting for the
+     * VAD hangover (~1.4 s of silence) plus the continuous-mode debounce.
+     */
+    earlyAnswer?: boolean;
     opacity: number;
     /** answer-body font size (small=13px / medium=16px / large=19px) */
     fontScale: FontScale;
@@ -282,6 +294,12 @@ export interface SettingsFile {
     /** mirror origin for model download-on-demand (HF blocked in CN);
      * '' = default huggingface.co */
     remoteHost?: string;
+    /**
+     * Path to a pre-chunked knowledge base (its `991_index.jsonl`, or any
+     * folder inside it). When set, those chunks are retrieved verbatim instead
+     * of being re-chunked, preserving the author's section boundaries.
+     */
+    kbIndex?: string;
   };
   /**
    * Web search fallback for questions the knowledge base could not answer.
@@ -322,6 +340,50 @@ export interface SettingsFile {
     hotkeyOpen?: string;
     /** global hotkey for "capture the screen and answer" */
     hotkeyAsk?: string;
+  };
+  /**
+   * Privacy access audit: when on, sensitive local-capability use and system
+   * inventory probes are written as JSONL with the API name and the actual
+   * system response (secrets redacted, payloads truncated).
+   */
+  privacy: {
+    auditEnabled?: boolean;
+    /** include full system probe payloads (process list, extensions, devices) */
+    captureReturns?: boolean;
+    /** ring / file cap; older entries drop first */
+    maxEntries?: number;
+  };
+  /**
+   * LAN companion bridge: phone (mobile web app) connects over the local
+   * network and receives exam/interview answers pushed from this machine.
+   */
+  companion: {
+    enabled?: boolean;
+    /** HTTP+WS port; default 18765 */
+    port?: number;
+    /** auto-push finished exam answers to connected phones */
+    pushExam?: boolean;
+    /** also push finished interview answers when continuous answers fire */
+    pushInterview?: boolean;
+    /** push the live transcript (streaming partial + final lines) */
+    pushTranscript?: boolean;
+    /** send the captured screenshot itself, not only the answer it produced */
+    pushScreenshot?: boolean;
+    /**
+     * Serve over HTTPS with a self-signed cert. Worth having: Screen Wake Lock
+     * (so the phone does not dim mid-meeting) only exists in a secure context,
+     * and it encrypts the LAN hop. The bridge falls back to plaintext when the
+     * cert cannot be produced rather than failing to start.
+     */
+    useHttps?: boolean;
+    /**
+     * The exam ask hotkey captures and answers straight to the phone without
+     * raising the small window — for running headless while the PC is unseen.
+     */
+    hotkeyToPhone?: boolean;
+    /** jpeg quality (1-100) and longest edge for the pushed screenshot */
+    jpegQuality?: number;
+    maxDim?: number;
   };
 }
 
@@ -395,6 +457,8 @@ export interface PublicSettings {
     stealth: boolean;
     hotkeyToggle: string;
     hotkeyShot: string;
+    /** see SettingsFile.ui.hotkeyAnswer — the dual-screen answer trigger */
+    hotkeyAnswer: string;
     opacity: number;
     fontScale: FontScale;
     theme: ThemeMode;
@@ -415,6 +479,12 @@ export interface PublicSettings {
     topK: number;
     minScore: number;
     remoteHost: string;
+    /**
+     * Path to a pre-chunked knowledge base (its `991_index.jsonl`, or any
+     * folder inside it). When set, those chunks are retrieved verbatim instead
+     * of being re-chunked, which preserves the author's section boundaries.
+     */
+    kbIndex?: string;
   };
   /** web-search fallback — public view (key metadata only, never the key) */
   webSearch: {
@@ -434,6 +504,25 @@ export interface PublicSettings {
     webFallback: boolean;
     hotkeyOpen: string;
     hotkeyAsk: string;
+  };
+  /** privacy audit — public view (no log payloads, no secrets) */
+  privacy: {
+    auditEnabled: boolean;
+    captureReturns: boolean;
+    maxEntries: number;
+  };
+  /** LAN companion bridge — public view (no token) */
+  companion: {
+    enabled: boolean;
+    port: number;
+    pushExam: boolean;
+    pushInterview: boolean;
+    pushTranscript: boolean;
+    pushScreenshot: boolean;
+    useHttps: boolean;
+    hotkeyToPhone: boolean;
+    jpegQuality: number;
+    maxDim: number;
   };
 }
 
@@ -491,6 +580,7 @@ export interface SettingsPatch {
     stealth?: boolean;
     hotkeyToggle?: string;
     hotkeyShot?: string;
+    hotkeyAnswer?: string;
     opacity?: number;
     fontScale?: FontScale;
     theme?: ThemeMode;
@@ -505,6 +595,7 @@ export interface SettingsPatch {
     topK?: number;
     minScore?: number;
     remoteHost?: string;
+    kbIndex?: string;
   };
   webSearch?: {
     enabled?: boolean;
@@ -523,6 +614,23 @@ export interface SettingsPatch {
     webFallback?: boolean;
     hotkeyOpen?: string;
     hotkeyAsk?: string;
+  };
+  privacy?: {
+    auditEnabled?: boolean;
+    captureReturns?: boolean;
+    maxEntries?: number;
+  };
+  companion?: {
+    enabled?: boolean;
+    port?: number;
+    pushExam?: boolean;
+    pushInterview?: boolean;
+    pushTranscript?: boolean;
+    pushScreenshot?: boolean;
+    useHttps?: boolean;
+    hotkeyToPhone?: boolean;
+    jpegQuality?: number;
+    maxDim?: number;
   };
 }
 
@@ -647,6 +755,11 @@ export interface ExamAskPayload {
   question?: string;
   /** cropped screenshot of the question */
   imageDataUrl?: string;
+  /**
+   * The image is a whole screen rather than a crop the user selected, so the
+   * reader must first locate the intended question among unrelated content.
+   */
+  wholeScreen?: boolean;
   /** extra instruction typed alongside the capture */
   instruction?: string;
   /** re-ask the same screen with a new instruction */
@@ -658,6 +771,9 @@ export interface ExamAskPayload {
 export type ExamEvent =
   | { requestId: string; kind: 'stage'; stage: 'reading' | 'searching' | 'thinking' | 'searching-web'; subMode?: ExamSubMode }
   | { requestId: string; kind: 'question'; text: string; via: 'ocr' | 'vision' | 'typed' }
+  /** a caveat worth showing but not blocking on (e.g. a second question on
+   * screen was also a plausible match for the whole-screen capture) */
+  | { requestId: string; kind: 'note'; text: string }
   /** the bank has it and the confidence is high — this IS the answer */
   | { requestId: string; kind: 'bank'; hit: ExamBankCandidateView; letter?: string }
   /** several bank questions scored similarly: the user (or the model) must pick */
@@ -866,6 +982,16 @@ export interface RagStatus {
   lastError: string;
   /** first-run download progress (0-100) when loading and not local */
   downloadPct: number | null;
+  /** pre-chunked knowledge base bound via rag.kbIndex */
+  kb: {
+    /** the configured path, shown even before anything has been loaded */
+    configured: string;
+    loaded: boolean;
+    chunks: number;
+    docs: number;
+    aliases: number;
+    error: string;
+  };
 }
 
 // ---------- System tray (main -> renderer) ----------
@@ -877,6 +1003,45 @@ export interface RagStatus {
  */
 export interface TrayCommandPayload {
   command: TrayRendererCommand;
+}
+
+// ---------- LAN companion bridge (mobile display) ----------
+
+/** one phone that has been paired with this machine */
+export interface CompanionDeviceView {
+  /** device label the phone gave when it paired */
+  name: string;
+  /** when it last completed an authenticated handshake (epoch ms, 0 = never) */
+  lastSeen: number;
+  /** true while a socket for it is open right now */
+  online: boolean;
+}
+
+/**
+ * Live state of the bridge — never persisted. The URL must carry the
+ * **actually bound** port: when the configured port is taken the bridge falls
+ * back to the next one, and a QR encoding the configured port points the phone
+ * at nothing while still looking perfectly plausible.
+ */
+export interface CompanionState {
+  running: boolean;
+  /** why it is not running / not reachable ('' when fine) */
+  error: string;
+  port: number;
+  https: boolean;
+  /** full reach URL incl. scheme, e.g. https://192.168.10.231:18765/ */
+  url: string;
+  /** pending pairing code shown only on this machine ('' = none pending) */
+  pairingCode: string;
+  /** epoch ms when the pending code dies */
+  pairingExpiresAt: number;
+  devices: CompanionDeviceView[];
+  /** coalesced event count actually sent since the bridge started */
+  sentEvents: number;
+  /** events dropped because a phone could not keep up (backpressure) */
+  droppedEvents: number;
+  /** mean one-way wire latency in ms measured by ping/pong (-1 = unmeasured) */
+  lagMs: number;
 }
 
 // ---------- IPC channel names ----------
@@ -1005,6 +1170,14 @@ export const IPC = {
   ragSearch: 'rag:search',
   /** invoke: ({model?}) => RagStatus — re-embed every stored chunk (model switch) */
   ragReindex: 'rag:reindex',
+  /**
+   * invoke: () => RagStatus|null — pick a folder holding a pre-chunked
+   * knowledge base (991_index.jsonl) and load it. null = dialog cancelled, so
+   * the UI leaves the existing binding alone instead of clearing it.
+   */
+  ragBindKb: 'rag:bind-kb',
+  /** invoke: () => RagStatus — forget the knowledge base binding */
+  ragUnbindKb: 'rag:unbind-kb',
   /** invoke: ({sessionId?}) => PreparedQaView[] — the Q&A pairs the knowledge
    * base auto-detected (what a direct hit can serve), for the knowledge panel */
   ragQaList: 'rag:qa-list',
@@ -1058,4 +1231,40 @@ export const IPC = {
   /** main -> renderer: RagStatus — pushed whenever the embed worker state
    * changes (loading/ready/error); ragStatus remains the pull channel */
   ragStatusPush: 'rag:status-push',
+  // ---- LAN companion bridge (mobile display) ----
+  /** invoke: () => CompanionState — live bridge state for the settings panel */
+  companionState: 'companion:state',
+  /** invoke: () => CompanionState — start/stop the bridge after a settings change */
+  companionApply: 'companion:apply',
+  /** invoke: () => CompanionState — issue a fresh pairing code (shown on this PC only) */
+  companionPair: 'companion:pair',
+  /** invoke: (name) => CompanionState — forget a paired device */
+  companionRevoke: 'companion:revoke',
+  /** invoke: () => string — SVG of the reach-URL QR code, for the settings panel */
+  companionQr: 'companion:qr',
+  /** invoke: () => { ok, ms, seq } — capture now and push to every paired phone */
+  companionShot: 'companion:shot',
+  /**
+   * invoke: (SettingsPatch['companion']) => CompanionState — narrow write
+   * channel for the connect window, which must be able to flip push flags and
+   * the enabled switch without being handed the full settings:set (that could
+   * rewrite API keys).
+   */
+  companionPatch: 'companion:patch',
+  /** invoke: () => CompanionState — raise the connect window (QR + address) */
+  connectOpen: 'connect:open',
+  /** send: () — hide the connect window (it never quits the app) */
+  connectClose: 'connect:close',
+  /**
+   * main -> renderer: the answer hotkey was pressed while the main window was
+   * hidden. Only reachable in dual-screen mode; the per-line ⚡答 button is not.
+   */
+  answerHotkey: 'answer:hotkey',
+  /**
+   * main -> renderer: a phone just authenticated on the bridge. The overlay
+   * hides itself on this — from here on the phone is the display, and the PC
+   * screen should be showing nothing worth capturing. Ctrl+B or the tray
+   * brings it back.
+   */
+  companionConnected: 'companion:connected',
 } as const;

@@ -48,6 +48,8 @@ import { decideRoute, isOcrConfigured, ocrDataUrl } from './vision/ocrPrefilter'
 import { formatWebLines, webSearch, webSources } from './websearch';
 import { DEFAULT_SEARCH_PROVIDER } from '../shared/searchProviders';
 import { ExamBanks } from './exam/banks';
+import { CompanionBridge, type CompanionSettings } from './companion/bridge';
+import { destroyConnectWindow, showConnectWindow } from './connectWindow';
 import { createExamWindow, destroyExamWindow } from './examWindow';
 import {
   buildExamAskMessages,
@@ -60,6 +62,7 @@ import { decideBankAnswer, formatBankBlock, type ExamSubMode } from '../shared/b
 import { buildPersonaBlock, defaultPersona, parsePersona } from '../shared/persona';
 import { GATE_TIMEOUT_MS, gateMessages, heuristic, parseVerdict, GateMemory } from '../shared/questionGate';
 import type {
+  CompanionState,
   ExamAskPayload,
   ExamBankCandidateView,
   ExamEvent,
@@ -141,7 +144,30 @@ app.setName('MeetingAssistant');
 if (process.env.MC_USERDATA) app.setPath('userData', process.env.MC_USERDATA);
 
 if (!app.requestSingleInstanceLock()) {
-  app.quit();
+  // Never exit silently here. The instance this collides with is stealth by
+  // default and has no taskbar entry, so from the user's side there is nothing
+  // on screen to notice, let alone close — a quiet exit is indistinguishable
+  // from "the app is broken and will not start". Say what is running and how to
+  // get out of it.
+  app
+    .whenReady()
+    .then(() => {
+      const zh = app.getLocale().toLowerCase().startsWith('zh');
+      dialog.showMessageBoxSync({
+        type: 'info',
+        title: 'MeetingAssistant',
+        message: zh ? 'MeetingAssistant 已经在运行了。' : 'MeetingAssistant is already running.',
+        detail: zh
+          ? '窗口默认隐身、且不出现在任务栏，所以你可能完全看不到它。\n\n' +
+            '请到系统托盘找 MeetingAssistant 图标 → 右键 → 退出，再重新打开。\n' +
+            '托盘里也没有的话，在任务管理器中结束 MeetingAssistant 进程。'
+          : 'The window is stealth by default and has no taskbar entry, so it may be entirely invisible.\n\n' +
+            'Find the MeetingAssistant icon in the system tray → right-click → Quit, then open it again.\n' +
+            'If the tray has no icon either, end the MeetingAssistant process in Task Manager.',
+        buttons: [zh ? '知道了' : 'OK'],
+      });
+    })
+    .finally(() => app.exit(0));
 } else {
   bootstrap();
 }
@@ -161,6 +187,8 @@ function bootstrap(): void {
   let skills: SkillsManager;
   /** 做题模式: its own window, its own banks, its own answer pipeline */
   let examWin: BrowserWindow | null = null;
+  /** 双屏: the QR / pairing window, shown when the bridge is turned on */
+  let connectWin: BrowserWindow | null = null;
   const examBanks = new ExamBanks();
   /** one classifier call per transcript line, never twice for the same text */
   const gateMemory = new GateMemory();
@@ -169,11 +197,68 @@ function bootstrap(): void {
   let quitting = false;
   /** an ASR-affecting settings patch arrived while the wizard owned the flow */
   let pendingAsrRestart = false;
+  /**
+   * Whole-screen capture → read the question → 题库 → AI → 网络. Bound to
+   * 截屏问答热键 (ui.hotkeyShot) and to the connect window's button.
+   *
+   * Named through this binding because registerHotkeys() runs before
+   * `startMainApp` builds the pipeline it closes over.
+   *
+   * When the phone is not the display, the exam window is raised first: an
+   * answer that goes only to a hidden overlay is an answer nobody sees.
+   */
+  let screenShotAsk: (() => Promise<{ ok: boolean; ms: number; seq: number }>) | null = null;
   /** renderer capture lifecycle; the tray menu and the diagnostics report read it */
   let capturing = false;
   const asr = new AsrHost();
   const sidecar = new FunasrSidecar();
   const tray = new AppTray();
+  /**
+   * LAN companion: phones on the same network show the transcript and the
+   * answers. Taps the event streams at their source in this process, so the
+   * display works with no window open at all — which is also what makes the
+   * whole thing invisible to a screen share.
+   *
+   * `settings` is only assigned later, inside whenReady; the closure defers the
+   * read to the first call, which is after that.
+   */
+  const companion = new CompanionBridge(
+    (): CompanionSettings => {
+      const c = settings.getPublic().companion;
+      return {
+        enabled: c.enabled,
+        port: c.port,
+        pushExam: c.pushExam,
+        pushInterview: c.pushInterview,
+        pushTranscript: c.pushTranscript,
+        pushScreenshot: c.pushScreenshot,
+        useHttps: c.useHttps,
+        jpegQuality: c.jpegQuality,
+        maxDim: c.maxDim,
+      };
+    },
+    app.getPath('userData'),
+    () => {},
+    // a phone just got onto the bridge: put the QR away. Leaving it up is
+    // leaving a live credential up, and it is no longer needed by anyone.
+    () => {
+      if (connectWin && !connectWin.isDestroyed() && connectWin.isVisible()) {
+        console.log('[connect] 手机已连上，收起连接窗口');
+        connectWin.hide();
+      }
+      // and hand the display over: the overlay hides, the phone becomes the screen
+      if (win && !win.isDestroyed()) win.webContents.send(IPC.companionConnected);
+    },
+  );
+  /** one place where an ASR event reaches the overlay AND the phones */
+  const publishAsr = (ev: AsrEvent): void => {
+    win?.webContents.send(IPC.asrEvent, ev);
+    companion.publishAsr(ev);
+  };
+  const publishLlm = (ev: LlmEvent): void => {
+    win?.webContents.send(IPC.llmEvent, ev);
+    companion.publishLlm(ev);
+  };
   /** upgrade P1.5: optional napi-rs loopback — absent artifact = graceful
    * fallback to the renderer Web Audio path (settings.audio.captureBackend) */
   const nativeAudio = new NativeAudioCapture({
@@ -257,7 +342,7 @@ function bootstrap(): void {
         const message = T().sidecarFail((e as Error).message);
         console.error(`[sidecar] ${message}`);
         recordDiagnosticError('sidecar', (e as Error).message);
-        win?.webContents.send(IPC.asrEvent, { kind: 'error', message, fatal: true });
+        publishAsr({ kind: 'error', message, fatal: true });
         return;
       }
     } else {
@@ -432,8 +517,28 @@ function bootstrap(): void {
         if (!ok) console.warn(`[main] hotkey ${toggle} registration failed (in use?)`);
       }
       if (shot) {
-        const ok = globalShortcut.register(shot, () => win?.webContents.send(IPC.shotHotkey));
+        // 截屏问答热键 = 整屏抓取 → 题库 → AI → 网络. It used to hand off to the
+        // renderer's drag-a-region flow, which needs you to look at this screen
+        // and answers through the vision model only — useless when the display is
+        // a phone and wasteful even when it is not, since the local bank is both
+        // faster and the source of truth. The 📷 button still does the region
+        // flow for anyone who wants to crop first.
+        // Before startMainApp exists there is no pipeline to call, so the old
+        // renderer-routed flow remains the fallback rather than a dead key.
+        const ok = globalShortcut.register(shot, () => {
+          if (screenShotAsk) void screenShotAsk();
+          else win?.webContents.send(IPC.shotHotkey);
+        });
         if (!ok) console.warn(`[main] shot hotkey ${shot} registration failed (in use?)`);
+      }
+      // Dual-screen has no reachable ⚡答 button (the window is hidden), so the
+      // one thing you still need — "answer what they just said" — gets a key.
+      const answerKey = settings.data.ui.hotkeyAnswer;
+      if (answerKey) {
+        const ok = globalShortcut.register(answerKey, () => {
+          if (win && !win.isDestroyed()) win.webContents.send(IPC.answerHotkey);
+        });
+        if (!ok) console.warn(`[main] answer hotkey ${answerKey} registration failed (in use?)`);
       }
       // 做题模式: one hotkey raises the small window, one captures + answers.
       // The ask hotkey opens the window first so a cold press still works.
@@ -445,6 +550,13 @@ function bootstrap(): void {
       const examAskKey = settings.data.exam?.hotkeyAsk;
       if (examAskKey) {
         const ok = globalShortcut.register(examAskKey, () => {
+          // Phone-only mode: nothing appears on this screen, so a press works
+          // even when the PC is face-down and the display is the phone.
+          const c = settings.data.companion;
+          if (c?.enabled && c.hotkeyToPhone && screenShotAsk) {
+            void screenShotAsk();
+            return;
+          }
           const w = openExamWindow();
           w.webContents.send(IPC.examShot);
         });
@@ -482,8 +594,8 @@ function bootstrap(): void {
 
     win.webContents.on('did-finish-load', () => {
       // replay cached ASR state for late-attaching renderer
-      if (asr.lastReady) win?.webContents.send(IPC.asrEvent, asr.lastReady);
-      if (asr.lastStatus) win?.webContents.send(IPC.asrEvent, asr.lastStatus);
+      if (asr.lastReady) publishAsr(asr.lastReady);
+      if (asr.lastStatus) publishAsr(asr.lastStatus);
       if (process.env.MC_AUTOSTART === '1') {
         // executeJavaScript(code, true) supplies the user gesture that
         // getDisplayMedia needs — used by the E2E smoke test.
@@ -563,8 +675,49 @@ function bootstrap(): void {
             );
             await wait(600);
             await shoot('main-settings-advanced');
+            // the knowledge panel carries the pre-chunked knowledge-base row
+            await win?.webContents.executeJavaScript(
+              'window.__mcOpenKnowledge && window.__mcOpenKnowledge()',
+              true,
+            );
+            await wait(1200);
+            await shoot('main-knowledge');
           } catch (e) {
             console.warn('[main] screenshot failed:', (e as Error).message);
+          }
+        })();
+      }
+      /**
+       * Visual QA of the 双屏 connect window (same spirit as MC_MAIN_SHOT for
+       * the settings panel): raise it, let the QR paint, write a PNG. Reviewing
+       * a layout requires seeing it, and a boolean assertion cannot tell you the
+       * pairing code is clipped.
+       *
+       * Content protection is lifted for the capture only — capturePage() on a
+       * protected window returns a black rectangle by design, which would make
+       * the whole exercise useless.
+       */
+      if (process.env.MC_CONNECT_SHOT) {
+        const dir = process.env.MC_CONNECT_SHOT;
+        const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+        void (async () => {
+          try {
+            const { win: w } = showConnectWindow(connectWin);
+            connectWin = w;
+            w.setContentProtection(false);
+            await new Promise<void>((r) => {
+              w.webContents.once('did-finish-load', () => r());
+              setTimeout(r, 8000).unref();
+            });
+            await wait(1500); // let the QR and the polled state arrive
+            const image = await w.webContents.capturePage();
+            mkdirSync(dir, { recursive: true });
+            const file = join(dir, 'connect.png');
+            writeFileSync(file, image.toPNG());
+            console.log(`[connect] screenshot ${file}`);
+            w.setContentProtection(true);
+          } catch (e) {
+            console.warn('[connect] screenshot failed:', (e as Error).message);
           }
         })();
       }
@@ -706,12 +859,28 @@ function bootstrap(): void {
       getSettings: () => ({
         enabled: settings.data.rag?.enabled !== false,
         model: settings.data.rag?.model ?? 'bge-m3',
-        topK: settings.data.rag?.topK ?? 3,
+        topK: settings.data.rag?.topK ?? 5,
         minScore: settings.data.rag?.minScore ?? 0.2,
         remoteHost: settings.data.rag?.remoteHost ?? 'https://hf-mirror.com',
+        kbIndex: settings.data.rag?.kbIndex ?? '',
       }),
       onStatusChange: () => win?.webContents.send(IPC.ragStatusPush, rag.status()),
     });
+    // Bind the pre-chunked knowledge base at boot rather than lazily on the
+    // first question: it costs ~100 ms of tokenising a few hundred blocks, and
+    // in exchange the settings row can state "569 块 / 69 篇" immediately and a
+    // wrong or moved path is reported now instead of mid-interview.
+    {
+      const kbPath = (settings.data.rag?.kbIndex ?? '').trim();
+      if (kbPath) {
+        const r = rag.bindKb(kbPath);
+        console.log(
+          r.ok
+            ? `[rag] KB bound at boot: ${r.chunks} chunks / ${r.docs} docs / ${r.aliases} aliases`
+            : `[rag] KB at "${kbPath}" unavailable: ${r.error}`,
+        );
+      }
+    }
     // upgrade P3: skills — builtin (resources/skills) + user (userData/skills);
     // the resources root trick mirrors tray icons (repo root in dev)
     skills = new SkillsManager();
@@ -830,8 +999,19 @@ function bootstrap(): void {
     // cloud engines can't race the subscription (stuck "模型加载中" bug)
     ipcMain.handle(IPC.asrReplay, () => ({ ready: asr.lastReady, status: asr.lastStatus }));
     ipcMain.handle(IPC.settingsSet, (_e, patch: SettingsPatch) => {
+      // captured before applyPatch so the transition can be detected
+      const companionWas = !!settings.data.companion?.enabled;
       settings.applyPatch(patch);
-      if (patch.ui?.hotkeyToggle !== undefined || patch.ui?.hotkeyShot !== undefined) {
+      if (patch.companion?.enabled !== undefined) {
+        syncConnectWindow(companionWas, !!patch.companion.enabled);
+      }
+      if (
+        patch.ui?.hotkeyToggle !== undefined ||
+        patch.ui?.hotkeyShot !== undefined ||
+        patch.ui?.hotkeyAnswer !== undefined ||
+        patch.exam?.hotkeyOpen !== undefined ||
+        patch.exam?.hotkeyAsk !== undefined
+      ) {
         registerHotkeys();
       }
       if (patch.ui?.stealth !== undefined) {
@@ -840,6 +1020,10 @@ function bootstrap(): void {
       // the tray menu is a snapshot: rebuild it in the newly chosen language
       if (patch.ui?.lang !== undefined) refreshTray();
       if (patch.ui?.autoLaunch !== undefined) applyAutoLaunch(patch.ui.autoLaunch);
+      // turning the bridge on/off, or changing its port or TLS mode, rebinds it.
+      // Not awaited: a phone toggle must never delay the settings round-trip,
+      // and a port collision surfaces as state().error rather than a throw.
+      if (patch.companion) void companion.apply();
       // backend/cloud change => rebuild the ASR worker with the new engine.
       // language alone can hot-update without a restart.
       if (
@@ -1196,6 +1380,37 @@ function bootstrap(): void {
       console.log(`[rag] reindex finished: ${r.records} records, failed=${r.failed}`);
       return rag.status();
     });
+    /**
+     * Bind a pre-chunked knowledge base. The dialog returns a folder; loading is
+     * attempted immediately so the UI can report "569 块 / 69 篇" or the reason
+     * it failed, rather than the user finding out mid-interview that nothing was
+     * ever read. A cancel returns null and leaves the binding untouched.
+     */
+    ipcMain.handle(IPC.ragBindKb, async (): Promise<ReturnType<typeof rag.status> | null> => {
+      const r = await dialog.showOpenDialog({
+        title: T().kbBindTitle,
+        properties: ['openDirectory'],
+      });
+      if (r.canceled || !r.filePaths[0]) return null;
+      const dir = r.filePaths[0];
+      const res = rag.bindKb(dir);
+      if (res.ok) {
+        settings.applyPatch({ rag: { kbIndex: dir } });
+        console.log(`[rag] KB bound: ${dir} (${res.chunks} chunks / ${res.docs} docs / ${res.aliases} aliases)`);
+      } else {
+        console.warn(`[rag] KB bind failed: ${res.error}`);
+      }
+      // the status carries res.error through kb.error, so the panel can show
+      // the failure next to the path instead of reverting silently
+      const st = rag.status();
+      return res.ok ? st : { ...st, kb: { ...st.kb, configured: dir, loaded: false, error: res.error } };
+    });
+    ipcMain.handle(IPC.ragUnbindKb, () => {
+      rag.unbindKb();
+      settings.applyPatch({ rag: { kbIndex: '' } });
+      console.log('[rag] KB unbound');
+      return rag.status();
+    });
     // the pairs a direct hit can serve — read from the live index, no embedding
     ipcMain.handle(IPC.ragQaList, (_e, p: { sessionId?: string } = {}) =>
       rag.listQa(p?.sessionId),
@@ -1227,6 +1442,10 @@ function bootstrap(): void {
 
     const examSend = (ev: ExamEvent): void => {
       if (examWin && !examWin.isDestroyed()) examWin.webContents.send(IPC.examEvent, ev);
+      // The phones are a second audience for the same event, not a second
+      // pipeline: the exam window may be closed, hidden or stealth and the
+      // companion still gets everything.
+      companion.publishExam(ev);
     };
 
     const examStatusView = (): ExamStatusView => ({
@@ -1269,15 +1488,16 @@ function bootstrap(): void {
     const examScreenReadable = (): { why?: string } => {
       const ocrWanted = settings.data.vision.ocrPrefilter && settings.data.exam?.preferOcr !== false;
       if (ocrWanted && isOcrConfigured()) return {};
-      const visionReady = !!(
-        settings.data.vision.baseUrl &&
-        settings.data.vision.model &&
-        settings.getVisionApiKey()
-      );
-      if (visionReady) return {};
+      if (settings.getVisionConfig()) return {};
+      const l = settings.data.llm;
+      // Name the actual gap. Vision now inherits the text provider, so the
+      // common cause is not "no vision key" but "the text provider has no
+      // vision preset in the catalog" — a different fix, and the user should
+      // not go looking for a field that is already filled.
       return {
-        why:
-          '无法读屏：未配置视觉模型（设置 → 视觉），且本地 OCR 不可用（需 `npm i tesseract.js` 并在设置里开启截图 OCR 前置）。也可以直接把题干粘贴到下方输入框作答。',
+        why: !l.baseUrl || !settings.getLlmApiKey()
+          ? '无法读屏：还没有任何模型服务可用。请先在设置（或首次向导）里配好文本大模型的 Base URL 与 API Key。'
+          : `无法读屏：文本服务商 ${l.baseUrl} 没有可用的视觉模型。请在 设置 → 视觉模型 里填一个支持图片的模型（DeepSeek 可选 deepseek-v4.1-flash），或装本地 OCR：npm i tesseract.js 后开启「截图 OCR 前置」。也可以直接把题干粘贴到输入框作答。`,
       };
     };
 
@@ -1285,26 +1505,41 @@ function bootstrap(): void {
     const readScreen = async (
       imageDataUrl: string,
       ac: AbortController,
-    ): Promise<{ text: string; via: 'ocr' | 'vision' } | null> => {
-      if (settings.data.vision.ocrPrefilter && settings.data.exam?.preferOcr !== false) {
+      wholeScreen = false,
+    ): Promise<{ text: string; via: 'ocr' | 'vision'; ambiguous?: string } | null> => {
+      if (!wholeScreen && settings.data.vision.ocrPrefilter && settings.data.exam?.preferOcr !== false) {
+        // OCR of a whole desktop reads every window on it, so it is only used
+        // for the cropped region where "all the text here" really is the stem.
         const ocr = await ocrDataUrl(imageDataUrl);
         if (ocr.ok && decideRoute(ocr.text) === 'text') return { text: ocr.text, via: 'ocr' };
       }
-      const vBaseUrl = settings.data.vision.baseUrl;
-      const vModel = settings.data.vision.model;
-      const vKey = settings.getVisionApiKey();
-      if (!vBaseUrl || !vModel || !vKey) return null;
+      const vision = settings.getVisionConfig();
+      if (!vision) return null;
       const text = await visionChat(
-        { baseUrl: vBaseUrl, model: vModel, apiKey: vKey, proxyUrl: settings.data.vision.proxyUrl },
-        withScreenImage(buildTranscribeMessages(), imageDataUrl),
+        { baseUrl: vision.baseUrl, model: vision.model, apiKey: vision.apiKey, proxyUrl: vision.proxyUrl },
+        withScreenImage(buildTranscribeMessages(wholeScreen), imageDataUrl),
         ac.signal,
       );
-      const clean = text.trim();
+      let clean = text.trim();
       if (!clean || /NO_QUESTION/.test(clean)) return null;
-      return { text: clean, via: 'vision' };
+      // The reader was told to flag a second plausible question instead of
+      // silently merging or guessing. Surfacing it is the difference between a
+      // wrong answer with confidence and a wrong answer the user can catch.
+      const am = clean.match(/^AMBIGUOUS:\s*(.+)$/m);
+      const ambiguous = am?.[1]?.trim();
+      if (am) clean = clean.replace(am[0], '').trim();
+      return { text: clean, via: 'vision', ...(ambiguous ? { ambiguous } : {}) };
     };
 
-    ipcMain.on(IPC.examAsk, async (_e, payload: ExamAskPayload) => {
+    /**
+     * The whole 做题 answer pipeline: screen → read → bank → model → web.
+     * Named (rather than inline in the IPC handler) because the companion
+     * bridge drives the exact same pipeline headlessly — a phone-only press of
+     * the ask hotkey must produce the identical answer, and a copy of this body
+     * would be a second set of gates to drift. Every result leaves through
+     * `examSend`, which already fans out to the window and to the phones.
+     */
+    const runExamAsk = async (payload: ExamAskPayload): Promise<void> => {
       const t0 = Date.now();
       const sendErr = (message: string): void =>
         examSend({ requestId: payload.requestId, kind: 'error', message });
@@ -1314,10 +1549,14 @@ function bootstrap(): void {
       try {
         // 1. the question as text
         let question = (payload.question ?? '').trim();
+        let readVia: 'ocr' | 'vision' = 'vision';
         if (!question && payload.imageDataUrl) {
           examSend({ requestId: payload.requestId, kind: 'stage', stage: 'reading' });
           const canRead = examScreenReadable();
-          const read = canRead.why === undefined ? await readScreen(payload.imageDataUrl, ac) : null;
+          const read =
+            canRead.why === undefined
+              ? await readScreen(payload.imageDataUrl, ac, !!payload.wholeScreen)
+              : null;
           if (!read) {
             // two different failures, and the user needs to know which one: no
             // OCR/vision configured at all (a setup gap they can fix), versus a
@@ -1327,13 +1566,26 @@ function bootstrap(): void {
             return;
           }
           question = read.text;
+          readVia = read.via;
           ms.read = Date.now() - t0;
+          if (read.ambiguous) {
+            examSend({
+              requestId: payload.requestId,
+              kind: 'note',
+              text: `屏幕上还有另一道题像是候选：${read.ambiguous}。我按上面这道作答，答错了请重新框选那一道。`,
+            });
+          }
         }
         if (!question) {
-          sendErr('没有题目：请框选题目区域后再试');
+          sendErr(payload.wholeScreen ? '整屏里没有找到题目，请改用框选（Ctrl+Alt+S）' : '没有题目：请框选题目区域后再试');
           return;
         }
-        examSend({ requestId: payload.requestId, kind: 'question', text: question, via: payload.question ? 'typed' : 'vision' });
+        examSend({
+          requestId: payload.requestId,
+          kind: 'question',
+          text: question,
+          via: payload.question ? 'typed' : readVia,
+        });
 
         // 2. look it up in the bound banks
         examSend({ requestId: payload.requestId, kind: 'stage', stage: 'searching' });
@@ -1447,7 +1699,12 @@ function bootstrap(): void {
           webLines,
         });
         const tAnswer = Date.now();
-        const r = await chatStream(llmCfg, messages, { onDelta: () => {} }, ac.signal);
+        // Stream the model's tokens instead of swallowing them: the exam window
+        // already renders `delta` (it was built for this), the phone needs it
+        // even more, and `done` below stays authoritative — its text replaces
+        // whatever was streamed, so a missed or duplicated delta cannot corrupt
+        // the answer that gets persisted.
+        const r = await chatStream(llmCfg, messages, { onDelta: (t) => examSend({ requestId: payload.requestId, kind: 'delta', text: t }) }, ac.signal);
         ms.model = Date.now() - tAnswer;
         ms.total = Date.now() - t0;
         const text = r.text.trim();
@@ -1466,12 +1723,91 @@ function bootstrap(): void {
       } finally {
         examControllers.delete(payload.requestId);
       }
-    });
+    };
+    ipcMain.on(IPC.examAsk, (_e, payload: ExamAskPayload) => void runExamAsk(payload));
 
     ipcMain.on(IPC.examCancel, (_e, requestId: string) => {
       examControllers.get(String(requestId))?.abort();
       examControllers.delete(String(requestId));
     });
+
+    // ---- LAN companion (手机显示) ----
+    screenShotAsk = async (): Promise<{ ok: boolean; ms: number; seq: number }> => {
+      const t0 = Date.now();
+      const cap = await companion.captureAndPush();
+      if (!cap.ok) {
+        // Desktop Duplication produces no frames while the session is locked or
+        // an RDP client is disconnected — say so rather than silently nothing.
+        console.warn('[shot] 截图为空（桌面可能已锁定或会话已断开）');
+        return { ok: false, ms: Date.now() - t0, seq: 0 };
+      }
+      const c = settings.data.companion;
+      if (!(c?.enabled && c.hotkeyToPhone)) openExamWindow();
+      void runExamAsk({
+        requestId: `c${Date.now().toString(36)}`,
+        subMode: settings.getPublic().exam.subMode,
+        imageDataUrl: cap.imageDataUrl,
+        // nothing was cropped, so the reader has to locate the question first
+        wholeScreen: true,
+      });
+      console.log(`[shot] 整屏 seq=${cap.seq} 抓屏=${cap.ms}ms → 已送题库/模型`);
+      return { ok: true, ms: cap.ms, seq: cap.seq };
+    };
+
+    ipcMain.handle(IPC.companionState, () => companion.state());
+    ipcMain.handle(IPC.companionApply, async (): Promise<CompanionState> => {
+      await companion.apply();
+      return companion.state();
+    });
+    ipcMain.handle(IPC.companionPair, async (): Promise<CompanionState> => {
+      companion.startPairing();
+      return companion.state();
+    });
+    ipcMain.handle(IPC.companionRevoke, async (_e, name: string): Promise<CompanionState> => {
+      companion.revoke(String(name ?? ''));
+      return companion.state();
+    });
+    ipcMain.handle(IPC.companionQr, () => companion.qrSvg());
+    ipcMain.handle(IPC.companionShot, () => screenShotAsk?.() ?? Promise.resolve({ ok: false, ms: 0, seq: 0 }));
+    /**
+     * Narrow write channel for the connect window: it may only touch the
+     * companion section. Handing it settings:set would let that window rewrite
+     * API keys and restart the ASR engine.
+     */
+    ipcMain.handle(IPC.companionPatch, async (_e, patch: SettingsPatch['companion']) => {
+      const was = !!settings.data.companion?.enabled;
+      if (patch && typeof patch === 'object') settings.applyPatch({ companion: patch });
+      await companion.apply();
+      if (patch?.enabled !== undefined) syncConnectWindow(was, !!patch.enabled);
+      return companion.state();
+    });
+    /**
+     * Entering 双屏 raises the QR window; leaving it takes the window down with
+     * the mode. Declared as a hoisted function because the settings handler
+     * above is registered earlier in this scope than this block.
+     */
+    function syncConnectWindow(was: boolean, next: boolean): void {
+      if (was === next) return;
+      if (next) {
+        const { win: w } = showConnectWindow(connectWin);
+        connectWin = w;
+      } else if (connectWin && !connectWin.isDestroyed()) {
+        connectWin.hide();
+      }
+    }
+
+    ipcMain.handle(IPC.connectOpen, async () => {
+      const { win: w } = showConnectWindow(connectWin);
+      connectWin = w;
+      return companion.state();
+    });
+    ipcMain.on(IPC.connectClose, () => {
+      if (connectWin && !connectWin.isDestroyed()) connectWin.hide();
+    });
+    // Bind the port only once the main app exists: before that there is nothing
+    // worth showing, and a bridge listening during the wizard would hold a port
+    // the user has not agreed to yet.
+    void companion.apply();
 
     ipcMain.handle(IPC.examOpen, () => {
       openExamWindow();
@@ -1719,7 +2055,7 @@ function bootstrap(): void {
     });
 
     ipcMain.on(IPC.llmAsk, async (_e, payload: LlmAskPayload) => {
-      const sendEv = (ev: LlmEvent) => win?.webContents.send(IPC.llmEvent, ev);
+      const sendEv = (ev: LlmEvent): void => publishLlm(ev);
       const primary = resolvePrimaryEndpoint();
       // keyless primary is only valid for providers that need no key (Ollama)
       if (!primary.apiKey && settings.data.llm.providerId !== 'ollama') {
@@ -1735,12 +2071,13 @@ function bootstrap(): void {
 
       // "answer with multimodal": route through the vision provider (proxy-aware,
       // non-streaming). Otherwise stream from the text LLM (direct, fastest).
-      const useVision =
-        settings.data.llm.answerWithVision &&
-        payload.mode !== 'translate' &&
-        !!settings.data.vision.baseUrl &&
-        !!settings.data.vision.model &&
-        !!settings.getVisionApiKey();
+      // Resolved once and reused below, so the guard and the request can never
+      // disagree about which vision endpoint was in effect.
+      const visionCfg =
+        settings.data.llm.answerWithVision && payload.mode !== 'translate'
+          ? settings.getVisionConfig()
+          : undefined;
+      const useVision = !!visionCfg;
 
       // upgrade P3: /trigger skills steer free-ask behaviour — resolved before
       // retrieval so the knowledge base sees the real question, not the trigger
@@ -1765,6 +2102,8 @@ function bootstrap(): void {
       // a model download. Free-ask goes through the same routing — that is
       // where a typed prepared question is most likely to hit.
       let ragContext: string[] | undefined;
+      /** recalled blocks with unsettled figures — forces both out loud, never a pick */
+      let ragConflicts: string[] = [];
       let factsHint: string | undefined;
       let qaHit: { question: string; answer: string } | undefined;
       let webLines: string[] | undefined;
@@ -1774,6 +2113,10 @@ function bootstrap(): void {
             ? freeQuestion ?? ''
             : payload.question || payload.recentTranscript.at(-1) || '';
         const r = await rag.retrieve(q, payload.sessionId);
+        // read before the branch chain below: a prepared-answer direct hit skips
+        // the `hits` branch, and a settled-figure warning must not be lost just
+        // because the answer came from a Q&A pair
+        ragConflicts = r.conflicts;
         // upgrade P3: recalled claimed facts keep long sessions self-consistent
         if (r.facts.length) factsHint = formatFactsHint(r.facts.map((f) => f.text));
         const top = r.qa[0];
@@ -1837,6 +2180,7 @@ function bootstrap(): void {
         memo: isTranslate ? undefined : payload.memo,
         notes: isTranslate ? undefined : rag.notes.text,
         ragContext: isTranslate ? undefined : ragContext,
+        ragConflicts: isTranslate ? undefined : ragConflicts,
         qaHit: isTranslate ? undefined : qaHit,
         webLines: isTranslate ? undefined : webLines,
         consistencyHint: isTranslate ? undefined : factsHint,
@@ -1873,10 +2217,10 @@ function bootstrap(): void {
       }> = useVision
         ? visionChat(
             {
-              baseUrl: settings.data.vision.baseUrl!,
-              model: settings.data.vision.model!,
-              apiKey: settings.getVisionApiKey()!,
-              proxyUrl: settings.data.vision.proxyUrl,
+              baseUrl: visionCfg!.baseUrl,
+              model: visionCfg!.model,
+              apiKey: visionCfg!.apiKey,
+              proxyUrl: visionCfg!.proxyUrl,
             },
             messages,
             ac.signal,
@@ -1989,10 +2333,9 @@ function bootstrap(): void {
     ipcMain.on(
       IPC.shotAsk,
       (_e, payload: { requestId: string; question: string; background?: string; imageDataUrl?: string }) => {
-      const sendEv = (ev: LlmEvent) => win?.webContents.send(IPC.llmEvent, ev);
-      const vision = settings.data.vision;
-      const apiKey = settings.getVisionApiKey();
-      if (!vision.baseUrl || !vision.model || !apiKey) {
+      const sendEv = (ev: LlmEvent): void => publishLlm(ev);
+      const vision = settings.getVisionConfig();
+      if (!vision) {
         sendEv({
           requestId: payload.requestId,
           kind: 'error',
@@ -2027,7 +2370,7 @@ function bootstrap(): void {
             }
           }
           return visionChat(
-            { baseUrl: vision.baseUrl!, model: vision.model!, apiKey, proxyUrl: vision.proxyUrl },
+            { baseUrl: vision.baseUrl, model: vision.model, apiKey: vision.apiKey, proxyUrl: vision.proxyUrl },
             buildVisionMessages(payload.question, dataUrl, payload.background || knowledge.text),
             ac.signal,
           );
@@ -2063,13 +2406,13 @@ function bootstrap(): void {
           // engine diagnostics are deliberately English (they end up in logs
           // and in the diagnostics report); the sentence AROUND them is the
           // part the user reads, so it gets localized here
-          win?.webContents.send(IPC.asrEvent, { ...ev, message: T().asrEngineFail(ev.message) });
+          publishAsr({ ...ev, message: T().asrEngineFail(ev.message) });
           return;
         }
       } else if (ev.kind === 'status') {
         console.log(`[asr] status=${ev.state} queued=${ev.queuedSegments}`);
       }
-      win?.webContents.send(IPC.asrEvent, ev);
+      publishAsr(ev);
     });
 
     // First run (or MC_FORCE_ONBOARDING=1 for testing): the wizard owns the
@@ -2095,6 +2438,9 @@ function bootstrap(): void {
     void asr.stop();
     void sidecar.stop();
     nativeAudio.stop();
+    void companion.dispose();
+    destroyConnectWindow(connectWin);
+    connectWin = null;
     void rag?.dispose(); // flush the pending index write, stop the embed worker
   });
 

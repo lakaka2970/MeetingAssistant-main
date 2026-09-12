@@ -237,6 +237,12 @@ export function App() {
     },
     [appendTurn, buildHistory, currentMaterial, maybeTitle],
   );
+  // The global answer hotkey is wired in the deps-free mount effect below, so it
+  // has to reach the freshest askLlm through a ref rather than close over one.
+  const askLlmRef = useRef(askLlm);
+  useEffect(() => {
+    askLlmRef.current = askLlm;
+  }, [askLlm]);
 
   const askShot = useCallback(
     (question: string, imageDataUrl?: string) => {
@@ -385,16 +391,26 @@ export function App() {
     });
 
     const offShot = window.mc.onShotHotkey(() => void doRegionShot());
+    // 双屏: the window is hidden, so the only way to ask about what was just
+    // said is this key. 'continuous' already resolves the other party's latest
+    // line, which is exactly what ⚡答 on a bubble does.
+    const offAnswer = window.mc.onAnswerHotkey(() => askLlmRef.current('continuous'));
+    // A phone connected: hand the display over. Transcription and answering run
+    // in the main process, so hiding this window costs the phone nothing.
+    const offConnected = window.mc.onCompanionConnected(() => window.mc.hide());
 
     window.__mcAutoStart = () => void startCapture();
     // visual-QA hooks (MC_MAIN_SHOT in electron/main.ts): open a panel from the
     // main process so it can be screenshotted
     window.__mcOpenSettings = () => setShowSettings(true);
     window.__mcOpenHelp = () => setShowHelp(true);
+    window.__mcOpenKnowledge = () => setShowKnowledge(true);
     return () => {
       off();
       offLlm();
       offShot();
+      offAnswer();
+      offConnected();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -600,6 +616,57 @@ export function App() {
     const on = await window.mc.setStealth(!settings.ui.stealth);
     setSettings({ ...settings, ui: { ...settings.ui, stealth: on } });
   }, [settings]);
+
+  /**
+   * 单屏 ⇄ 双屏. Dual means the phone becomes the display: the LAN bridge
+   * starts, the QR window comes up, and 持续答 switches on — because with the
+   * overlay out of the way the per-line ⚡答 button is unreachable, and a
+   * display that can only show the other party's words is half a feature.
+   * Stealth rides along for the same reason the whole mode exists: nothing on
+   * this screen should end up in a shared capture.
+   */
+  const switchMode = useCallback(
+    async (next: boolean) => {
+      if (!settings) return;
+      if (next === settings.companion.enabled) {
+        // already in it — re-raise the QR rather than appearing to do nothing
+        if (next) void window.mc.openConnect();
+        return;
+      }
+      const updated = await window.mc.setSettings({
+        companion: { enabled: next },
+        ...(next ? { ui: { stealth: true } } : {}),
+      });
+      setSettings(updated);
+      if (next) setContinuous(true);
+    },
+    [settings],
+  );
+
+  const dual = !!settings?.companion?.enabled;
+  /** how many phones are receiving right now — polled only while 双屏 is on */
+  const [cOnline, setCOnline] = useState(0);
+  useEffect(() => {
+    if (!dual) {
+      setCOnline(0);
+      return;
+    }
+    let dead = false;
+    const tick = async (): Promise<void> => {
+      try {
+        const s = await window.mc.companionState();
+        if (!dead) setCOnline(s.devices.filter((d) => d.online).length);
+      } catch {
+        /* main is not answering; the count just stays put */
+      }
+    };
+    void tick();
+    const iv = setInterval(() => void tick(), 3000);
+    return () => {
+      dead = true;
+      clearInterval(iv);
+    };
+  }, [dual]);
 
   const toggleAnswerLang = useCallback(async () => {
     if (!settings) return;
@@ -900,6 +967,24 @@ export function App() {
               ))}
             </select>
           )}
+          {/* 单屏 / 双屏 — the one control that changes what the whole app is
+              for, so it lives in the bar rather than in 设置. The trailing
+              count is how many phones are actually receiving right now. */}
+          <div className="mode-seg" title={t.titlebar.modeTitle}>
+            <button
+              className={dual ? '' : 'on'}
+              onClick={() => void switchMode(false)}
+            >
+              {t.titlebar.modeSingle}
+            </button>
+            <button
+              className={dual ? 'on' : ''}
+              onClick={() => void switchMode(true)}
+            >
+              {t.titlebar.modeDual}
+              {dual && cOnline > 0 ? ` ·${cOnline}` : ''}
+            </button>
+          </div>
           <button
             className={settings?.ui.stealth ? 'btn btn-on' : 'btn'}
             onClick={() => void toggleStealth()}

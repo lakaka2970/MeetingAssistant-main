@@ -6,11 +6,18 @@ export function captureKindForPlatform(platform: string): CaptureKind {
 }
 
 /** Defaults apply only to newly created settings; saved user choices win. */
-export function defaultHotkeysForPlatform(platform: string): { toggle: string; shot: string } {
+export function defaultHotkeysForPlatform(platform: string): {
+  toggle: string;
+  shot: string;
+  /** answer the latest transcript line — the only trigger left when the window is hidden */
+  answer: string;
+} {
   if (platform === 'darwin') {
-    return { toggle: 'Command+B', shot: 'Command+Shift+S' };
+    // Cmd+Alt+A is owned by common Mac tools (clipboard managers, WeChat/QQ's
+    // screenshot grab), so the answer trigger lands on D there; Windows stays on A.
+    return { toggle: 'Command+B', shot: 'Command+Shift+S', answer: 'Command+Alt+D' };
   }
-  return { toggle: 'Control+B', shot: 'Control+Shift+S' };
+  return { toggle: 'Control+B', shot: 'Control+Shift+S', answer: 'Control+Alt+A' };
 }
 
 export function whisperExecutionProvidersForPlatform(

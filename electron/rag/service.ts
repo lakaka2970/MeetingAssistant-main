@@ -24,6 +24,7 @@ import {
 import { CustomNotesManager, MAX_NOTES_CHARS } from '../knowledge/customNotes';
 import { parseQaRecord } from '../../shared/qaPairs';
 import { QA_DIRECT_MIN_COSINE, selectQaHits, type QaHitView } from './qaSelect';
+import { KbRetrieval } from './kbRetrieval';
 
 export { QA_DIRECT_MIN_COSINE, QA_DIRECT_MIN_LEXICAL } from './qaSelect';
 
@@ -33,6 +34,8 @@ export interface RagSettingsView {
   topK: number;
   minScore: number;
   remoteHost: string;
+  /** path to a pre-chunked knowledge base index, '' = none bound */
+  kbIndex?: string;
 }
 
 export interface RagServiceDeps {
@@ -57,7 +60,47 @@ export interface RetrieveResult {
    * (the selection itself lives in ./qaSelect, where it is unit-tested).
    */
   qa: QaHitView[];
+  /**
+   * Retrieved material that carries an unresolved-terms marker (⚠ / 口径冲突 /
+   * 待核). The prompt must then list the competing figures with their sources
+   * instead of reading one of them out as fact — a confidently wrong number is
+   * the one failure an interview copilot cannot afford.
+   */
+  conflicts: string[];
   ms: number;
+}
+
+/**
+ * One retrieved block, from either channel. `ref` is optional because vector
+ * records carry it optionally; the knowledge-base channel always has one.
+ */
+type MergedHitView = { text: string; source: string; ref?: string; score: number };
+
+/**
+ * Reciprocal-rank fusion. Lexical coverage scores (0..1) and cosine
+ * similarities are not on the same scale, so only their ranking positions may
+ * be compared — the same reason the knowledge base's own retriever uses RRF.
+ * Exported so the merge order is unit-testable without an embedder or a store.
+ */
+export function rrfMerge<T>(
+  lists: { items: T[]; key: (t: T) => string }[],
+  limit: number,
+  k = 60,
+): T[] {
+  const score = new Map<string, { item: T; total: number }>();
+  for (const { items, key } of lists) {
+    items.forEach((item, i) => {
+      const id = key(item);
+      const prev = score.get(id);
+      const add = 1 / (k + i + 1);
+      if (prev) prev.total += add;
+      else score.set(id, { item, total: add });
+    });
+  }
+  return [...score.values()]
+    .sort((a, b) => b.total - a.total)
+    .slice(0, limit)
+    .map((v) => v.item);
 }
 
 const INDEX_DIR = 'rag';
@@ -74,6 +117,9 @@ export class RagService {
   private storeLoaded = false;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private lastDownloadPct: number | null = null;
+  /** pre-chunked knowledge base, retrieved lexically (no model needed) */
+  private readonly kb = new KbRetrieval();
+  private kbPathLoaded: string | null = null;
 
   constructor(private readonly deps: RagServiceDeps) {
     this.embedder = new EmbedClient({
@@ -243,23 +289,70 @@ export class RagService {
   // ---- retrieval (L3) ----
 
   /**
+   * (Re)load the pre-chunked knowledge base when the configured path changed.
+   * Cheap by design: a stat, not a re-read, unless the file moved or was
+   * rebuilt.
+   */
+  private ensureKb(): void {
+    const want = (this.deps.getSettings().kbIndex ?? '').trim();
+    if (!want) {
+      if (this.kbPathLoaded !== null) {
+        this.kb.clear();
+        this.kbPathLoaded = null;
+      }
+      return;
+    }
+    if (this.kbPathLoaded === want && !this.kb.needsReload(want)) return;
+    if (this.kb.load(want)) {
+      const s = this.kb.state;
+      console.log(`[rag] KB index: ${s.chunks} chunks / ${s.docs} docs, ${s.aliases} aliases`);
+      this.kbPathLoaded = want;
+    } else {
+      console.warn(`[rag] KB index unavailable: ${this.kb.state.error}`);
+      // remember the attempt so a missing path is not re-resolved per question
+      this.kbPathLoaded = want;
+    }
+  }
+
+  /**
    * Serve a live question. NEVER spawns the worker or waits for a download —
    * a question must not block on a 600 MB model fetch. Warm the service
    * explicitly ({@link ensureReady}, called on capture start / ingest / UI).
    * One query embedding feeds BOTH searches: material hits (for the RAG
    * block) and claimed-fact hits (for the consistency hint, upgrade P3).
+   *
+   * The pre-chunked knowledge base is queried first and is returned even when
+   * the embedder is not ready: it needs no model, so a cold or offline machine
+   * still gets grounded answers instead of silence.
    */
   async retrieve(query: string, sessionId?: string, topK?: number): Promise<RetrieveResult> {
     const t0 = Date.now();
     const q = query.trim();
     const s = this.deps.getSettings();
-    const empty: RetrieveResult = { hits: [], facts: [], qa: [], ms: 0 };
+    const empty: RetrieveResult = { hits: [], facts: [], qa: [], conflicts: [], ms: 0 };
     if (!s.enabled || q.length < MIN_QUERY_CHARS) return { ...empty, ms: 0 };
-    if (this.embedder.state !== 'ready') return { ...empty, ms: Date.now() - t0 };
+    this.ensureKb();
+    // the knowledge base answers even with no embedder ready — it needs no model
+    const kbHits = this.kb.search(q, Math.max(topK ?? s.topK, 5));
+    const kbAsView: MergedHitView[] = kbHits.map((h) => ({
+      text: h.text,
+      source: '知识库',
+      ref: h.ref,
+      score: h.score,
+    }));
+    if (this.embedder.state !== 'ready') {
+      return {
+        hits: kbAsView,
+        facts: [],
+        qa: [],
+        conflicts: kbHits.filter((h) => h.conflicting).map((h) => h.ref),
+        ms: Date.now() - t0,
+      };
+    }
     try {
       const qvec = await this.embedder.embedOne(q, 15_000);
       const store = this.ensureStore();
-      const toView = (h: RagHit) => ({
+      const toView = (h: RagHit): MergedHitView => ({
         text: h.record.text,
         source: h.record.source,
         ref: h.record.ref,
@@ -276,7 +369,7 @@ export class RagService {
           sources: ['qa'],
         }),
       );
-      const hits = store
+      const dense = store
         .search(qvec, {
           topK: topK ?? s.topK,
           minScore: s.minScore,
@@ -284,24 +377,58 @@ export class RagService {
           excludeSources: ['fact', 'qa'],
         })
         .map(toView);
+      const limit = topK ?? s.topK;
+      const hits = rrfMerge<MergedHitView>(
+        [
+          { items: kbAsView, key: (h) => `kb:${h.ref}:${h.text.slice(0, 40)}` },
+          { items: dense, key: (h) => `d:${h.source}:${h.ref}:${h.text.slice(0, 40)}` },
+        ],
+        limit,
+      );
       const facts = store
         .search(qvec, { topK: 4, minScore: Math.max(0.35, s.minScore), sessionId, sources: ['fact'] })
         .map(toView);
-      return { hits, facts, qa, ms: Date.now() - t0 };
+      return {
+        hits,
+        facts,
+        qa,
+        conflicts: kbHits.filter((h) => h.conflicting).map((h) => h.ref),
+        ms: Date.now() - t0,
+      };
     } catch (e) {
       console.warn('[rag] retrieve failed:', (e as Error).message);
-      return { hits: [], facts: [], qa: [], ms: Date.now() - t0 };
+      return {
+        hits: kbAsView,
+        facts: [],
+        qa: [],
+        conflicts: kbHits.filter((h) => h.conflicting).map((h) => h.ref),
+        ms: Date.now() - t0,
+      };
     }
   }
 
   /** renderer search playground: bypasses the min-question-length gate */
   async searchForUi(query: string, sessionId?: string): Promise<RetrieveResult> {
     const t0 = Date.now();
-    if (!(await this.ensureReady())) return { hits: [], facts: [], qa: [], ms: Date.now() - t0 };
+    // The playground must show what a real question would retrieve, so the
+    // model-free knowledge-base channel runs here too even if the embedder
+    // never becomes ready.
+    this.ensureKb();
+    const kbHits = this.kb.search(query, 10);
+    const kbAsView: MergedHitView[] = kbHits.map((h) => ({
+      text: h.text,
+      source: '知识库',
+      ref: h.ref,
+      score: h.score,
+    }));
+    const conflicts = kbHits.filter((h) => h.conflicting).map((h) => h.ref);
+    if (!(await this.ensureReady())) {
+      return { hits: kbAsView, facts: [], qa: [], conflicts, ms: Date.now() - t0 };
+    }
     const qvec = await this.embedder.embedOne(query, 15_000);
     const s = this.deps.getSettings();
     const store = this.ensureStore();
-    const hits = store
+    const dense: MergedHitView[] = store
       .search(qvec, { topK: Math.max(5, s.topK * 2), minScore: 0, sessionId })
       .map((h) => ({
         text: h.record.text,
@@ -309,7 +436,19 @@ export class RagService {
         ref: h.record.ref,
         score: Number(h.score.toFixed(4)),
       }));
-    return { hits, facts: [], qa: [], ms: Date.now() - t0 };
+    return {
+      hits: rrfMerge<MergedHitView>(
+        [
+          { items: kbAsView, key: (h) => `kb:${h.ref}:${h.text.slice(0, 40)}` },
+          { items: dense, key: (h) => `d:${h.source}:${h.ref}:${h.text.slice(0, 40)}` },
+        ],
+        Math.max(5, s.topK * 2),
+      ),
+      facts: [],
+      qa: [],
+      conflicts,
+      ms: Date.now() - t0,
+    };
   }
 
   /**
@@ -431,10 +570,24 @@ export class RagService {
     bySource: Record<string, number>;
     lastError: string;
     downloadPct: number | null;
+    /**
+     * Pre-chunked knowledge base. `configured` is the setting, so the UI can
+     * show the bound path even before anything has been loaded — the index is
+     * read on the first question, not at boot.
+     */
+    kb: {
+      configured: string;
+      loaded: boolean;
+      chunks: number;
+      docs: number;
+      aliases: number;
+      error: string;
+    };
   } {
     const desc = getEmbeddingModel(this.deps.getSettings().model);
     const store = this.storeLoaded && this.store ? this.store : null;
     const chunks = store ? store.size : 0;
+    const kb = this.kb.state;
     return {
       enabled: this.deps.getSettings().enabled,
       state: this.embedder.state,
@@ -448,7 +601,41 @@ export class RagService {
       bySource: store ? store.countsBySource() : {},
       lastError: this.embedder.lastError,
       downloadPct: this.embedder.state === 'loading' ? this.lastDownloadPct : null,
+      kb: {
+        configured: (this.deps.getSettings().kbIndex ?? '').trim(),
+        loaded: kb.loaded,
+        chunks: kb.chunks,
+        docs: kb.docs,
+        aliases: kb.aliases,
+        error: kb.error,
+      },
     };
+  }
+
+  /**
+   * Point the retriever at a pre-chunked knowledge base and report what it
+   * actually read. Loading eagerly here (rather than waiting for the first
+   * question) is the point: the settings row must be able to say "569 块 / 69 篇"
+   * or name the reason it did not, instead of silently doing nothing later.
+   */
+  bindKb(dirOrFile: string): { ok: boolean; error: string; chunks: number; docs: number; aliases: number } {
+    const ok = this.kb.load(dirOrFile);
+    const s = this.kb.state;
+    if (ok) this.kbPathLoaded = dirOrFile;
+    else this.kbPathLoaded = null;
+    return {
+      ok,
+      error: s.error,
+      chunks: s.chunks,
+      docs: s.docs,
+      aliases: s.aliases,
+    };
+  }
+
+  /** forget the knowledge base (settings cleared, index dropped) */
+  unbindKb(): void {
+    this.kb.clear();
+    this.kbPathLoaded = null;
   }
 
   async dispose(): Promise<void> {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type {
   AnswerLang,
   AsrLanguage,
+  CompanionState,
   FontScale,
   ProviderSlot,
   ProviderTestResult,
@@ -174,6 +175,15 @@ export function SettingsPanel({
   const [saving, setSaving] = useState(false);
   /** weak-crypto confirmation is pending; nothing has been sent to main yet */
   const [confirmWeak, setConfirmWeak] = useState(false);
+  // ---- LAN companion (手机显示) ----
+  const [cOn, setCOn] = useState(settings.companion.enabled);
+  const [cHttps, setCHttps] = useState(settings.companion.useHttps);
+  const [cTranscript, setCTranscript] = useState(settings.companion.pushTranscript);
+  const [cAnswers, setCAnswers] = useState(settings.companion.pushExam || settings.companion.pushInterview);
+  const [cShot, setCShot] = useState(settings.companion.pushScreenshot);
+  const [cPhoneOnly, setCPhoneOnly] = useState(settings.companion.hotkeyToPhone);
+  const [cPort, setCPort] = useState(String(settings.companion.port));
+  const [cState, setCState] = useState<CompanionState | null>(null);
 
   const llmKey = useKeySlot();
   const visionKey = useKeySlot();
@@ -210,6 +220,30 @@ export function SettingsPanel({
     void listMics()
       .then(setDevices)
       .catch(() => setDevices([]));
+  }, []);
+
+  /**
+   * The bridge's real state lives in main (bound port, who is connected, wire
+   * latency), so the panel polls it while it is open — the port the user typed
+   * is not necessarily the port that got bound, and a QR must never encode a
+   * port that is not listening.
+   */
+  useEffect(() => {
+    let dead = false;
+    const tick = async (): Promise<void> => {
+      try {
+        const s = await window.mc.companionState();
+        if (!dead) setCState(s);
+      } catch {
+        /* main IPC not up yet */
+      }
+    };
+    void tick();
+    const iv = setInterval(() => void tick(), 1500);
+    return () => {
+      dead = true;
+      clearInterval(iv);
+    };
   }, []);
 
   /**
@@ -386,6 +420,20 @@ export function SettingsPanel({
           providerId: wsProvider,
           maxResults: wsMax,
           ...(wsApiKey !== undefined ? { apiKey: wsApiKey } : {}),
+        },
+        companion: {
+          enabled: cOn,
+          useHttps: cHttps,
+          hotkeyToPhone: cPhoneOnly,
+          // main clamps this into 1..65535, so garbage in the box cannot poison
+          // the bind with NaN
+          port: Number(cPort) || settings.companion.port,
+          pushTranscript: cTranscript,
+          // one checkbox for both answer kinds: on a phone there is no reason
+          // to show the transcript but hide the answer to it
+          pushExam: cAnswers,
+          pushInterview: cAnswers,
+          pushScreenshot: cShot,
         },
       });
       llmKey.reset();
@@ -851,6 +899,103 @@ export function SettingsPanel({
           {deviceOptions}
         </select>
       </div>
+      <div className="settings-section">{t.settings.companionSection}</div>
+      <div className="settings-hint">{t.settings.companionHint}</div>
+      <div className="settings-row">
+        <label>
+          <input type="checkbox" checked={cOn} onChange={(e) => setCOn(e.target.checked)} />{' '}
+          {t.settings.companionEnable}
+        </label>
+      </div>
+      {cOn && (
+        <>
+          <div className="settings-row">
+            <label>
+              <input
+                type="checkbox"
+                checked={cHttps}
+                onChange={(e) => setCHttps(e.target.checked)}
+              />{' '}
+              {t.settings.companionHttps}
+            </label>
+            <span className="settings-inline-hint">{t.settings.companionHttpsHint}</span>
+          </div>
+          <div className="settings-row">
+            <label>
+              <input
+                type="checkbox"
+                checked={cTranscript}
+                onChange={(e) => setCTranscript(e.target.checked)}
+              />{' '}
+              {t.settings.companionPushTranscript}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={cAnswers}
+                onChange={(e) => setCAnswers(e.target.checked)}
+              />{' '}
+              {t.settings.companionPushAnswers}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={cShot}
+                onChange={(e) => setCShot(e.target.checked)}
+              />{' '}
+              {t.settings.companionPushShot}
+            </label>
+            <span className="settings-inline-hint">{t.settings.companionPush}</span>
+          </div>
+          <div className="settings-row">
+            <label>
+              <input
+                type="checkbox"
+                checked={cPhoneOnly}
+                onChange={(e) => setCPhoneOnly(e.target.checked)}
+              />{' '}
+              {t.settings.companionPhoneOnly}
+            </label>
+            <span className="settings-inline-hint">{t.settings.companionPhoneOnlyHint}</span>
+          </div>
+          {cState && !cState.running && (
+            <div className="settings-warn">
+              {t.settings.companionNotRunning}
+              {cState.error ? ` — ${cState.error}` : ''}
+            </div>
+          )}
+          {/* The address, QR, pairing code and device list deliberately do NOT
+              live here. This panel is a scroll pane at the end of the app, and
+              the one thing you must do with that information is point a phone
+              camera at it — so it got its own window, raised by the 双屏 switch
+              in the title bar. A row here only has to get you there. */}
+          <div className="settings-row">
+            <button className="btn btn-sm" onClick={() => void window.mc.openConnect()}>
+              {t.settings.companionOpen}
+            </button>
+            <span className="settings-inline-hint">
+              {cState?.running
+                ? `${cState.url} · ${t.settings.companionDevices} ${
+                    cState.devices.filter((d) => d.online).length
+                  }/${cState.devices.length}`
+                : t.settings.companionOpenHint}
+            </span>
+          </div>
+          <div className="settings-row">
+            <label>{t.settings.companionPort}</label>
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              style={{ width: 90 }}
+              value={cPort}
+              onChange={(e) => setCPort(e.target.value)}
+            />
+            <span className="settings-inline-hint">{t.settings.companionPortHint}</span>
+          </div>
+        </>
+      )}
+
       <div className="settings-hint">{t.settings.otherHint}</div>
 
       {onOpenHelp && (

@@ -68,6 +68,8 @@ export default defineConfig({
           setup: resolve(__dirname, 'electron/setupPreload.ts'),
           // the exam window's bridge shares no runtime module with the others
           exam: resolve(__dirname, 'electron/examPreload.ts'),
+          // nor does the dual-screen connect window's
+          connect: resolve(__dirname, 'electron/connectPreload.ts'),
         },
       },
     },
@@ -83,6 +85,7 @@ export default defineConfig({
           index: resolve(__dirname, 'src/index.html'),
           setup: resolve(__dirname, 'src/setup.html'),
           exam: resolve(__dirname, 'src/exam.html'),
+          connect: resolve(__dirname, 'src/connect.html'),
         },
       },
     },

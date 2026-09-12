@@ -60,8 +60,23 @@ describe('providerCatalog', () => {
   it('recommends exactly one preset per onboarding capability', () => {
     const recommendedText = presetsForCapability('text-llm').filter((p) => p.recommended);
     const recommendedAsr = presetsForCapability('asr-realtime').filter((p) => p.recommended);
-    expect(recommendedText.map((p) => p.id)).toEqual(['deepseek.text.fast']);
+    // v4.1-flash is the recommended default because it also reads images; the
+    // invariant that matters is "exactly one", not which one.
+    expect(recommendedText.map((p) => p.id)).toEqual(['deepseek.text.v41flash']);
     expect(recommendedAsr.map((p) => p.id)).toEqual(['aliyun.cn.asr.fun-realtime']);
+  });
+
+  it('declares at most one vision-capable text preset per provider+model pair', () => {
+    // getVisionConfig() reuses the text model wholesale when its preset says it
+    // can take images, so a duplicate (baseUrl, model) marked visionCapable
+    // would make that lookup order-dependent.
+    const seen = new Set<string>();
+    for (const p of presetsForCapability('text-llm').filter((x) => x.visionCapable)) {
+      const key = `${p.baseUrl}|${p.model}`;
+      expect(seen.has(key), key).toBe(false);
+      seen.add(key);
+    }
+    expect([...seen]).toContain('https://api.deepseek.com/v1|deepseek-v4.1-flash');
   });
 
   it('gives recommended presets real help links and tutorial steps', () => {

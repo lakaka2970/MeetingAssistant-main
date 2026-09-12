@@ -75,6 +75,16 @@ extraResources:
     to: resources/tray
     filter:
       - '*.png'
+  # The mobile display page (electron/companion/server.ts). It is served to a
+  # phone's browser as plain files, so it must live on a real filesystem path
+  # like the python sidecars -- and it must NOT go through the renderer's vite
+  # build, which would bundle it into app.asar where the HTTP route cannot read
+  # it by path.
+  - from: resources/companion
+    to: resources/companion
+    filter:
+      - '*.html'
+      - '*.js'
   # Builtin skill directives (electron/skills/manager.ts, upgrade P3): loaded
   # from getResourceRoot() + 'resources/skills' on both dev and packaged runs.
   - from: resources/skills

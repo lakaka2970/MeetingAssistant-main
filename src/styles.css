@@ -237,6 +237,40 @@ body {
   font-size: 11px;
 }
 
+/* 单屏 / 双屏 — a real segmented control, not two buttons, because the two
+   states are mutually exclusive and only one of them can ever be current. Read
+   as a mode, it has to look like one. */
+.mode-seg {
+  display: inline-flex;
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.mode-seg button {
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.mode-seg button + button {
+  border-left: 1px solid var(--btn-border);
+}
+
+.mode-seg button:hover {
+  background: var(--btn-hover);
+}
+
+.mode-seg button.on {
+  background: var(--accent);
+  color: #fff;
+}
+
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);

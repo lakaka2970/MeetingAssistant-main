@@ -35,7 +35,10 @@ describe('SettingsStore', () => {
   it('boots with defaults when no file exists', () => {
     const s = new SettingsStore(file, fakeCipher);
     expect(s.data).toEqual(defaultSettings());
-    expect(s.data.llm.model).toBe('deepseek-chat');
+    // v4.1-flash is the default because it also reads images, so 截图做题 needs
+    // no second provider. deepseek-chat stays available and is faster on first
+    // token, so the choice is a real trade, not a free upgrade.
+    expect(s.data.llm.model).toBe('deepseek-v4.1-flash');
     expect(s.data.llm.answerLang).toBe('chinese');
     expect(s.data.ui.stealth).toBe(true);
     // v2: a brand new profile has never seen the wizard
@@ -101,6 +104,84 @@ describe('SettingsStore', () => {
     s.applyPatch({ llm: { answerWithVision: true } });
     expect(s.getLlmApiKey()).toBe('sk-keep');
     expect(s.data.llm.answerWithVision).toBe(true);
+  });
+
+  describe('getVisionConfig (inherit the text provider)', () => {
+    it('reuses the text model itself when that preset is declared vision-capable', () => {
+      // The default configuration: one model, one key, answers and screenshots.
+      // Nothing is looked up in the vision list, so the model name cannot drift
+      // away from what the user actually selected.
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4.1-flash', apiKey: 'sk-one' } });
+      const v = s.getVisionConfig();
+      expect(v!.model).toBe('deepseek-v4.1-flash');
+      expect(v!.apiKey).toBe('sk-one');
+      expect(v!.inherited).toBe(true);
+    });
+
+    it('inherits endpoint and key, taking the model from the catalog vision preset', () => {
+      // This is what unblocks 截图做题: a DeepSeek user configures one key and
+      // gets a working vision endpoint without ever opening 设置 → 视觉模型.
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: 'sk-deep' } });
+      const v = s.getVisionConfig();
+      expect(v).toBeDefined();
+      expect(v!.baseUrl).toBe('https://api.deepseek.com/v1');
+      expect(v!.model).toBe('deepseek-v4.1-flash');
+      expect(v!.apiKey).toBe('sk-deep');
+      expect(v!.inherited).toBe(true);
+    });
+
+    it('explicit vision settings win over the inherited ones', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: 'sk-deep' } });
+      s.applyPatch({ vision: { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4v', apiKey: 'sk-zhipu' } });
+      const v = s.getVisionConfig();
+      expect(v!.model).toBe('glm-4v');
+      expect(v!.apiKey).toBe('sk-zhipu');
+      expect(v!.inherited).toBe(false);
+    });
+
+    it('returns undefined for a provider with no vision preset instead of guessing a model', () => {
+      // Sending an image to a text-only endpoint fails deeper in the stack with
+      // a worse message than being told vision is not configured.
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ llm: { baseUrl: 'http://127.0.0.1:11434/v1', model: 'llama3', apiKey: 'sk-ollama' } });
+      expect(s.getVisionConfig()).toBeUndefined();
+    });
+
+    it('returns undefined when no key exists anywhere', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' } });
+      expect(s.getVisionConfig()).toBeUndefined();
+    });
+
+    it('accepts a key from the environment between the two stored keys', () => {
+      const prev = process.env.MEETINGASSISTANT_VISION_API_KEY;
+      process.env.MEETINGASSISTANT_VISION_API_KEY = 'sk-from-env';
+      try {
+        const s = new SettingsStore(file, fakeCipher);
+        s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' } });
+        expect(s.getVisionConfig()?.apiKey).toBe('sk-from-env');
+      } finally {
+        if (prev === undefined) delete process.env.MEETINGASSISTANT_VISION_API_KEY;
+        else process.env.MEETINGASSISTANT_VISION_API_KEY = prev;
+      }
+    });
+
+    it('the stored vision key beats the environment', () => {
+      const prev = process.env.MEETINGASSISTANT_VISION_API_KEY;
+      process.env.MEETINGASSISTANT_VISION_API_KEY = 'sk-from-env';
+      try {
+        const s = new SettingsStore(file, fakeCipher);
+        s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: 'sk-llm' } });
+        s.applyPatch({ vision: { apiKey: 'sk-own' } });
+        expect(s.getVisionConfig()?.apiKey).toBe('sk-own');
+      } finally {
+        if (prev === undefined) delete process.env.MEETINGASSISTANT_VISION_API_KEY;
+        else process.env.MEETINGASSISTANT_VISION_API_KEY = prev;
+      }
+    });
   });
 
   it('defaults asr backend to local streaming Fun-ASR-Nano', () => {
@@ -239,6 +320,10 @@ const V1_FILE = {
     stealth: false,
     hotkeyToggle: 'Alt+Q',
     hotkeyShot: 'Alt+W',
+    // every hotkey is pinned here on purpose: a field left out of the fixture
+    // would be filled from the *running platform's* defaults, and the
+    // byte-for-byte assertion below would then pass on Windows and fail on macOS
+    hotkeyAnswer: 'Alt+E',
     opacity: 0.8,
     fontScale: 'large',
     theme: 'light',
@@ -263,6 +348,20 @@ describe('migrateSettingsV1ToV2 (pure)', () => {
     // never silently register an existing profile for auto-start.
     expect(v2.ui).toEqual({ ...V1_FILE.ui, autoLaunch: false, trayNoticeShown: false });
     expect(v2.audio).toEqual({ ...V1_FILE.audio, captureBackend: 'webaudio' });
+  });
+
+  it('fills a ui.hotkeyAnswer the file never had, from the running platform', () => {
+    // The dual-screen answer key postdates every existing settings.json, so a
+    // migrated profile must come back with a real binding rather than nothing —
+    // registerHotkeys() would otherwise silently have no key to register.
+    // The key is deleted outright: a JSON file can be missing a field, it can
+    // never hold an explicit `undefined`.
+    const withoutKey = { ...V1_FILE.ui } as Record<string, unknown>;
+    delete withoutKey.hotkeyAnswer;
+    const v2 = migrateSettingsV1ToV2({ ...V1_FILE, ui: withoutKey });
+    expect(v2.ui.hotkeyAnswer).toBeTruthy();
+    // and the keys the user did configure still win over the defaults
+    expect(v2.ui.hotkeyToggle).toBe(V1_FILE.ui.hotkeyToggle);
   });
 
   it('grandfathers existing users past the wizard', () => {

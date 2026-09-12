@@ -51,6 +51,8 @@ export function KnowledgePanel({
   const [skills, setSkills] = useState<SkillView[]>([]);
   const [library, setLibrary] = useState<KnowledgeFilesState>({ files: [], chars: 0 });
   const [importing, setImporting] = useState(false);
+  /** in flight: the folder dialog, the index read, or the unbind */
+  const [bindingKb, setBindingKb] = useState(false);
   const [importNotice, setImportNotice] = useState<string | null>(null);
   /** the prepared Q&A pairs the index detected (what a direct hit can serve) */
   const [qaList, setQaList] = useState<PreparedQaView[]>([]);
@@ -238,6 +240,60 @@ export function KnowledgePanel({
             .join(' · ')}
         </div>
       )}
+
+      {/* ---- pre-chunked knowledge base ---- */}
+      <div className="settings-section">{t.knowledge.kbTitle}</div>
+      <div className="settings-hint">{t.knowledge.kbHint}</div>
+      {/* state first, actions after: the buttons act on the path and the load
+          result printed above them, and reversing that reads as an orphaned
+          control bar */}
+      <div className="settings-inline-hint" style={{ userSelect: 'all' }}>
+        {status?.kb.configured || t.knowledge.kbNone}
+      </div>
+      {status?.kb.loaded ? (
+        <div className="settings-inline-hint">
+          {t.knowledge.kbLoaded(status.kb.chunks, status.kb.docs, status.kb.aliases)}
+        </div>
+      ) : status?.kb.configured ? (
+        <div className="settings-warn">
+          {status.kb.error ? t.knowledge.kbError(status.kb.error) : t.knowledge.kbNotLoaded}
+        </div>
+      ) : null}
+      <div className="settings-actions">
+        <button
+          className="btn btn-primary"
+          disabled={bindingKb}
+          onClick={() => {
+            setBindingKb(true);
+            void window.mc
+              .ragBindKb()
+              .then((s) => {
+                // null = the dialog was cancelled: keep showing the old binding
+                if (s) setStatus(s);
+              })
+              .catch(() => {})
+              .finally(() => setBindingKb(false));
+          }}
+        >
+          {t.knowledge.kbBindBtn}
+        </button>
+        {status?.kb.configured ? (
+          <button
+            className="btn"
+            disabled={bindingKb}
+            onClick={() => {
+              setBindingKb(true);
+              void window.mc
+                .ragUnbindKb()
+                .then(setStatus)
+                .catch(() => {})
+                .finally(() => setBindingKb(false));
+            }}
+          >
+            {t.knowledge.kbUnbindBtn}
+          </button>
+        ) : null}
+      </div>
 
       {/* ---- document library (multi-file import) ---- */}
       <div className="settings-section">{t.knowledge.libraryTitle}</div>

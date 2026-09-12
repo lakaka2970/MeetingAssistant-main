@@ -59,6 +59,9 @@ const zh = {
     hudTitle: '延迟 HUD',
     exam: '做题',
     examTitle: '做题模式：小窗悬浮、对录屏不可见，框选屏幕题目 → 查本机题库 → 命中即答，未命中才交给 AI / 网络',
+    modeTitle: '显示放在哪里：单屏＝这台电脑的悬浮窗；双屏＝手机浏览器显示，电脑后台运行（自动开持续答与隐身）',
+    modeSingle: '单屏',
+    modeDual: '双屏',
     settingsTitle: '设置',
     hideTitle: '隐藏窗口（快捷键再次呼出）',
     quitTitle: '退出',
@@ -165,6 +168,17 @@ const zh = {
     sourceTranscript: '会话转录',
     sourceDoc: '导入文档',
     sourceQa: '准备的答案',
+    // pre-chunked knowledge base (991_index.jsonl)
+    kbTitle: '已分块知识库（直接采用它的分块与元数据）',
+    kbHint:
+      '指向一个已经切好语块的知识库目录（含 991_index.jsonl）。本应用不会重新切分它——按小节切开的块保留了作者的边界，问答表格与公式不会被切散，实测召回准确率明显高于自动滑窗切分。检索走词法通道，不需要下载任何模型。',
+    kbBindBtn: '选择知识库目录',
+    kbUnbindBtn: '取消绑定',
+    kbNone: '未绑定',
+    kbLoaded: (chunks: number, docs: number, aliases: number) =>
+      `已加载 ${chunks} 个语块 / ${docs} 篇 / ${aliases} 组术语别名`,
+    kbNotLoaded: '已绑定路径，但还没读到内容（提问时会再试一次）',
+    kbError: (msg: string) => `读取失败：${msg}`,
     // document library (multi-file import)
     libraryTitle: '文档库（语义召回）',
     libraryHint: '导入多个文件或整个文件夹，回答时按问题语义召回相关片段。支持 .md / .txt / .docx / .pdf / .pptx；旧版 .doc / .ppt 请先转成 .docx / .pptx。',
@@ -470,6 +484,27 @@ const zh = {
     themDevice: '对方音频输入（macOS 需选择 BlackHole 等虚拟设备）',
     micDevice: '麦克风设备',
     deviceDefault: '系统默认',
+    // ---- LAN companion (手机显示) ----
+    companionSection: '手机显示（局域网）',
+    companionHint:
+      '把转写和答案推到同一 Wi-Fi 下的手机浏览器。数据只在本机与手机之间直连，不经过任何服务器；电脑侧窗口可以全程隐身甚至不开。',
+    companionEnable: '开启手机显示',
+    companionPort: '端口',
+    companionHttps: 'HTTPS（自签证书）',
+    companionHttpsHint:
+      '只有 HTTPS 才能开启手机屏幕常亮，并加密局域网这一段。手机首次访问会提示证书不受信任，点「继续前往」即可。',
+    companionPush: '推送内容',
+    companionPushTranscript: '语音转写',
+    companionPushAnswers: '答案',
+    companionPushShot: '截图原图',
+    companionPhoneOnly: '截屏热键只出答案到手机',
+    companionPhoneOnlyHint:
+      '按截屏热键后：拍屏 → 读题 → 先查本机题库 → 答案直接出现在手机上，电脑不弹任何窗口。',
+    companionOpen: '打开连接窗口',
+    companionOpenHint: '二维码、配对码与设备列表都在那个窗口里——手机要拍的是它，不是这一栏',
+    companionPortHint: '被占用时会自动往后找一个可用端口，连接窗口里显示的始终是真实端口',
+    companionNotRunning: '未监听（请先开启并保存）',
+    companionDevices: '已配对设备',
     rerunWizard: '重新运行配置向导',
     rerunWizardHint: '重新打开配置向导；主窗口会保持运行。',
     helpHint: '常见问题、各服务商 Key 教程与排查步骤，全部在本机离线可读。',
@@ -598,6 +633,10 @@ const en: Dict = {
     exam: 'Exam',
     examTitle:
       'Exam mode: a small floating window invisible to screen capture — drag over the question, look it up in your local bank, answer at once; the AI and the web only cover what the bank lacks',
+    modeTitle:
+      'Where the display lives: single = this machine’s overlay; dual = a phone browser shows it and the PC runs in the background (continuous answering and stealth turn on)',
+    modeSingle: 'Single',
+    modeDual: 'Dual',
     settingsTitle: 'Settings',
     hideTitle: 'Hide window (press the hotkey to bring it back)',
     quitTitle: 'Quit',
@@ -705,6 +744,17 @@ const en: Dict = {
     sourceTranscript: 'transcript',
     sourceDoc: 'documents',
     sourceQa: 'prepared answers',
+    // pre-chunked knowledge base (991_index.jsonl)
+    kbTitle: 'Pre-chunked knowledge base (its chunking and metadata are used as-is)',
+    kbHint:
+      'Point it at a folder whose blocks are already cut (containing 991_index.jsonl). Nothing is re-chunked: section-based blocks keep the author’s boundaries, so Q&A tables and formulas are not sliced apart, which measured clearly more accurate than automatic sliding-window chunking. Retrieval is lexical, so no model download is needed.',
+    kbBindBtn: 'Choose knowledge base folder',
+    kbUnbindBtn: 'Unbind',
+    kbNone: 'Not bound',
+    kbLoaded: (chunks: number, docs: number, aliases: number) =>
+      `Loaded ${chunks} blocks / ${docs} documents / ${aliases} term aliases`,
+    kbNotLoaded: 'Path bound but nothing read yet (retried when a question arrives)',
+    kbError: (msg: string) => `Read failed: ${msg}`,
     // document library (multi-file import)
     libraryTitle: 'Document library (semantic recall)',
     libraryHint: 'Import several files or a whole folder; answers recall relevant passages per question. Supports .md / .txt / .docx / .pdf / .pptx; convert legacy .doc / .ppt to .docx / .pptx first.',
@@ -1012,6 +1062,29 @@ const en: Dict = {
     themDevice: 'Other-party audio input (macOS needs a virtual device such as BlackHole)',
     micDevice: 'Microphone device',
     deviceDefault: 'System default',
+    // ---- LAN companion (phone display) ----
+    companionSection: 'Phone display (LAN)',
+    companionHint:
+      'Push the transcript and the answers to a phone browser on the same Wi-Fi. Traffic goes straight between this machine and the phone — no server in between — and the PC window can stay hidden or never open.',
+    companionEnable: 'Show on my phone',
+    companionPort: 'Port',
+    companionHttps: 'HTTPS (self-signed certificate)',
+    companionHttpsHint:
+      'Screen wake lock and an encrypted LAN hop both require HTTPS. The phone warns about the untrusted certificate the first time — choose Continue.',
+    companionPush: 'What to push',
+    companionPushTranscript: 'Transcript',
+    companionPushAnswers: 'Answers',
+    companionPushShot: 'The screenshot itself',
+    companionPhoneOnly: 'Screenshot hotkey answers on the phone only',
+    companionPhoneOnlyHint:
+      'Pressing the screenshot hotkey captures the screen, reads it, checks your local question bank first and puts the answer on the phone — no window opens here.',
+    companionOpen: 'Open the connect window',
+    companionOpenHint:
+      'The QR code, pairing code and device list live in that window — it is the thing a phone camera points at, not this row',
+    companionPortHint:
+      'If the port is taken the bridge walks forward to one that is free; the connect window always shows the port actually bound',
+    companionNotRunning: 'Not listening (enable it and save first)',
+    companionDevices: 'Paired devices',
     rerunWizard: 'Run the setup wizard again',
     rerunWizardHint: 'Reopens the setup wizard; the main window keeps running.',
     helpHint: 'Common problems, per-provider key guides and fixes — all readable offline.',

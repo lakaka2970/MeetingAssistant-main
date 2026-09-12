@@ -73,6 +73,15 @@ export interface ProviderPreset {
   beta?: boolean;
   /** vision providers that need a local proxy by default (Gemini) */
   defaultProxyUrl?: string;
+  /**
+   * This exact model can take image input, so the vision slot may reuse the
+   * text configuration wholesale instead of naming a second model.
+   *
+   * Declared per preset rather than guessed from the model name: "looks like a
+   * vision model" is not a test, and sending an image to a text-only endpoint
+   * fails with a provider error the user cannot act on.
+   */
+  visionCapable?: boolean;
   help: ProviderHelp;
 }
 
@@ -413,12 +422,29 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     capability: 'text-llm',
     nameZh: 'DeepSeek 快速·非思考 (deepseek-chat)',
     nameEn: 'DeepSeek fast · non-thinking (deepseek-chat)',
-    descriptionZh: '首个字最快，适合实时会议问答，默认选择。',
-    descriptionEn: 'Fastest first token; the default for live meeting answers.',
+    descriptionZh: '首个字最快（实测约 0.4s），但不接受图片；回答只靠文本资料。',
+    descriptionEn: 'Fastest first token (measured ~0.4 s), but takes no image input.',
     baseUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-chat',
     region: 'cn',
+    help: deepseekHelp,
+  },
+  {
+    id: 'deepseek.text.v41flash',
+    providerId: 'deepseek',
+    capability: 'text-llm',
+    nameZh: 'DeepSeek v4.1-flash（可读图，默认）',
+    nameEn: 'DeepSeek v4.1-flash (reads images, default)',
+    descriptionZh: '一个模型同时负责回答与看截图，配一个 Key 就够；截图做题直接沿用文本配置。',
+    descriptionEn: 'One model answers and reads screenshots, so a single key covers both; screenshot answering reuses this config.',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-v4.1-flash',
+    region: 'cn',
     recommended: true,
+    // The user asserts this model takes images. If that ever turns out to be
+    // wrong, only the vision path breaks (with a clear provider error) — the
+    // text answer path is unaffected.
+    visionCapable: true,
     help: deepseekHelp,
   },
   {
@@ -584,6 +610,21 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     help: mimoHelp,
   },
   // ---- vision ----
+  {
+    id: 'deepseek.vision',
+    providerId: 'deepseek',
+    capability: 'vision',
+    nameZh: 'DeepSeek 视觉·v4.1-flash',
+    nameEn: 'DeepSeek vision · v4.1-flash',
+    descriptionZh: '与文本同一个 Key、国内直连；截图问答用它就不必再配第二家。',
+    descriptionEn: 'Same key as the text model and reachable directly, so screenshot Q&A needs no second provider.',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-v4.1-flash',
+    region: 'cn',
+    defaultProxyUrl: '',
+    visionCapable: true,
+    help: deepseekHelp,
+  },
   {
     id: 'mimo.vision',
     providerId: 'mimo',

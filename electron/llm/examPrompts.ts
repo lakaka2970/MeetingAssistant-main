@@ -23,13 +23,37 @@ export const MAX_SCREEN_TEXT_CHARS = 6000;
 /**
  * Screen → question text. Exactness matters more than fluency: everything
  * downstream is keyed on this string, so it must not be paraphrased.
+ *
+ * `wholeScreen` is the 整屏 mode (no region was cropped), and it changes the
+ * job: instead of "transcribe what is here" it has to first **decide which
+ * question the user means**. A desktop shows taskbar, browser chrome, chat
+ * windows and often several questions at once, and transcribing the wrong one
+ * produces a confident answer to a question nobody asked — the one outcome this
+ * pipeline must never produce. Hence the explicit locate rules and the
+ * AMBIGUOUS marker rather than a silent guess.
  */
-export function buildTranscribeMessages(): ChatMessage[] {
+export function buildTranscribeMessages(wholeScreen = false): ChatMessage[] {
+  const locating = wholeScreen
+    ? [
+        '这张图是**整个屏幕**，不是题目特写。画面里可能同时出现多道题、无关窗口、聊天内容、任务栏与网页边框。',
+        '先判断用户当前要作答的是哪一道题，只转录那一道。判断依据（按优先级）：',
+        '1) 有光标聚焦、已选中选项或已有作答输入的题；',
+        '2) 位于页面主体作答区、带未作答 A./B./C./D. 选项的题；',
+        '3) 题号最大的那道（说明正做到这里）；',
+        '4) 面积最大、最完整可读的那道。',
+        '必须忽略：任务栏、系统托盘、浏览器地址栏与书签栏、侧边栏、题号列表/答题卡、水印、' +
+          '会议/聊天软件窗口、以及任何其他与本题无关的文字。',
+        '若同时有两道题都像是候选，转录你选定的那道，并在最后单独一行输出 ' +
+          'AMBIGUOUS: <一句话说另一道是什么>，不要合并两道题。',
+        '若题干被滚动截断，只转录可见部分，不要凭常识补全缺失的选项或条件。',
+      ]
+    : [];
   return [
     {
       role: 'system',
       content: [
         '你是题目转录器。把截图里的题目原样转成文字，只输出题目本身。',
+        ...locating,
         '要求：题干一字不改；选项保留原字母与原顺序（A./B./C./D. 各占一行）；',
         '有输入框/代码框时把已填写内容也转出来；不要作答、不要解释、不要重复说明是截图。',
         '若图中没有题目，只输出一行：NO_QUESTION',

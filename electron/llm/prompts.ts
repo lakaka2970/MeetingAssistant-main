@@ -257,6 +257,8 @@ export interface AnswerPromptInput {
   notes?: string;
   /** L3 RAG recall lines, already formatted, most relevant first (upgrade P0) */
   ragContext?: string[];
+  /** recalled blocks whose figures are not settled — see {@link formatRagContext} */
+  ragConflicts?: string[];
   /**
    * Prepared-answer direct hit from the knowledge base. When present the UI has
    * already shown the verbatim answer, so the model's job is enrichment only —
@@ -271,8 +273,17 @@ export interface AnswerPromptInput {
   skillInstruction?: string;
 }
 
-/** format the RAG recall block for the fast context; '' when nothing hit */
-export function formatRagContext(lines: string[]): string {
+/**
+ * Format the RAG recall block for the fast context; '' when nothing hit.
+ *
+ * `conflicts` names the recalled blocks that carry an unresolved-figure marker
+ * (⚠ / 口径 / 待核). This is not decoration: in the interview KB the same metric
+ * legitimately has two numbers in different files, and a retrieval that happens
+ * to return only the stale one would have the candidate read a figure they have
+ * already judged wrong — to an interviewer who has the report in front of them.
+ * Forcing both out loud converts a silent error into a stated uncertainty.
+ */
+export function formatRagContext(lines: string[], conflicts: string[] = []): string {
   const picked: string[] = [];
   let used = 0;
   for (const line of lines) {
@@ -283,7 +294,12 @@ export function formatRagContext(lines: string[]): string {
     used += l.length + 1;
   }
   if (!picked.length) return '';
-  return `【知识库召回】（检索到的相关历史资料，供回答参考）\n${picked.join('\n')}`;
+  const warn = conflicts.length
+    ? `\n【口径未定】以下出处对同一数字/事实存在不一致口径：${conflicts.join('、')}。\n` +
+      '必须把各口径及其出处分别说出、并说明以哪个为准及依据；不得只挑一个念，也不得自行折中或编造第三个数字。' +
+      '若被追问，直接承认存在两个口径并给出核对方式。'
+    : '';
+  return `【知识库召回】（检索到的相关历史资料，供回答参考）\n${picked.join('\n')}${warn}`;
 }
 
 /** Keep the most recent lines within the char budget (oldest dropped first). */
@@ -390,7 +406,7 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
     if (jd) refs.push(`【岗位JD】\n${jd.slice(0, MAX_BACKGROUND_CHARS)}`);
     const notes = (input.notes ?? '').trim();
     if (notes) refs.push(`【个人背景】\n${notes.slice(0, MAX_NOTES_PROMPT_CHARS)}`);
-    const ragBlock = formatRagContext(input.ragContext ?? []);
+    const ragBlock = formatRagContext(input.ragContext ?? [], input.ragConflicts ?? []);
     if (ragBlock) refs.push(ragBlock);
     const webBlock = formatWebBlock(input.webLines ?? []);
     if (webBlock) refs.push(webBlock);

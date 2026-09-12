@@ -3,6 +3,7 @@ import {
   IPC,
   type AppInfo,
   type AsrEvent,
+  type CompanionState,
   type KbSlot,
   type KnowledgeFilesState,
   type KnowledgeImportResult,
@@ -108,6 +109,10 @@ export interface McApi {
   ragSearch(p: { query: string; sessionId?: string }): Promise<{ hits: RagHitView[]; ms: number }>;
   /** re-embed every stored chunk; pass a model to switch first */
   ragReindex(model?: string): Promise<RagStatus>;
+  /** pick a pre-chunked knowledge base folder; null = cancelled (binding kept) */
+  ragBindKb(): Promise<RagStatus | null>;
+  /** forget the knowledge base binding */
+  ragUnbindKb(): Promise<RagStatus>;
   /** the prepared Q&A pairs the knowledge base auto-detected */
   ragQaList(sessionId?: string): Promise<PreparedQaView[]>;
   /** pushed whenever the embed worker state changes */
@@ -123,6 +128,24 @@ export interface McApi {
   onNativeCaptureError(cb: (message: string) => void): () => void;
   /** raise the 做题模式 small window; that window has its own minimal bridge */
   openExam(): Promise<boolean>;
+  // ---- LAN companion (手机显示) ----
+  /** live bridge state: reach URL, bound port, paired devices, lag */
+  companionState(): Promise<CompanionState>;
+  /** rebind after a settings change (port / HTTPS / enabled) */
+  companionApply(): Promise<CompanionState>;
+  /** show a fresh 6-digit pairing code on THIS screen only */
+  companionPair(): Promise<CompanionState>;
+  companionRevoke(name: string): Promise<CompanionState>;
+  /** SVG markup of the reach-URL QR code ('' when the bridge is not running) */
+  companionQr(): Promise<string>;
+  /** capture now, push to the phones and answer with the 做题 pipeline */
+  companionShot(): Promise<{ ok: boolean; ms: number; seq: number }>;
+  /** raise the QR / pairing window (the 双屏 switch calls this on the way in) */
+  openConnect(): Promise<CompanionState>;
+  /** main -> renderer: the answer-latest-line hotkey fired while the window was hidden */
+  onAnswerHotkey(cb: () => void): () => void;
+  /** main -> renderer: a phone authenticated; the overlay hands the display over */
+  onCompanionConnected(cb: () => void): () => void;
   /** 面试模式持续答 gate: answer this transcript line or stay quiet? */
   gate(p: { requestId: string; line: string; recent: string[] }): Promise<LlmGateResult>;
   hide(): void;
@@ -192,6 +215,8 @@ const api: McApi = {
   ragStatus: () => ipcRenderer.invoke(IPC.ragStatus),
   ragSearch: (p) => ipcRenderer.invoke(IPC.ragSearch, p),
   ragReindex: (model) => ipcRenderer.invoke(IPC.ragReindex, { model }),
+  ragBindKb: () => ipcRenderer.invoke(IPC.ragBindKb),
+  ragUnbindKb: () => ipcRenderer.invoke(IPC.ragUnbindKb),
   ragQaList: (sessionId) => ipcRenderer.invoke(IPC.ragQaList, { sessionId }),
   onRagStatus: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, s: RagStatus) => cb(s);
@@ -204,6 +229,23 @@ const api: McApi = {
   nativeCaptureStart: (deviceId) => ipcRenderer.send(IPC.nativeCaptureStart, deviceId),
   nativeCaptureStop: () => ipcRenderer.send(IPC.nativeCaptureStop),
   openExam: () => ipcRenderer.invoke(IPC.examOpen),
+  companionState: () => ipcRenderer.invoke(IPC.companionState),
+  companionApply: () => ipcRenderer.invoke(IPC.companionApply),
+  companionPair: () => ipcRenderer.invoke(IPC.companionPair),
+  companionRevoke: (name) => ipcRenderer.invoke(IPC.companionRevoke, name),
+  companionQr: () => ipcRenderer.invoke(IPC.companionQr),
+  companionShot: () => ipcRenderer.invoke(IPC.companionShot),
+  openConnect: () => ipcRenderer.invoke(IPC.connectOpen),
+  onAnswerHotkey: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on(IPC.answerHotkey, listener);
+    return () => ipcRenderer.removeListener(IPC.answerHotkey, listener);
+  },
+  onCompanionConnected: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on(IPC.companionConnected, listener);
+    return () => ipcRenderer.removeListener(IPC.companionConnected, listener);
+  },
   gate: (p) => ipcRenderer.invoke(IPC.llmGate, p),
   onNativeCaptureError: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, message: string) => cb(message);

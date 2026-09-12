@@ -32,3 +32,6 @@ desktop.ini
 .vscode/
 *.swp
 *.swo
+.workbuddy/
+.qwen/
+.claude/

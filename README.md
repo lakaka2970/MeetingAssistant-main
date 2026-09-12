@@ -22,6 +22,10 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
   - **精度优先的取舍**：只有「原题级命中 + 客观题 + 能锚定到屏幕选项」才会免模型直答；相近题会同时列出来让你确认；库里没有的题一律走 AI（并按需联网），不会硬凑一个答案。成堆下载来的题库必然互相重复：同一道题自动合并（保留解析最全的那份），**不同文件答案互相矛盾的题会被标成“答案不一致”而不是猜一个**；题干只是一句通用指令（如图形推理的「选择最合适的一项填入问号处」）时也不直答——真正的题在图里，文字认不出来。
   - **可以只绑一个总目录**：四个题型都指向同一个 `题库` 根目录也可以（本机是纯字面索引，多出的内容只会让候选变多，不影响命中速度）。代价是别的题型里的长篇资料可能作为「相近题」被列出来让你确认——它们永远不会被当成原题直接作答。
   - **读屏有两条路**：装 `npm i tesseract.js`（约 2MB 语言包，全离线）则截图先在本机识别文字，读不到题再交给视觉模型；没装就需要一个**支持图片的 API Key**（Gemini / 智谱 / Groq / 百炼 / MiMo / Ollama 等）。两者都没有时框选会直接说明缺什么，此时可用「题库自检」右侧的 **作答这题**：把题干粘贴进去，同样走 题库 → AI → 网络 的完整链路。
+- **手机显示（局域网）**：设置里打开 **手机显示** 后，本机变成一个只在局域网里说话的网页服务，**手机浏览器扫码即看**——左边实时转写、上面大字显示当前答案（流式逐字、公式照常排版）。它挂在主进程的事件源上，**不经过界面窗口**，所以电脑这边可以彻底隐身、不开任何窗口，屏幕上没有任何东西会被共享或拍到。同时它也接管「**后台截屏答题**」：按下截屏热键 → 拍屏 → 读题 → **先查本机题库** → 答案直接出现在手机上，全程不用回头看电脑。延迟在这条链路上是显式量：手机上每次 ping/pong 校准两机时钟差后显示真实端到端毫秒数，设置面板显示线路延迟与「因手机跟不上而丢弃」的计数。
+  - 配对走「**6 位配对码 → 长期令牌**」：配对码**只显示在这台电脑上**，绝不回传给发起请求的设备，所以同一局域网里别人无法自助连进来；令牌存在手机本地，之后免配对直连。
+  - 默认 HTTPS（自签证书）：一是加密局域网这一段，二是手机浏览器的 **屏幕常亮 API 只在安全上下文存在**，明文 http 下手机亮到一半就息屏。手机首次访问会提示证书不受信任——**只有报 `ERR_CERT_AUTHORITY_INVALID` 时**才有「高级 → 继续前往」可点；连接窗里备了一颗 **「改用 HTTP」** 按钮，专治那些不提供绕过入口的安卓浏览器（代价是手机不能保持常亮，按钮旁写明了）。也可以下载 `/server.crt` 装进信任列表彻底消除警告。自签证书**挡得住被动嗅探，挡不住主动中间人**，仅限可信局域网。
+  - **Windows 防火墙**：第一次监听端口时系统会弹窗，请允许「专用网络」；拒绝后手机会一直连不上而电脑侧毫无异常。
 - **回答可控**：`答:中 / 答:EN` 切换回答语言；`纯文本 / 多模态` 在文本大模型与视觉模型（可**截图提问**）之间切换。
 - **公式与排版正常显示**：回答里的 `$…$` / `$$…$$` / `\(…\)` / `\[…\]` 由 KaTeX 排版（含 `$ … $` 这种两端带空格的写法），`**加粗**`、`*斜体*`、`` `代码` ``、`### 小标题` 也直接渲染，不再把 markdown 原样吐在屏幕上。
 - **贴合你的阅历**：右栏 **📄简历 / 📋JD** 导入资料（`.md/.txt/.docx/.pdf`），本地解析、本地建立索引，只在提问时作为上下文发给大模型——资料本身不离开你的电脑。不同面试是不同的会话，各自绑定自己的资料与答案库。
@@ -72,6 +76,48 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 详细走查：[QUICK_START.zh-CN.md](docs/user/QUICK_START.zh-CN.md) · 安装说明：[INSTALL_WINDOWS.zh-CN.md](docs/user/INSTALL_WINDOWS.zh-CN.md) · 故障排查：[TROUBLESHOOTING.zh-CN.md](docs/user/TROUBLESHOOTING.zh-CN.md)
 
 macOS 暂无安装包，需从源码运行（系统声音需 BlackHole 虚拟音频设备）：[INSTALL_MACOS.en.md](docs/user/INSTALL_MACOS.en.md)
+
+## 📱 单屏 / 双屏
+
+标题栏有一个分段控件 **单屏｜双屏**，它决定「答案显示在哪里」：
+
+| | 单屏（原有行为） | 双屏 |
+|---|---|---|
+| 显示 | 这台电脑的悬浮窗 | 局域网里的手机浏览器 |
+| 电脑屏幕 | 看得见窗口 | 主窗自动隐藏、强制隐身，共享/录制里什么都拍不到 |
+| 触发 | 点转写气泡上的 ⚡答 | `Ctrl+Shift+S` 整屏截屏答题 · `Ctrl+Alt+A` 答最新一句 · `Ctrl+Alt+S` 框选截屏答题 |
+| 持续答 | 自己开 | 进入双屏时自动打开 |
+
+点 **双屏** 会立刻弹出一个**连接窗口**：大二维码、可复制的地址、6 位配对码、已配对设备与在线状态。手机扫码 → 输配对码 → 连上后这个窗口自己收起、主窗随之隐藏。之后要再看二维码，点标题栏的 **双屏**（已在双屏时再点一次就是重新呼出），或 **设置 → 手机显示 → 打开连接窗口**。
+
+电脑负责听、查本机题库与资料、调 AI；手机只负责给你看。转写与答案都来自主进程的事件源，**不经过界面窗口**，所以窗口隐藏与否不影响手机收到内容。
+
+连接与配对步骤：
+
+1. 手机与电脑连**同一个 Wi-Fi**（手机别开移动数据兜底，否则它会走别的网段）。
+2. 电脑点标题栏 **双屏** —— 连接窗口立刻弹出。
+3. 手机相机扫那个**二维码**（手动输地址也行，形如 `https://192.168.10.23:18765/`）。
+4. 手机上点「请求配对」后，**回到连接窗口看 6 位配对码**（配对码不会显示在手机上），输进手机即可。
+   之后令牌存在手机本地，重开页面直接连。
+5. 手机上点一次 **「常亮」**（浏览器要求必须由你点一下才允许保持亮屏）。
+6. 电脑上点 **▶ 开始**，转写与答案就会持续推送到手机。
+7. 想在**完全不看电脑**的情况下截屏答题：在连接窗口里勾选 **「截屏热键只送手机」**，
+   然后按 `Ctrl+Shift+S`（整屏，默认）或 `Ctrl+Alt+S`（弹小窗拖框选区）——拍屏、读题、
+   **先查本机题库**、答案直接出在手机，电脑这边不弹任何窗口。
+   读题这一步需要**视觉模型**或本地 OCR：两者都没有时，链路会直接告诉你缺哪一个，
+   而不是默默给你一个空答案。用 DeepSeek 的话，视觉模型选 **DeepSeek 视觉·v4.1-flash**
+   即可与文本共用同一个 Key（设置 → 视觉模型）。
+
+**连不上时的排查顺序**：① Windows 第一次监听会弹防火墙提示，必须点「允许」并勾选**专用网络**
+（拒绝之后的表现是手机永远连不上、电脑侧毫无异常）；② 确认手机和电脑在同一网段；
+③ 连接窗如果显示「未监听」，看它旁边给出的原因（多半是端口被占用）；
+④ 手机报证书错误时**分清是哪一种**：`ERR_CERT_AUTHORITY_INVALID` 点「高级 → 继续前往」即可；
+若报的是 `ERR_CERT_INVALID`，那是**硬拦、没有任何绕过入口**，直接点连接窗里的 **「改用 HTTP」**；
+⑤ 若地址是 `http://` 而手机浏览器仍报 `ERR_PROTOCOL_ERROR`，是浏览器把地址自动升级成了 https——
+请完整输入 `http://` 前缀，或关掉浏览器的「始终使用安全连接」。
+
+> 隐私边界：这条链路只在你**主动开启**后才监听端口；数据只在电脑与手机之间直连，不经过任何第三方
+> 服务器；关掉开关即停止监听。默认端口 **18765**。
 
 ## 💻 本地语音识别（可选，免云端）
 
@@ -144,6 +190,7 @@ start.bat          # Windows 一键启动（自动构建），或 npm start
 | `npm run verify` | 类型检查 + 测试 + 构建（提交前推荐） |
 | `npm run dist:win` | 打包 Windows 安装包（NSIS + portable） |
 | `npm run smoke:*` | 各能力冒烟测试（ASR / LLM / RAG / E2E） |
+| `npm run smoke:companion` | 手机显示冒烟：真启动主进程，验证端口监听与页面/脚本/证书/KaTeX 均可取 |
 | `npm run qa:inventory -- <目录>` | 干跑面试知识库：看某目录能被识别出多少条「准备的答案」 |
 | `npm run exam:selftest -- <题库目录> [题目…]` | 干跑做题题库：绑定→配对→检索→给出答案与耗时（不调模型） |
 
@@ -156,9 +203,10 @@ start.bat          # Windows 一键启动（自动构建），或 npm start
 ## 📁 项目结构
 
 ```
-electron/     # 主进程：悬浮窗、隐身、快捷键、设置、IPC、ASR/LLM/RAG 宿主、托盘、做题小窗与题库（electron/exam/）
+electron/     # 主进程：悬浮窗、隐身、快捷键、设置、IPC、ASR/LLM/RAG 宿主、托盘、做题小窗与题库（electron/exam/）、局域网手机显示（electron/companion/）
 src/          # 渲染进程（React）：转录面板、回答会话、知识库、设置、配置向导、做题小窗（src/exam/）
 shared/       # 纯数据模块（渲染/主进程共用）：服务商目录、协议、平台、题库解析与检索、人设引擎、判题门控
+resources/    # 随包发布的只读载荷：Python sidecar 脚本、托盘图标、内置技能、手机显示页（resources/companion/）
 electron/asr/ # 语音识别后端路由（FunASR sidecar / MOSS / 云端 / Whisper）
 electron/llm/ # LLM 适配与路由（流式、多模态、失败回退）
 electron/rag/ # 简历/JD 索引与检索（本地解析，提问时注入上下文）
@@ -208,6 +256,7 @@ by your own BYOK (bring-your-own-key) LLM provider. It is local-first: the defau
 - Knowledge panel: import your resume/JD (`.md/.txt/.docx/.pdf`), parsed and indexed locally, only sent to your LLM as context when asking; each session is one interview with its own material
 - Prepared answers surface first: `问：… 答：…` / `Q: … A: …` / `【问题】…【回答】…` blocks in your documents or notes are auto-detected and indexed by question; on a hit the pane prints your prepared answer verbatim (local, tens of ms) and the AI only enriches it — no network on that path
 - Exam mode (做题模式): a separate small floating window, forcibly invisible to screen capture, for online assessments. Drag over the question on screen → it is read (local OCR first, vision model otherwise) → **your local question bank answers it in ~1 ms, offline**; the LLM only covers what the bank lacks, and the web only on an explicit opt-in. Four sub-modes, each bound to its own folder: aptitude/essay, coding/technical, personality, other. Paired real-exam PDFs (`…-学生版.pdf` + `…-答案版.pdf`, keys like `N.【答案】D。解析：…` or `1~5 BACDB`) are joined by (section, number) and **refuse to pair when the two papers' sections disagree** — a wrong answer with confidence is the one outcome this must never produce; when the OA page shuffles the options, the answer is re-anchored onto the option text and the on-screen letter. Reading the screen needs either `npm i tesseract.js` (offline, tried first) or a vision-capable key; with neither, paste the stem into the bank field and use **Answer this** for the same bank → AI → web chain. Binding one shared parent folder to all four sub-modes is fine — the index is literal, so extra material can only ever surface as a "similar question" to confirm, never as a direct answer.
+- Phone display over the LAN (设置 → 手机显示): the machine becomes a local-only web service and a phone browser shows the live transcript plus the current answer in large type — streamed token by token, maths typeset with KaTeX. The bridge taps the ASR/LLM/exam event sources **inside the main process**, not the UI, so the PC side can stay hidden or never open a window at all: nothing on this screen is in a shared capture. It also carries the headless screen-answer path — with 「截屏热键只出答案到手机」 on, one press of the screenshot hotkey captures the screen, reads it, **checks your local question bank first** and puts the answer on the phone without raising a window. Latency is an explicit quantity here, not a vibe: the phone calibrates the two clocks with ping/pong so the milliseconds it prints are real end-to-end cost, and the settings row shows wire latency plus how many frames were dropped because a phone could not keep up. Pairing is a 6-digit code → long-lived token, where **the code is only ever displayed on this machine** and never sent back to the device that asked, so nothing else on the LAN can pair itself. HTTPS with a self-signed cert is the default — it encrypts the LAN hop *and* is the only context where the browser's screen Wake Lock exists, so the phone does not dim mid-meeting. Self-signed stops passive sniffing, not an active man-in-the-middle: trusted networks only. Off unless you enable it; default port 18765.
 - Two modes stay apart by construction: exam banks and the personality persona live in their own store and never enter the interview RAG index, so civil-service arithmetic cannot start answering interview questions, or the other way round.
 - Continuous answering is now gated: greetings and logistics never cost a model call, only a genuinely ambiguous line gets one tiny classifier request, and any timeout or failure falls back to answering.
 - Web search is the fallback, not the default: only a question the knowledge base cannot answer at all reaches your own search key (Tavily / Brave / SerpAPI, off by default), under a hard 2.5 s deadline, and the answer cites what came back

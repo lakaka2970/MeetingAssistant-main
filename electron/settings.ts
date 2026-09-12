@@ -21,7 +21,7 @@ import type {
   UiLang,
 } from '../shared/protocol';
 import { defaultHotkeysForPlatform } from '../shared/platform';
-import { providerIdForEndpoint } from '../shared/providerCatalog';
+import { presetsForCapability, providerIdForEndpoint } from '../shared/providerCatalog';
 import {
   DEFAULT_SEARCH_MAX_RESULTS,
   DEFAULT_SEARCH_PROVIDER,
@@ -66,10 +66,13 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
     },
     llm: {
       baseUrl: 'https://api.deepseek.com/v1',
-      // 'deepseek-chat' = v4-flash in NON-thinking mode (first token ~0.4 s).
-      // Plain 'deepseek-v4-flash' streams a long reasoning_content chain first
-      // — too slow for a live copilot (measured 2026-07-09).
-      model: 'deepseek-chat',
+      // v4.1-flash reads images too, so 截图做题 needs no second provider.
+      // NOTE: 'deepseek-chat' was the default because plain 'deepseek-v4-flash'
+      // streams a long reasoning chain before the answer (measured 2026-07-09,
+      // first token ~0.4 s for chat). Whether v4.1-flash shares that behaviour
+      // has not been measured here — if live answers feel slow to start, switch
+      // back to deepseek-chat in 设置 and point 视觉模型 at deepseek-v4.1-flash.
+      model: 'deepseek-v4.1-flash',
       answerLang: 'chinese',
       answerWithVision: false,
       // upgrade P1: routing off by default — single provider stays the zero-
@@ -97,6 +100,7 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       stealth: true,
       hotkeyToggle: hotkeys.toggle,
       hotkeyShot: hotkeys.shot,
+      hotkeyAnswer: hotkeys.answer,
       opacity: 0.94,
       // medium = 16px answer body (was 13px) — readable at a glance mid-interview
       fontScale: 'medium',
@@ -116,11 +120,17 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
     rag: {
       enabled: true,
       model: 'bge-m3',
-      topK: 3,
+      // 5, not 3: measured on the interview KB's own question set, topK=3 cannot
+      // even cover the expected files for a cross-document question (a "零拷贝"
+      // ask spans BASE-12 / P19-01 / BASE-16). Retrieval is cheap; a missing
+      // source is not recoverable downstream.
+      topK: 5,
       minScore: 0.2,
       // huggingface.co is unreachable from mainland networks; the mirror is
       // the honest default and can be overridden (or pointed back at HF)
       remoteHost: 'https://hf-mirror.com',
+      // empty = no pre-chunked knowledge base bound
+      kbIndex: '',
     },
     // web search stays OFF: it is the knowledge-base-miss fallback, needs a key
     // the user must supply, and is the one answer path that leaves the machine
@@ -139,6 +149,25 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       hotkeyOpen: platform === 'darwin' ? 'Command+Alt+B' : 'Control+Alt+B',
       hotkeyAsk: platform === 'darwin' ? 'Command+Alt+S' : 'Control+Alt+S',
     },
+    // the audit trail stays off until asked for: it writes sensitive use to disk
+    privacy: {
+      auditEnabled: false,
+      captureReturns: false,
+      maxEntries: 500,
+    },
+    // nothing listens on a LAN port until the user turns this on
+    companion: {
+      enabled: false,
+      port: 18765,
+      pushExam: true,
+      pushInterview: true,
+      pushTranscript: true,
+      pushScreenshot: true,
+      useHttps: true,
+      hotkeyToPhone: false,
+      jpegQuality: 80,
+      maxDim: 1920,
+    },
   };
 }
 
@@ -146,6 +175,16 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
 export function apiKeyHint(plain: string): string | undefined {
   const key = plain.trim();
   return key ? key.slice(-4) : undefined;
+}
+
+/**
+ * Integer bound for a setting the renderer (and therefore a hand-edited
+ * settings.json) can put anything into. NaN/Infinity/absent all land on `def`
+ * rather than poisoning a port or a JPEG quality with NaN.
+ */
+function clampInt(value: number | undefined, min: number, max: number, def: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return def;
+  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 /**
@@ -188,6 +227,8 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
       // binding the user still has (the patch uses null for that instead)
       banks: { ...defaults.exam.banks, ...raw.exam?.banks },
     },
+    privacy: { ...defaults.privacy, ...raw.privacy },
+    companion: { ...defaults.companion, ...raw.companion },
   };
 }
 
@@ -460,6 +501,12 @@ export class SettingsStore {
       if (persona === null) delete this.data.exam.persona;
       else if (persona) this.data.exam.persona = persona;
     }
+    if (patch.privacy) {
+      this.data.privacy = { ...this.data.privacy, ...stripUndefined(patch.privacy) };
+    }
+    if (patch.companion) {
+      this.data.companion = { ...this.data.companion, ...stripUndefined(patch.companion) };
+    }
     this.save();
   }
 
@@ -577,6 +624,9 @@ export class SettingsStore {
       knowledge: { chars: 0 },
       ui: {
         ...d.ui,
+        // optional on disk (files written before the dual-screen answer key
+        // existed) but always a string on the wire
+        hotkeyAnswer: d.ui.hotkeyAnswer ?? defaultHotkeysForPlatform(process.platform).answer,
         lang: d.ui.lang ?? this.fallbackUiLang,
         // both are optional on disk (files written before Phase 4 lack them)
         // but always booleans on the wire, so the UI needs no ?? dance
@@ -592,9 +642,10 @@ export class SettingsStore {
       rag: {
         enabled: d.rag?.enabled !== false,
         model: d.rag?.model ?? 'bge-m3',
-        topK: d.rag?.topK ?? 3,
+        topK: d.rag?.topK ?? 5,
         minScore: d.rag?.minScore ?? 0.2,
         remoteHost: d.rag?.remoteHost ?? 'https://hf-mirror.com',
+        kbIndex: d.rag?.kbIndex ?? '',
       },
       webSearch: {
         enabled: !!d.webSearch?.enabled,
@@ -612,6 +663,25 @@ export class SettingsStore {
         webFallback: !!d.exam?.webFallback,
         hotkeyOpen: d.exam?.hotkeyOpen ?? 'Control+Alt+B',
         hotkeyAsk: d.exam?.hotkeyAsk ?? 'Control+Alt+S',
+      },
+      privacy: {
+        auditEnabled: !!d.privacy?.auditEnabled,
+        captureReturns: !!d.privacy?.captureReturns,
+        maxEntries: d.privacy?.maxEntries ?? 500,
+      },
+      companion: {
+        enabled: !!d.companion?.enabled,
+        // a 0/absent port would make the bind call throw inside the bridge and
+        // the failure surfaces as "not running" with nothing to explain it
+        port: clampInt(d.companion?.port, 1, 65535, 18765),
+        pushExam: d.companion?.pushExam !== false,
+        pushInterview: d.companion?.pushInterview !== false,
+        pushTranscript: d.companion?.pushTranscript !== false,
+        pushScreenshot: d.companion?.pushScreenshot !== false,
+        useHttps: d.companion?.useHttps !== false,
+        hotkeyToPhone: !!d.companion?.hotkeyToPhone,
+        jpegQuality: clampInt(d.companion?.jpegQuality, 10, 100, 80),
+        maxDim: clampInt(d.companion?.maxDim, 640, 4096, 1920),
       },
     };
   }
@@ -646,6 +716,70 @@ export class SettingsStore {
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * Resolve the vision slot, falling back to the text LLM where the user left
+   * the field empty.
+   *
+   * Screenshot answering used to demand three hand-typed fields even when the
+   * user's text provider also serves vision, so for almost everyone the flow
+   * died at 「未配置视觉模型」. Now the endpoint and key are inherited and the
+   * model name comes from that provider's vision preset in the catalog.
+   *
+   * A provider with no vision preset still yields `undefined` rather than a
+   * guessed model — sending an image to a text-only endpoint fails deeper in
+   * the stack with a worse message than being told to configure vision.
+   *
+   * The env var is the MyTool-style last resort, so a key already exported for
+   * another tool does not have to be pasted again.
+   */
+  getVisionConfig():
+    | { baseUrl: string; model: string; apiKey: string; proxyUrl?: string; inherited: boolean }
+    | undefined {
+    const v = this.data.vision;
+    const l = this.data.llm;
+    const ownBaseUrl = (v.baseUrl ?? '').trim();
+    const baseUrl = ownBaseUrl || (l.baseUrl ?? '').trim();
+    if (!baseUrl) return undefined;
+
+    const ownModel = (v.model ?? '').trim();
+    let model = ownModel;
+    let proxyUrl = v.proxyUrl;
+    if (!model) {
+      // One model can do both jobs: if the text preset is declared to accept
+      // images, reuse it verbatim (same endpoint, same key, same model).
+      const textPreset = presetsForCapability('text-llm').find(
+        (p) => p.visionCapable && p.model === (l.model ?? '').trim() && p.baseUrl === (l.baseUrl ?? '').trim(),
+      );
+      if (textPreset) {
+        model = textPreset.model;
+        proxyUrl = textPreset.defaultProxyUrl ?? v.proxyUrl;
+      } else {
+        // otherwise fall back to that provider's dedicated vision preset
+        const providerId = ownBaseUrl
+          ? providerIdForEndpoint(baseUrl, undefined, 'vision')
+          : providerIdForEndpoint(l.baseUrl, l.model, 'text-llm');
+        const preset = presetsForCapability('vision').find((p) => p.providerId === providerId);
+        if (!preset) return undefined;
+        model = preset.model;
+        proxyUrl = preset.defaultProxyUrl;
+      }
+    }
+
+    const envKey = (process.env.MEETINGASSISTANT_VISION_API_KEY ?? '').trim();
+    const apiKey = this.getVisionApiKey() ?? (envKey || undefined) ?? this.getLlmApiKey();
+    if (!model || !apiKey) return undefined;
+
+    return {
+      baseUrl,
+      model,
+      apiKey,
+      ...(proxyUrl !== undefined ? { proxyUrl } : {}),
+      // tells the UI it is riding on the text provider, so "I never set this
+      // up" is answerable without reading the code
+      inherited: !ownBaseUrl || !ownModel,
+    };
   }
 
   getCloudAsrApiKey(): string | undefined {

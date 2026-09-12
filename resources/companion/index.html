@@ -1,0 +1,140 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>MeetingAssistant 手机显示</title>
+<link rel="stylesheet" href="/vendor/katex/katex.min.css">
+<style>
+  /* 字号一律用 rem：系统「字体大小」设置要能生效，不只靠双指缩放。
+     回答是要照着念的，基准字号刻意比 MyTool 的调试页大。 */
+  :root{ --fg:#e8e8e8; --bg:#0d0d0d; --panel:#181818; --line:#282828;
+         --dim:#8a8a8a; --them:#7dd3fc; --me:#86efac; --warn:#fbbf24;
+         --bad:#f87171; --ok:#4ade80; --accent:#60a5fa; }
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg)}
+
+  /* 用「视觉视口」而非布局视口：双指缩放只改视觉视口，仍用 100vh 的话滚动区
+     底部会落到可视区之外，表现为「内容滚不到」。取缩放后的宽度作布局宽度，
+     内容按更窄的宽度重新排版再被放大，于是字变大且自动换行，不用横向拖动。 */
+  #app{position:fixed;left:var(--vv-x,0);top:var(--vv-y,0);
+       width:var(--vv-w,100vw);height:var(--vv-h,100vh);
+       display:flex;flex-direction:column;overflow:hidden}
+
+  header{padding:.45rem .7rem;background:var(--panel);display:flex;gap:.5rem;
+         align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+  #status{font-weight:700;font-size:.85rem}
+  .chip{font-size:.72rem;color:var(--dim);border:1px solid var(--line);
+        border-radius:1rem;padding:.1rem .45rem;white-space:nowrap}
+  .ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+  #lag{font-variant-numeric:tabular-nums}
+  #wakeBtn{margin-left:auto;background:#374151;color:#fff;border:0;
+           border-radius:.35rem;font-size:.72rem;padding:.3rem .5rem}
+  #wakeBtn.on{background:#065f46}
+
+  /* 当前答案常驻在顶部：它是唯一需要一直看得见的内容。点一下收起。 */
+  #hero{background:#101418;border-bottom:1px solid #1f2a35;padding:.6rem .7rem;
+        cursor:pointer;max-height:56vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  #hero[hidden]{display:none}
+  #hero.collapsed #heroBody{display:none}
+  #heroTop{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-bottom:.35rem}
+  #heroKind{font-size:.72rem;font-weight:700;letter-spacing:.04em;color:var(--accent)}
+  #heroStage{font-size:.7rem;color:var(--warn)}
+  #heroOrigin{font-size:.7rem;color:var(--dim)}
+  #heroQ{font-size:.8rem;color:var(--dim);line-height:1.5;margin-bottom:.3rem;
+         border-left:2px solid #2a3540;padding-left:.5rem}
+  #heroQ[hidden]{display:none}
+  #heroBody{font-size:1.18rem;line-height:1.7;word-wrap:break-word;overflow-wrap:anywhere}
+  #heroBody.plain{white-space:pre-wrap;font-family:inherit}
+  #heroBody h1,#heroBody h2,#heroBody h3{font-size:1.05em;margin:.6rem 0 .3rem}
+  #heroBody p{margin:.35rem 0}
+  #heroBody ul,#heroBody ol{margin:.35rem 0;padding-left:1.3rem}
+  #heroBody code{background:#242424;padding:.05rem .3rem;border-radius:.2rem;
+                 font-family:ui-monospace,Consolas,monospace;font-size:.9em;
+                 overflow-wrap:anywhere}
+  #heroBody pre{background:#080808;padding:.5rem;border-radius:.4rem;margin:.4rem 0;max-width:100%;overflow:hidden}
+  #heroBody pre code{background:none;padding:0;display:block;white-space:pre-wrap;
+                     overflow-wrap:anywhere;padding-left:1.1em;text-indent:-1.1em}
+  #heroBody blockquote{border-left:2px solid #444;margin:.4rem 0;padding-left:.55rem;color:#aaa}
+  #heroBody a{color:var(--accent);overflow-wrap:anywhere}
+  #heroBody .katex{font-size:1em}
+  #heroMeta{font-size:.7rem;color:#666;margin-top:.4rem}
+  #heroMeta[hidden]{display:none}
+  .cursor{opacity:.5}
+  .failed{color:var(--bad)}
+  .qa{background:#111a14;border:1px solid #1d3325;border-radius:.4rem;
+      padding:.4rem .55rem;margin:.35rem 0;font-size:.95rem}
+  .qa b{color:var(--ok);font-size:.72rem;display:block;margin-bottom:.2rem}
+
+  main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:.55rem;
+       display:flex;flex-direction:column;gap:.4rem;-webkit-overflow-scrolling:touch}
+
+  /* 转写行：小字、密集，作为上下文存在 */
+  .line{font-size:.92rem;line-height:1.5;padding:.3rem .5rem;border-radius:.4rem;
+        background:#141414;border-left:3px solid #333;overflow-wrap:anywhere}
+  .line.them{border-left-color:var(--them)}
+  .line.me{border-left-color:var(--me)}
+  .line .who{font-size:.68rem;color:var(--dim);margin-right:.4rem}
+  .line .at{float:right;font-size:.66rem;color:#555;font-variant-numeric:tabular-nums}
+
+  /* 已归档的答案：比 hero 小一号，可点开看全文 */
+  .ans{background:#101418;border:1px solid #1f2a35;border-radius:.5rem;padding:.5rem .6rem}
+  .ans .tag{font-size:.7rem;color:var(--accent);margin-bottom:.25rem;
+            display:flex;gap:.4rem;flex-wrap:wrap}
+  .ans .body{font-size:.98rem;line-height:1.6;overflow-wrap:anywhere;
+             max-height:6.2rem;overflow:hidden}
+  .ans.open .body{max-height:none}
+  .ans .body.plain{white-space:pre-wrap}
+  .ans .meta{font-size:.68rem;color:#666;margin-top:.3rem}
+  .ans .more{font-size:.72rem;color:var(--accent);margin-top:.25rem}
+
+  .receipt{font-size:.72rem;color:#777}
+  .filter{display:flex;gap:.35rem;padding:.35rem .7rem;background:var(--panel);
+          border-bottom:1px solid var(--line)}
+  .filter button{background:#222;color:var(--dim);border:1px solid var(--line);
+                 border-radius:1rem;font-size:.72rem;padding:.2rem .6rem}
+  .filter button.on{background:#2563eb;color:#fff;border-color:#2563eb}
+
+  #pair{padding:.5rem .7rem;background:var(--panel);display:flex;gap:.5rem;
+        align-items:center;flex-wrap:wrap}
+  #pair[hidden]{display:none}
+  #pair p{margin:0;font-size:.85rem}
+  #pairCode{width:6.5em;padding:.3rem;font-size:1.05rem;letter-spacing:.12em;
+            background:#111;color:var(--fg);border:1px solid #444;border-radius:.35rem}
+  #pairError{color:var(--bad);font-size:.78rem}
+  button{border:0;border-radius:.35rem;background:#2563eb;color:#fff;font-size:.95rem}
+  button:active{opacity:.8}
+  #empty{color:#555;font-size:.82rem;text-align:center;padding:1.5rem .5rem;line-height:1.7}
+</style>
+<div id="app">
+  <header>
+    <span id="status" class="bad">未连接</span>
+    <span id="asrChip" class="chip">转写 未开始</span>
+    <span id="lag" class="chip">延迟 —</span>
+    <button id="wakeBtn">常亮</button>
+  </header>
+  <div class="filter">
+    <button data-f="all" class="on">全部</button>
+    <button data-f="ans">只看答案</button>
+    <button data-f="line">只看转写</button>
+  </div>
+  <div id="pair" hidden>
+    <p>输入电脑上显示的 6 位配对码</p>
+    <input id="pairCode" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="off">
+    <button id="pairSubmit">确认</button>
+    <p id="pairError" hidden></p>
+    <button id="pairAgain" hidden>重新获取配对码</button>
+  </div>
+  <div id="hero" class="collapsed" hidden>
+    <div id="heroTop">
+      <span id="heroKind">答案</span>
+      <span id="heroStage"></span>
+      <span id="heroOrigin"></span>
+    </div>
+    <div id="heroQ" hidden></div>
+    <div id="heroBody" class="plain"></div>
+    <div id="heroMeta" hidden></div>
+  </div>
+  <main id="feed"><div id="empty">等待内容…<br>电脑上点「▶ 开始」或按截屏热键</div></main>
+</div>
+<script src="/vendor/katex/katex.min.js"></script>
+<script src="/vendor/katex/contrib/auto-render.min.js"></script>
+<script src="/markdown.js"></script>
+<script src="/app.js"></script>
