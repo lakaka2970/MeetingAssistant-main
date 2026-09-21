@@ -1268,6 +1268,9 @@ export const IPC = {
   // ---- question gate (面试模式持续答) ----
   /** invoke: ({requestId, line, recent}) => LlmGateResult — should this line be answered? */
   llmGate: 'llm:gate',
+  /** send: ({text, sessionId}) — fire-and-forget: prefetch retrieval for a
+   * live ASR partial so the final question hits the cache (pipeline-latency ②) */
+  llmSpeculate: 'llm:speculate',
   // ---- upgrade P1.5: optional native audio capture (Windows WASAPI loopback) ----
   /** send: (deviceId?) — main starts the native loopback capture and feeds
    * the ASR host directly; failures push nativeCaptureError (renderer then

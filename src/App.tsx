@@ -261,6 +261,13 @@ export function App() {
     askLlmRef.current = askLlm;
   }, [askLlm]);
 
+  /** pipeline-latency ②: the mount-scoped ASR handler must see the LIVE mode
+   * flag, not the one captured at mount */
+  const continuousRef = useRef(continuous);
+  useEffect(() => {
+    continuousRef.current = continuous;
+  }, [continuous]);
+
   const askShot = useCallback(
     (question: string, imageDataUrl?: string) => {
       const sid = currentIdRef.current;
@@ -323,6 +330,10 @@ export function App() {
         setAsr((s) => ({ ...s, phase: ev.fatal ? 'error' : s.phase, lastError: ev.message }));
       } else if (ev.kind === 'partial') {
         setPartials((p) => ({ ...p, [ev.speaker]: ev.text }));
+        // ②: warm the RAG cache while the line is still being spoken
+        if (continuousRef.current && ev.speaker === 'them') {
+          window.mc.speculate({ text: ev.text, sessionId: currentIdRef.current ?? undefined });
+        }
       } else if (ev.kind === 'segment') {
         setPartials((p) => ({ ...p, [ev.speaker]: undefined })); // final replaces the live partial
         const e2eMs = Date.now() - ev.timings.speechEndTs;

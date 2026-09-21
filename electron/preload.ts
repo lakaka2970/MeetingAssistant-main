@@ -148,6 +148,8 @@ export interface McApi {
   onCompanionConnected(cb: () => void): () => void;
   /** 面试模式持续答 gate: answer this transcript line or stay quiet? */
   gate(p: { requestId: string; line: string; recent: string[] }): Promise<LlmGateResult>;
+  /** continuous mode only: warm the speculative retrieval cache with a partial */
+  speculate(p: { text: string; sessionId?: string }): void;
   hide(): void;
   quit(): void;
 }
@@ -247,6 +249,7 @@ const api: McApi = {
     return () => ipcRenderer.removeListener(IPC.companionConnected, listener);
   },
   gate: (p) => ipcRenderer.invoke(IPC.llmGate, p),
+  speculate: (p) => ipcRenderer.send(IPC.llmSpeculate, p),
   onNativeCaptureError: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, message: string) => cb(message);
     ipcRenderer.on(IPC.nativeCaptureError, listener);

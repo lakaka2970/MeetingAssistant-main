@@ -40,7 +40,8 @@ import { isRendererCommand, type TrayCommand, type TrayMenuState } from '../shar
 import { KnowledgeStore } from './knowledge';
 import { KnowledgeFileStore } from './knowledgeFiles';
 import { SessionStore } from './sessions';
-import { RagService, MIN_QUERY_CHARS } from './rag/service';
+import { RagService, MIN_QUERY_CHARS, type RetrieveResult } from './rag/service';
+import { SpeculativeCache, after } from './rag/speculative';
 import { SkillsManager } from './skills/manager';
 import { extractMemoFacts, formatFactsHint } from './consistency/facts';
 import { NativeAudioCapture } from './audio/nativeCapture';
@@ -1978,6 +1979,32 @@ function bootstrap(): void {
       }
     });
 
+    // ---- speculative retrieval (pipeline-latency ②) ----
+    // The renderer only reports partials while continuous mode is ON, so this
+    // side never needs to know about the mode. SPECULATIVE_RETRIEVAL is the
+    // one-line kill switch: the whole benefit rests on "the final sentence
+    // equals a spoken partial", which is engine behaviour — the hit counter
+    // below is what decides whether this stays on.
+    const SPECULATIVE_RETRIEVAL = true;
+    const SPEC_DEBOUNCE_MS = 300;
+    const SPEC_REUSE_WAIT_MS = 400;
+    const specCache = new SpeculativeCache<RetrieveResult | null>();
+    let specTimer: NodeJS.Timeout | undefined;
+    let specHits = 0;
+    let specMisses = 0;
+    ipcMain.on(IPC.llmSpeculate, (_e, p: { text?: string; sessionId?: string }) => {
+      if (!SPECULATIVE_RETRIEVAL) return;
+      const text = String(p?.text ?? '').trim();
+      if (!text) return;
+      if (specTimer) clearTimeout(specTimer);
+      specTimer = setTimeout(() => {
+        // speculation never spawns the worker or waits for a download
+        if (rag.status().state !== 'ready') return;
+        if (text.length < MIN_QUERY_CHARS) return;
+        specCache.set(text, rag.retrieve(text, p?.sessionId).catch(() => null));
+      }, SPEC_DEBOUNCE_MS);
+    });
+
     // ---- upgrade P1.5: optional native loopback capture ----
     ipcMain.on(IPC.nativeCaptureStart, (_e, deviceId?: string) => {
       if (process.platform !== 'win32') {
@@ -2164,7 +2191,19 @@ function bootstrap(): void {
           payload.mode === 'free'
             ? freeQuestion ?? ''
             : payload.question || payload.recentTranscript.at(-1) || '';
-        const r = await rag.retrieve(q, payload.sessionId);
+        // speculative reuse: exact text only, and an in-flight guess that has
+        // not landed within the wait budget loses to a real retrieve
+        let r: RetrieveResult;
+        const specP = SPECULATIVE_RETRIEVAL ? specCache.get(q) : undefined;
+        const raced = specP ? await Promise.race([specP, after(SPEC_REUSE_WAIT_MS)]) : null;
+        if (raced) {
+          r = raced;
+          specHits++;
+          console.log(`[spec] hit ${specHits}/${specHits + specMisses}: "${q.slice(0, 40)}"`);
+        } else {
+          if (specP) specMisses++;
+          r = await rag.retrieve(q, payload.sessionId);
+        }
         retrieveMs = r.ms;
         // read before the branch chain below: a prepared-answer direct hit skips
         // the `hits` branch, and a settled-figure warning must not be lost just
