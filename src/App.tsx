@@ -14,20 +14,26 @@ import {
   reindexSegments,
   type TranscriptSegment,
 } from '../shared/transcript';
-import { isLikelyQuestion } from '../shared/textHeuristics';
+import { heuristic } from '../shared/questionGate';
 import { captureKindForPlatform } from '../shared/platform';
 import { deriveServiceHealth } from '../shared/healthState';
 import { LoopbackCapture } from './audio/loopbackCapture';
 import { MicCapture, listMics } from './audio/micCapture';
-import { TranscriptPanel } from './components/TranscriptPanel';
+import { TitleBar } from './components/TitleBar';
 import { SettingsPanel } from './components/SettingsPanel';
-import { ServiceHealthPanel } from './components/ServiceHealthPanel';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 import { HelpPanel } from './components/HelpPanel';
-import { KnowledgePanel } from './components/KnowledgePanel';
+import type { SettingsTab } from './components/settings/types';
 import { StatusBar } from './components/StatusBar';
-import { AnswerSession, type AnswerTurn } from './components/AnswerSession';
+import { PromptFocus, type AnswerTurn } from './components/prompt/PromptFocus';
+import { TranscriptRail } from './components/prompt/TranscriptRail';
 import { I18nProvider, getDict, type Dict } from './i18n';
+
+/** the one in-window overlay that can be open at a time (knowledge/health are hub tabs) */
+type OverlayPanel =
+  | { view: 'settings'; tab: SettingsTab }
+  | { view: 'diagnostics' }
+  | { view: 'help' };
 
 export interface AsrUiState {
   phase: 'loading' | 'ready' | 'error';
@@ -75,11 +81,12 @@ export function App() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [asr, setAsr] = useState<AsrUiState>({ phase: 'loading', workerState: 'loading' });
   const [capturing, setCapturing] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showHealth, setShowHealth] = useState(false);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-  const [showKnowledge, setShowKnowledge] = useState(false);
+  /**
+   * The single in-window overlay surface. 知识库 and 服务状态 are now tabs of
+   * the settings hub, so they open it on their tab rather than owning a boolean
+   * each; help and diagnostics stay separate full panels.
+   */
+  const [openPanel, setOpenPanel] = useState<OverlayPanel | null>(null);
   /** upgrade P0: prefix-cache hit rate over the last answers (0-100, null = n/a) */
   const [cacheHitRate, setCacheHitRate] = useState<number | null>(null);
   /** upgrade P0: embed worker state for the status-bar chip */
@@ -358,6 +365,7 @@ export function App() {
           turns: s.turns.map((t) => {
             if (t.id !== ev.requestId) return t;
             if (ev.kind === 'delta') return { ...t, text: t.text + ev.text };
+            if (ev.kind === 'reasoning') return { ...t, reasoning: (t.reasoning ?? '') + ev.text };
             if (ev.kind === 'done') return { ...t, text: ev.text || t.text, status: 'done' };
             // a prepared answer arrives before any token: show it at once and
             // let the stream below it be the AI's enrichment
@@ -402,9 +410,9 @@ export function App() {
     window.__mcAutoStart = () => void startCapture();
     // visual-QA hooks (MC_MAIN_SHOT in electron/main.ts): open a panel from the
     // main process so it can be screenshotted
-    window.__mcOpenSettings = () => setShowSettings(true);
-    window.__mcOpenHelp = () => setShowHelp(true);
-    window.__mcOpenKnowledge = () => setShowKnowledge(true);
+    window.__mcOpenSettings = () => setOpenPanel({ view: 'settings', tab: 'model' });
+    window.__mcOpenHelp = () => setOpenPanel({ view: 'help' });
+    window.__mcOpenKnowledge = () => setOpenPanel({ view: 'settings', tab: 'knowledge' });
     return () => {
       off();
       offLlm();
@@ -468,32 +476,41 @@ export function App() {
   }, [currentId, prewarm]);
 
   // Continuous mode: only the OTHER party's lines trigger it (never my own
-  // mic), and the decision is two-tier — the free `isLikelyQuestion` filter
-  // drops obvious non-questions without an IPC, and only what is left costs one
-  // tiny classifier call in main (which itself short-circuits on the obvious
-  // cases). That is what keeps 「发我一下链接」 from being answered while a real
-  // question is never held back: a failed or slow classifier falls back to
-  // answering, exactly the previous behaviour.
+  // mic). The debounce window still exists — it waits for a follow-up half
+  // sentence — but nothing inside it is idle now: the free two-ended
+  // `heuristic` decides the obvious cases up front (an obvious ask never
+  // costs a gate round-trip at all), and a genuinely ambiguous line runs its
+  // model gate IN PARALLEL with the debounce, collapsing the worst-case
+  // serial wait (1100ms + gate) into max(1100ms, gate).
   const lastSeg = segments.length ? segments[segments.length - 1] : null;
   const answeredRef = useRef<number>(-1);
   useEffect(() => {
     if (!continuous || !lastSeg) return;
     if ((lastSeg.speaker ?? 'them') !== 'them') return; // ignore my own voice
     if (answeredRef.current === lastSeg.id) return; // this line is already handled
-    if (!isLikelyQuestion(lastSeg.text)) return;
+    const h = heuristic(lastSeg.text);
+    if (h.verdict === 'skip') return; // greeting / fragment / logistics ask
     let cancelled = false;
-    const go = (): void => {
+    const fire = (): void => {
       if (cancelled || answeredRef.current === lastSeg.id) return;
       answeredRef.current = lastSeg.id;
       askLlm('continuous');
     };
+    // obvious ask → answer at debounce expiry straight away; ambiguous → the
+    // gate call is already in flight (started with the debounce), and a gate
+    // that somehow failed falls back to answering, exactly as before
+    const gateP: Promise<{ verdict: 'answer' | 'skip' }> | undefined = h.verdict
+      ? undefined
+      : window.mc
+          .gate({
+            requestId: `gate-${lastSeg.id}`,
+            line: lastSeg.text,
+            recent: segments.slice(-6).map((s) => s.text),
+          })
+          .catch(() => ({ verdict: 'answer' as const }));
     const timer = setTimeout(() => {
-      void window.mc
-        .gate({ requestId: `gate-${lastSeg.id}`, line: lastSeg.text, recent: segments.slice(-6).map((s) => s.text) })
-        .then((g) => {
-          if (g.verdict === 'answer') go();
-        })
-        .catch(go);
+      if (!gateP) fire();
+      else void gateP.then((g) => { if (g.verdict === 'answer') fire(); });
     }, 1100);
     return () => {
       cancelled = true;
@@ -771,14 +788,6 @@ export function App() {
     [patchSession],
   );
 
-  /** the overlays are mutually exclusive: one panel at a time, never stacked */
-  const closePanels = useCallback(() => {
-    setShowSettings(false);
-    setShowHealth(false);
-    setShowDiagnostics(false);
-    setShowHelp(false);
-  }, []);
-
   /**
    * Tray menu -> renderer (Phase 4 §A). Main only forwards what it cannot do
    * itself, and it has already made the window visible. 开始/停止转写
@@ -797,20 +806,17 @@ export function App() {
           createSession();
           return;
         case 'open-settings':
-          closePanels();
-          setShowSettings(true);
+          setOpenPanel({ view: 'settings', tab: 'model' });
           return;
         case 'open-health':
-          closePanels();
-          setShowHealth(true);
+          setOpenPanel({ view: 'settings', tab: 'health' });
           return;
         case 'open-help':
-          closePanels();
-          setShowHelp(true);
+          setOpenPanel({ view: 'help' });
           return;
       }
     });
-  }, [capturing, asr.phase, startCapture, stopCapture, createSession, closePanels]);
+  }, [capturing, asr.phase, startCapture, stopCapture, createSession]);
 
   const pickKb = useCallback(
     async (slot: KbSlot) => {
@@ -894,136 +900,48 @@ export function App() {
   return (
     <I18nProvider lang={settings?.ui.lang}>
     <div className="app">
-      <header className="titlebar">
-        <span className="brand">MeetingAssistant</span>
-        <div className="titlebar-actions">
-          <button
-            className={capturing ? 'btn btn-live' : 'btn btn-primary'}
-            onClick={() => (capturing ? void stopCapture() : void startCapture())}
-            disabled={asr.phase !== 'ready'}
-            title={
-              captureKindForPlatform(window.mc.platform) === 'loopback'
-                ? capturing
-                  ? t.titlebar.stopTitle
-                  : t.titlebar.startTitle
-                : capturing
-                  ? t.titlebar.stopInputTitle
-                  : t.titlebar.startInputTitle
-            }
-          >
-            {capturing ? t.titlebar.stop : t.titlebar.start}
-          </button>
-          {captureKindForPlatform(window.mc.platform) === 'input' && mics.length > 0 && (
-            <select
-              className="mic-select"
-              value={settings?.audio.themDeviceId ?? ''}
-              onChange={(e) => void selectThemInput(e.target.value)}
-              title={t.titlebar.themDeviceTitle}
-            >
-              <option value="">{t.titlebar.themDeviceDefault}</option>
-              {mics.map((m) => (
-                <option key={m.deviceId} value={m.deviceId}>
-                  {(m.label || t.titlebar.themDeviceDefault).slice(0, 14)}
-                </option>
-              ))}
-            </select>
-          )}
-          <button
-            className={continuous ? 'btn btn-on' : 'btn'}
-            onClick={() => setContinuous((v) => !v)}
-            title={t.titlebar.continuousTitle}
-          >
-            {t.titlebar.continuous}
-          </button>
-          <button
-            className={settings?.llm.answerWithVision ? 'btn btn-on' : 'btn'}
-            onClick={() => void toggleAnswerModel()}
-            title={t.titlebar.modelTitle}
-          >
-            {settings?.llm.answerWithVision ? t.titlebar.vision : t.titlebar.textOnly}
-          </button>
-          <button className="btn" onClick={() => void toggleAnswerLang()} title={t.titlebar.answerLangTitle}>
-            {t.titlebar.answerLang(settings?.llm.answerLang === 'english')}
-          </button>
-          <button
-            className={micActive ? 'btn btn-live' : 'btn'}
-            onClick={() => void toggleMicCapture()}
-            title={t.titlebar.micTitle}
-          >
-            {micActive ? t.titlebar.micOn : t.titlebar.micOff}
-          </button>
-          {micActive && mics.length > 0 && (
-            <select
-              className="mic-select"
-              value={settings?.audio.micDeviceId ?? ''}
-              onChange={(e) => void selectMic(e.target.value)}
-              title={t.titlebar.micDeviceTitle}
-            >
-              <option value="">{t.titlebar.micDefault}</option>
-              {mics.map((m) => (
-                <option key={m.deviceId} value={m.deviceId}>
-                  {(m.label || t.titlebar.micDefault).slice(0, 10)}
-                </option>
-              ))}
-            </select>
-          )}
-          {/* 单屏 / 双屏 — the one control that changes what the whole app is
-              for, so it lives in the bar rather than in 设置. The trailing
-              count is how many phones are actually receiving right now. */}
-          <div className="mode-seg" title={t.titlebar.modeTitle}>
-            <button
-              className={dual ? '' : 'on'}
-              onClick={() => void switchMode(false)}
-            >
-              {t.titlebar.modeSingle}
-            </button>
-            <button
-              className={dual ? 'on' : ''}
-              onClick={() => void switchMode(true)}
-            >
-              {t.titlebar.modeDual}
-              {dual && cOnline > 0 ? ` ·${cOnline}` : ''}
-            </button>
-          </div>
-          <button
-            className={settings?.ui.stealth ? 'btn btn-on' : 'btn'}
-            onClick={() => void toggleStealth()}
-            title={
-              window.mc.platform === 'darwin'
-                ? t.titlebar.stealthMacTitle
-                : t.titlebar.stealthTitle
-            }
-          >
-            {t.titlebar.stealth(!!settings?.ui.stealth)}
-          </button>
-          <button className="btn" onClick={() => setShowHud((v) => !v)} title={t.titlebar.hudTitle}>
-            HUD
-          </button>
-          <button
-            className="btn"
-            onClick={() => void window.mc.openExam()}
-            title={t.titlebar.examTitle}
-          >
-            {t.titlebar.exam}
-          </button>
-          <button
-            className={showKnowledge ? 'btn btn-on' : 'btn'}
-            onClick={() => setShowKnowledge((v) => !v)}
-            title={t.knowledge.title}
-          >
-            📚
-          </button>
-          <button className="btn" onClick={() => setShowSettings((v) => !v)} title={t.titlebar.settingsTitle}>
-            ⚙
-          </button>
-          <button className="btn" onClick={() => window.mc.hide()} title={t.titlebar.hideTitle}>
-            —
-          </button>
-          <button className="btn btn-close" onClick={() => window.mc.quit()} title={t.titlebar.quitTitle}>
-            ✕
-          </button>
-        </div>
-      </header>
+      <TitleBar
+        capturing={capturing}
+        asrReady={asr.phase === 'ready'}
+        captureKind={captureKindForPlatform(window.mc.platform)}
+        mics={mics}
+        themDeviceId={settings?.audio.themDeviceId ?? ''}
+        micDeviceId={settings?.audio.micDeviceId ?? ''}
+        micActive={micActive}
+        continuous={continuous}
+        visionOn={!!settings?.llm.answerWithVision}
+        answerLangEn={settings?.llm.answerLang === 'english'}
+        stealth={!!settings?.ui.stealth}
+        showHud={showHud}
+        dual={dual}
+        phonesOnline={cOnline}
+        onStartStop={() => (capturing ? void stopCapture() : void startCapture())}
+        onSelectThem={(id) => void selectThemInput(id)}
+        onSelectMic={(id) => void selectMic(id)}
+        onToggleContinuous={() => setContinuous((v) => !v)}
+        onToggleModel={() => void toggleAnswerModel()}
+        onToggleAnswerLang={() => void toggleAnswerLang()}
+        onToggleMic={() => void toggleMicCapture()}
+        onSwitchMode={(d) => void switchMode(d)}
+        onToggleStealth={() => void toggleStealth()}
+        onToggleHud={() => setShowHud((v) => !v)}
+        onOpenExam={() => void window.mc.openExam()}
+        onOpenKnowledge={() =>
+          setOpenPanel((p) =>
+            p?.view === 'settings' && p.tab === 'knowledge' ? null : { view: 'settings', tab: 'knowledge' },
+          )
+        }
+        onOpenSettings={() =>
+          setOpenPanel((p) =>
+            p?.view === 'settings' && p.tab === 'model' ? null : { view: 'settings', tab: 'model' },
+          )
+        }
+        onOpenDiagnostics={() => setOpenPanel({ view: 'diagnostics' })}
+        onOpenHelp={() => setOpenPanel({ view: 'help' })}
+        onRerunWizard={() => void window.mc.rerunOnboarding()}
+        onHide={() => window.mc.hide()}
+        onQuit={() => window.mc.quit()}
+      />
 
       {/* grandfathered users (settings.json predates the wizard) get one
           dismissible pointer at the new wizard; wizard-created profiles never
@@ -1040,67 +958,43 @@ export function App() {
         </div>
       )}
 
-      {showHealth && settings && health && (
-        <ServiceHealthPanel
-          settings={settings}
-          health={health}
-          onClose={() => setShowHealth(false)}
-          onOpenSettings={() => {
-            setShowHealth(false);
-            setShowSettings(true);
-          }}
-          onOpenDiagnostics={() => {
-            setShowHealth(false);
-            setShowDiagnostics(true);
-          }}
-          onSettingsRefreshed={setSettings}
-        />
+      {openPanel?.view === 'diagnostics' && (
+        <DiagnosticsPanel onClose={() => setOpenPanel(null)} />
       )}
 
-      {showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
-
-      {showKnowledge && <KnowledgePanel onClose={() => setShowKnowledge(false)} sessionId={currentId} />}
-
-      {showHelp && (
+      {openPanel?.view === 'help' && (
         <HelpPanel
-          onClose={() => setShowHelp(false)}
-          onOpenSettings={() => {
-            setShowHelp(false);
-            setShowSettings(true);
-          }}
-          onOpenDiagnostics={() => {
-            setShowHelp(false);
-            setShowDiagnostics(true);
-          }}
+          onClose={() => setOpenPanel(null)}
+          onOpenSettings={() => setOpenPanel({ view: 'settings', tab: 'model' })}
+          onOpenDiagnostics={() => setOpenPanel({ view: 'diagnostics' })}
         />
       )}
 
-      {showSettings && settings && (
+      {openPanel?.view === 'settings' && settings && (
         <SettingsPanel
+          key={openPanel.tab}
           settings={settings}
+          initialTab={openPanel.tab}
+          health={health ?? undefined}
+          sessionId={currentId}
+          onSettingsRefreshed={setSettings}
           onSaved={(s) => {
             setSettings(s);
             answerLangRef.current = s.llm.answerLang;
-            setShowSettings(false);
+            setOpenPanel(null);
           }}
-          onClose={() => setShowSettings(false)}
+          onClose={() => setOpenPanel(null)}
           onRerunWizard={() => {
-            setShowSettings(false);
+            setOpenPanel(null);
             void window.mc.rerunOnboarding();
           }}
-          onOpenDiagnostics={() => {
-            setShowSettings(false);
-            setShowDiagnostics(true);
-          }}
-          onOpenHelp={() => {
-            setShowSettings(false);
-            setShowHelp(true);
-          }}
+          onOpenDiagnostics={() => setOpenPanel({ view: 'diagnostics' })}
+          onOpenHelp={() => setOpenPanel({ view: 'help' })}
         />
       )}
 
-      <div className="panes">
-        <TranscriptPanel
+      <div className="prompt-shell">
+        <TranscriptRail
           segments={segments}
           partials={partials}
           answersReady={answersReady}
@@ -1109,7 +1003,7 @@ export function App() {
           onTranslate={translateSegment}
           onClear={clearTranscript}
         />
-        <AnswerSession
+        <PromptFocus
           sessions={sessions}
           currentId={currentId}
           turns={current?.turns ?? []}
@@ -1141,8 +1035,16 @@ export function App() {
         health={health ?? undefined}
         cacheHitRate={cacheHitRate}
         ragState={ragState}
-        onOpenHealth={() => setShowHealth((v) => !v)}
-        onOpenKnowledge={() => setShowKnowledge((v) => !v)}
+        onOpenHealth={() =>
+          setOpenPanel((p) =>
+            p?.view === 'settings' && p.tab === 'health' ? null : { view: 'settings', tab: 'health' },
+          )
+        }
+        onOpenKnowledge={() =>
+          setOpenPanel((p) =>
+            p?.view === 'settings' && p.tab === 'knowledge' ? null : { view: 'settings', tab: 'knowledge' },
+          )
+        }
       />
     </div>
     </I18nProvider>
