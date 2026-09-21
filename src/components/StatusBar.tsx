@@ -96,6 +96,13 @@ export function StatusBar({
               <span className="dim">
                 {t.status.infer} {hud.lastInferMs}ms
               </span>
+              {hud.lastFtMs !== undefined && (
+                <span className="dim" title={t.status.ftTitle}>
+                  {t.status.ftLabel} {(hud.lastFtMs / 1000).toFixed(2)}s · p50{' '}
+                  {hud.ftP50 !== undefined ? (hud.ftP50 / 1000).toFixed(2) : '–'} · p95{' '}
+                  {hud.ftP95 !== undefined ? (hud.ftP95 / 1000).toFixed(2) : '–'}
+                </span>
+              )}
             </>
           ) : (
             <span className="dim">{t.status.hudWaiting}</span>

@@ -49,6 +49,10 @@ export interface HudStats {
   p50?: number;
   p95?: number;
   count: number;
+  /** pipeline-latency ④: speech end → first answer delta, continuous mode */
+  lastFtMs?: number;
+  ftP50?: number;
+  ftP95?: number;
 }
 
 const MAX_TURNS = 200;
@@ -106,6 +110,9 @@ export function App() {
   const micRef = useRef<MicCapture | null>(null);
   const settingsRef = useRef<PublicSettings | null>(null);
   const e2eSamples = useRef<number[]>([]);
+  /** pipeline-latency ④: requestId → the speechEndTs of the question line */
+  const speechEndRef = useRef(new Map<string, number>());
+  const ftSamples = useRef<number[]>([]);
   const sessionsRef = useRef<StoredSession[]>([]);
   const currentIdRef = useRef<string>('');
   const answerLangRef = useRef<AnswerLang>('chinese');
@@ -216,16 +223,19 @@ export function App() {
       // line — so the turn label (and thus session history) carries the real
       // question instead of a constant '对方最新发言' (v1 history-label bug)
       let question = text;
+      let questionEndTs: number | undefined;
       if (mode === 'continuous') {
         for (let i = segs.length - 1; i >= 0; i--) {
           if ((segs[i].speaker ?? 'them') === 'them') {
             question = segs[i].text;
+            questionEndTs = segs[i].endTs;
             break;
           }
         }
       }
       const label = question ?? (mode === 'continuous' ? tRef.current.app.latestRemark : '');
       appendTurn(sid, { id: requestId, kind: mode, label, text: '', status: 'streaming' });
+      if (questionEndTs) speechEndRef.current.set(requestId, questionEndTs);
       if (mode === 'segment' || mode === 'free') maybeTitle(sid, text);
       const material = mode === 'translate' ? {} : currentMaterial();
       const payload: LlmAskPayload = {
@@ -359,6 +369,19 @@ export function App() {
     });
 
     const offLlm = window.mc.onLlmEvent((ev) => {
+      // ④: the very first delta of a continuous answer is the number that
+      // matters — everything before it (ASR, debounce, gate, retrieve) was silence
+      if (ev.kind === 'delta') {
+        const start = speechEndRef.current.get(ev.requestId);
+        if (start !== undefined) {
+          speechEndRef.current.delete(ev.requestId);
+          const ftMs = Date.now() - start;
+          const arr = ftSamples.current;
+          arr.push(ftMs);
+          if (arr.length > 200) arr.shift();
+          setHud((s) => ({ ...s, lastFtMs: ftMs, ftP50: percentile(arr, 50), ftP95: percentile(arr, 95) }));
+        }
+      }
       setSessions((list) =>
         list.map((s) => ({
           ...s,

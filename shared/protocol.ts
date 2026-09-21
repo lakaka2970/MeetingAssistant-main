@@ -6,6 +6,8 @@ export const PROTOCOL_VERSION = 1;
 
 import type { ProviderCapability, ProviderId } from './providerCatalog';
 export type { ProviderCapability, ProviderId } from './providerCatalog';
+import type { ThinkingLevel } from './thinking';
+export type { ThinkingLevel } from './thinking';
 import type { QuestionKind } from './textHeuristics';
 export type { QuestionKind } from './textHeuristics';
 import type { TrayRendererCommand } from './trayMenu';
@@ -156,6 +158,20 @@ export interface AppInfo {
   packaged: boolean;
 }
 
+/**
+ * Transcript-pane width bounds, shared by the renderer's drag handler and the
+ * main-process clamp. Two independent copies of these numbers always drift.
+ */
+export const PANE_SPLIT_MIN = 0.15;
+export const PANE_SPLIT_MAX = 0.85;
+export const PANE_SPLIT_DEFAULT = 0.5;
+
+/** NaN / Infinity / absent all land on the default instead of poisoning the layout */
+export function clampPaneSplit(v: number | undefined): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return PANE_SPLIT_DEFAULT;
+  return Math.min(PANE_SPLIT_MAX, Math.max(PANE_SPLIT_MIN, v));
+}
+
 export interface SettingsFile {
   version: 2;
   /** first-run wizard state; added in v2 (migrated files are grandfathered) */
@@ -174,6 +190,11 @@ export interface SettingsFile {
     /** last <=4 characters of the saved key, computed main-side at save time */
     apiKeyHint?: string;
     verification?: ProviderVerification;
+    /** model thinking effort for the primary slot; absent = never send the
+     * parameter (provider default). Per routing target in thinkingByPreset. */
+    thinking?: ThinkingLevel;
+    /** presetId -> thinking level for routed backends */
+    thinkingByPreset?: Record<string, ThinkingLevel>;
     /** upgrade P1: per-question-kind backend routing + failover chain.
      * byKind maps a QuestionKind to a catalog preset id ('' = primary slot);
      * fallbackChain lists preset ids tried after the chosen backend fails. */
@@ -257,6 +278,15 @@ export interface SettingsFile {
      * VAD hangover (~1.4 s of silence) plus the continuous-mode debounce.
      */
     earlyAnswer?: boolean;
+    /**
+     * Width of the transcript pane as a fraction of the window (clamped to
+     * 0.15–0.85). Persisted because the useful split depends on how dense the
+     * other party talks and on the screen size — nobody wants to re-drag the
+     * divider every launch.
+     */
+    paneSplit?: number;
+    /** Collapse the transcript away and give the whole window to the answer. */
+    answerOnly?: boolean;
     opacity: number;
     /** answer-body font size (small=13px / medium=16px / large=19px) */
     fontScale: FontScale;
@@ -409,6 +439,9 @@ export interface PublicSettings {
     /** last <=4 characters of the saved key — never the key itself */
     apiKeyHint?: string;
     verification?: ProviderVerification;
+    thinking?: ThinkingLevel;
+    /** presetId -> level; always a map on the wire ({} when unset) */
+    thinkingByPreset: Record<string, ThinkingLevel>;
     routing: {
       enabled: boolean;
       byKind: Partial<Record<QuestionKind, string>>;
@@ -459,6 +492,9 @@ export interface PublicSettings {
     hotkeyShot: string;
     /** see SettingsFile.ui.hotkeyAnswer — the dual-screen answer trigger */
     hotkeyAnswer: string;
+    /** transcript pane fraction, already clamped by getPublic() */
+    paneSplit: number;
+    answerOnly: boolean;
     opacity: number;
     fontScale: FontScale;
     theme: ThemeMode;
@@ -539,6 +575,9 @@ export interface SettingsPatch {
     apiKey?: string;
     providerId?: ProviderId;
     verification?: ProviderVerification;
+    /** ThinkingLevel to set; `''` = choose 跟随默认 → clear back to unset */
+    thinking?: ThinkingLevel | '';
+    thinkingByPreset?: Record<string, ThinkingLevel>;
     routing?: {
       enabled?: boolean;
       byKind?: Partial<Record<QuestionKind, string>>;
@@ -581,6 +620,8 @@ export interface SettingsPatch {
     hotkeyToggle?: string;
     hotkeyShot?: string;
     hotkeyAnswer?: string;
+    paneSplit?: number;
+    answerOnly?: boolean;
     opacity?: number;
     fontScale?: FontScale;
     theme?: ThemeMode;
@@ -700,6 +741,8 @@ export interface StoredTurn {
   text: string;
   status: 'streaming' | 'done' | 'error';
   error?: string;
+  /** streamed reasoning_content of a thinking model, shown collapsed */
+  reasoning?: string;
   /**
    * Prepared-answer direct hit shown above the AI answer (knowledge-base Q&A).
    * Persisted with the turn so a re-read of an old interview shows what the KB
@@ -872,6 +915,9 @@ export interface LlmAskPayload {
 
 export type LlmEvent =
   | { requestId: string; kind: 'delta'; text: string }
+  /** streamed reasoning_content from a thinking model — shown collapsed, the
+   * deltas below stay the answer itself */
+  | { requestId: string; kind: 'reasoning'; text: string }
   /** a knowledge-base Q&A direct hit: the renderer shows it immediately, the
    * streamed deltas below are the AI's enrichment of it */
   | { requestId: string; kind: 'qa'; hit: QaHitView }
@@ -889,6 +935,9 @@ export type LlmEvent =
         promptCacheHit?: number;
         promptCacheMiss?: number;
       };
+      /** pipeline-latency ④: per-stage ms of this answer (main-side clocks).
+       * retrieveMs = rag.retrieve wall time, ttftMs = ask received → 1st delta */
+      timings?: { retrieveMs?: number; ttftMs?: number };
     }
   | { requestId: string; kind: 'error'; message: string };
 
@@ -1124,7 +1173,7 @@ export const IPC = {
    * answer requests, so the first real question prefills from cache */
   llmPrewarm: 'llm:prewarm',
   /** invoke: ({memo, question, answer}) => string — async rolling interview
-   * memo update (P1-5); cheap off-critical-path deepseek-chat call, '' = keep old */
+   * memo update (P1-5); cheap off-critical-path deepseek-flash call, '' = keep old */
   memoUpdate: 'llm:memo',
   /** invoke: () => OnboardingState — first-run wizard state */
   onboardingGet: 'onboarding:get',

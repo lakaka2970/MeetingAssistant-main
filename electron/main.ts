@@ -74,6 +74,7 @@ import type { RagHitView } from '../shared/protocol';
 import { DOC_EXTENSIONS, LIBRARY_EXTENSIONS, extractDocText, isLibraryExtension } from './docparse';
 import { basename } from 'path';
 import { chatOnce, chatStream, type ChatResult, type LlmConfig } from './llm/adapter';
+import { findPresetByEndpoint } from '../shared/providerCatalog';
 import {
   FailureBook,
   planBackends,
@@ -688,10 +689,53 @@ function bootstrap(): void {
         })();
       }
       /**
-       * Visual QA of the 双屏 connect window (same spirit as MC_MAIN_SHOT for
-       * the settings panel): raise it, let the QR paint, write a PNG. Reviewing
-       * a layout requires seeing it, and a boolean assertion cannot tell you the
-       * pairing code is clipped.
+       * Visual QA of the resizable two-pane layout: shoot the bare window, click
+       * the collapse handle, shoot again, restore, shoot once more — so the
+       * lopsided split, the answer-only rail and the round trip are all
+       * reviewable as real pixels. Same spirit as MC_MAIN_SHOT / MC_CONNECT_SHOT.
+       */
+      if (process.env.MC_PANES_SHOT) {
+        const dir = process.env.MC_PANES_SHOT;
+        const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+        const shoot = async (name: string): Promise<void> => {
+          const image = await win?.webContents.capturePage();
+          if (!image) return;
+          mkdirSync(dir, { recursive: true });
+          const file = join(dir, `${name}.png`);
+          writeFileSync(file, image.toPNG());
+          console.log(`[panes] ${name} -> ${file}`);
+        };
+        void (async () => {
+          try {
+            await wait(2500);
+            await shoot('panes-split');
+            console.log(
+              '[panes] collapse:',
+              await win?.webContents.executeJavaScript(
+                `(()=>{const b=document.querySelector('.pane-collapse');if(!b)return 'NO-HANDLE';b.click();return 'clicked';})()`,
+                true,
+              ),
+            );
+            await wait(900);
+            await shoot('panes-answer-only');
+            console.log(
+              '[panes] restore:',
+              await win?.webContents.executeJavaScript(
+                `(()=>{const b=document.querySelector('.pane-rail');if(!b)return 'NO-RAIL';b.click();return 'clicked';})()`,
+                true,
+              ),
+            );
+            await wait(900);
+            await shoot('panes-restored');
+          } catch (e) {
+            console.warn('[panes] screenshot failed:', (e as Error).message);
+          }
+        })();
+      }
+      /**
+       * Visual QA of the 双屏 connect window: raise it, let the QR paint, write a
+       * PNG. Reviewing a layout requires seeing it, and a boolean assertion
+       * cannot tell you the pairing code is clipped.
        *
        * Content protection is lifted for the capture only — capturePage() on a
        * protected window returns a black rectangle by design, which would make
@@ -1497,7 +1541,7 @@ function bootstrap(): void {
       return {
         why: !l.baseUrl || !settings.getLlmApiKey()
           ? '无法读屏：还没有任何模型服务可用。请先在设置（或首次向导）里配好文本大模型的 Base URL 与 API Key。'
-          : `无法读屏：文本服务商 ${l.baseUrl} 没有可用的视觉模型。请在 设置 → 视觉模型 里填一个支持图片的模型（DeepSeek 可选 deepseek-v4.1-flash），或装本地 OCR：npm i tesseract.js 后开启「截图 OCR 前置」。也可以直接把题干粘贴到输入框作答。`,
+          : `无法读屏：文本服务商 ${l.baseUrl} 没有可用的视觉模型。请在 设置 → 视觉模型 里填一个支持图片的模型（DeepSeek 可选 deepseek-flash），或装本地 OCR：npm i tesseract.js 后开启「截图 OCR 前置」。也可以直接把题干粘贴到输入框作答。`,
       };
     };
 
@@ -2052,6 +2096,9 @@ function bootstrap(): void {
       model: settings.data.llm.model,
       apiKey: settings.getLlmApiKey() ?? '',
       label: 'primary',
+      thinking: findPresetByEndpoint(settings.data.llm.baseUrl, settings.data.llm.model, 'text-llm')
+        ?.thinking,
+      thinkingLevel: settings.data.llm.thinking,
     });
 
     ipcMain.on(IPC.llmAsk, async (_e, payload: LlmAskPayload) => {
@@ -2063,6 +2110,9 @@ function bootstrap(): void {
         return;
       }
       const ac = new AbortController();
+      // pipeline-latency ④: the whole ask is timed against this; ttft is the
+      // number the user actually feels (question received → first token out)
+      const askT0 = Date.now();
       llmControllers.set(payload.requestId, ac);
       const isTranslate = payload.mode === 'translate';
       // session dual-slot material first; the global default KB only fills in
@@ -2107,12 +2157,15 @@ function bootstrap(): void {
       let factsHint: string | undefined;
       let qaHit: { question: string; answer: string } | undefined;
       let webLines: string[] | undefined;
+      let retrieveMs: number | undefined;
+      let ttftMs: number | undefined;
       if (!isTranslate) {
         const q =
           payload.mode === 'free'
             ? freeQuestion ?? ''
             : payload.question || payload.recentTranscript.at(-1) || '';
         const r = await rag.retrieve(q, payload.sessionId);
+        retrieveMs = r.ms;
         // read before the branch chain below: a prepared-answer direct hit skips
         // the `hits` branch, and a settled-figure warning must not be lost just
         // because the answer came from a Q&A pair
@@ -2196,6 +2249,7 @@ function bootstrap(): void {
         resolveEndpointForPreset(presetId, {
           primary: primaryCtx,
           routeKeys: settings.getRouteKeys(),
+          thinkingByPreset: settings.data.llm.thinkingByPreset,
         });
       const kind = classifyQuestion(payload.question || payload.recentTranscript.at(-1) || '');
       const plan = llmFailures.reorder(
@@ -2231,7 +2285,11 @@ function bootstrap(): void {
         : streamWithFallback({
             endpoints: plan,
             messages,
-            onDelta: (text) => sendEv({ requestId: payload.requestId, kind: 'delta', text }),
+            onDelta: (text) => {
+              if (ttftMs === undefined) ttftMs = Date.now() - askT0;
+              sendEv({ requestId: payload.requestId, kind: 'delta', text });
+            },
+            onReasoning: (text) => sendEv({ requestId: payload.requestId, kind: 'reasoning', text }),
             signal: ac.signal,
             // a black-holed routed endpoint must not hang a live answer; only
             // the primary alone is trusted to take as long as it needs
@@ -2258,6 +2316,7 @@ function bootstrap(): void {
               `[llm] done mode=${payload.mode} cache_hit=${u.prompt_cache_hit_tokens ?? '?'} cache_miss=${u.prompt_cache_miss_tokens ?? '?'}`,
             );
           }
+          console.log(`[timings] mode=${payload.mode} retrieve=${retrieveMs ?? '-'}ms ttft=${ttftMs ?? '-'}ms`);
           sendEv({
             requestId: payload.requestId,
             kind: 'done',
@@ -2270,6 +2329,7 @@ function bootstrap(): void {
                   promptCacheMiss: u.prompt_cache_miss_tokens,
                 }
               : undefined,
+            timings: { retrieveMs, ttftMs },
           });
         })
         .catch((e: Error) => {
@@ -2316,7 +2376,7 @@ function bootstrap(): void {
     );
 
     // Cheap one-shot translation to Chinese (inline transcript 对照; off-session,
-    // no history pollution). Uses the fast text model (deepseek-chat).
+    // no history pollution). Uses the fast text model (deepseek-flash).
     ipcMain.handle(IPC.translateText, async (_e, text: string) => {
       const apiKey = settings.getLlmApiKey();
       if (!apiKey) throw new Error(T().noApiKeyShort);
