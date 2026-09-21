@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SpeculativeCache, after } from '../electron/rag/speculative';
+import { SpeculativeCache, after, specKey } from '../electron/rag/speculative';
 
 const settled = (v: number) => Promise.resolve(v);
 
@@ -44,5 +44,20 @@ describe('SpeculativeCache', () => {
     const c = new SpeculativeCache<number>();
     c.set('  ', settled(1));
     expect(c.get('')).toBeUndefined();
+  });
+
+  it('scopes identical text to its session so cross-session lookups miss', async () => {
+    const c = new SpeculativeCache<number>();
+    const keyA = specKey('sess-A', 'q');
+    const keyB = specKey('sess-B', 'q');
+    c.set(keyA, settled(1));
+    expect(c.get(keyB)).toBeUndefined();
+    await expect(c.get(keyA)).resolves.toBe(1);
+  });
+
+  it('normalizes text so trailing whitespace cannot break a same-session hit', async () => {
+    const c = new SpeculativeCache<number>();
+    c.set(specKey('sess-A', 'q  '), settled(1));
+    await expect(c.get(specKey('sess-A', 'q'))).resolves.toBe(1);
   });
 });

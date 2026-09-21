@@ -41,7 +41,7 @@ import { KnowledgeStore } from './knowledge';
 import { KnowledgeFileStore } from './knowledgeFiles';
 import { SessionStore } from './sessions';
 import { RagService, MIN_QUERY_CHARS, type RetrieveResult } from './rag/service';
-import { SpeculativeCache, after } from './rag/speculative';
+import { SpeculativeCache, after, specKey } from './rag/speculative';
 import { SkillsManager } from './skills/manager';
 import { extractMemoFacts, formatFactsHint } from './consistency/facts';
 import { NativeAudioCapture } from './audio/nativeCapture';
@@ -2001,7 +2001,10 @@ function bootstrap(): void {
         // speculation never spawns the worker or waits for a download
         if (rag.status().state !== 'ready') return;
         if (text.length < MIN_QUERY_CHARS) return;
-        specCache.set(text, rag.retrieve(text, p?.sessionId).catch(() => null));
+        specCache.set(
+          specKey(p?.sessionId, text),
+          rag.retrieve(text, p?.sessionId).catch(() => null),
+        );
       }, SPEC_DEBOUNCE_MS);
     });
 
@@ -2194,7 +2197,7 @@ function bootstrap(): void {
         // speculative reuse: exact text only, and an in-flight guess that has
         // not landed within the wait budget loses to a real retrieve
         let r: RetrieveResult;
-        const specP = SPECULATIVE_RETRIEVAL ? specCache.get(q) : undefined;
+        const specP = SPECULATIVE_RETRIEVAL ? specCache.get(specKey(payload.sessionId, q)) : undefined;
         const raced = specP ? await Promise.race([specP, after(SPEC_REUSE_WAIT_MS)]) : null;
         if (raced) {
           r = raced;

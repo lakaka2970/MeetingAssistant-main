@@ -50,3 +50,15 @@ export class SpeculativeCache<T> {
 /** resolve with null after ms — the bounded wait a speculative hit is allowed */
 export const after = (ms: number): Promise<null> =>
   new Promise((res) => setTimeout(() => res(null), ms));
+
+/**
+ * Session-scoped speculative cache key. `rag.retrieve` is per-session, but the
+ * ASR partial and the final question carry only text; folding the sessionId in
+ * (NUL separator — never present in a UUID session id or spoken text) keeps one
+ * session's prefetch from being served to another within the TTL. The cache
+ * stays generic: this composition lives here so the set and get sides in
+ * main.ts derive the identical key from their (sessionId, text) pair.
+ */
+export function specKey(sessionId: string | undefined, text: string): string {
+  return `${sessionId ?? ''}${String.fromCharCode(0)}${text.trim()}`;
+}
