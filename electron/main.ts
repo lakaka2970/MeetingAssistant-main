@@ -2406,7 +2406,7 @@ function bootstrap(): void {
               : undefined,
             timings: { retrieveMs, ttftMs },
           });
-          if (webPromise) void runSupplement(webPromise, r.text);
+          if (webPromise) void runSupplement(webPromise, r.text).catch(() => undefined);
         })
         .catch((e: Error) => {
           if (webPromise) sendEv({ requestId: payload.requestId, kind: 'web-done' });

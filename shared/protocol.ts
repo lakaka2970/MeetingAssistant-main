@@ -751,8 +751,10 @@ export interface StoredTurn {
   qa?: QaHitView;
   /** web sources behind an answer the knowledge base could not cover */
   web?: WebSourceView[];
-  /** ③ model-written web supplement block (persisted; webPending never is —
-   * a stale 'searching' after a restart would be a lie) */
+  /** ③ model-written web supplement block (persisted). webPending is
+   * runtime-only, but the debounced saveSessions serializes it into the JSON
+   * by accident; the boot wipe in App.tsx clears it, so a restart never
+   * shows a stale 'searching' */
   webSup?: string;
 }
 

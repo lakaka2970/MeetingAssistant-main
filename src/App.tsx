@@ -346,13 +346,14 @@ export function App() {
         const inferMs = ev.timings.inferEndTs - ev.timings.inferStartTs;
         e2eSamples.current.push(e2eMs);
         if (e2eSamples.current.length > 200) e2eSamples.current.shift();
-        setHud({
+        setHud((s) => ({
+          ...s,
           lastE2eMs: e2eMs,
           lastInferMs: inferMs,
           p50: percentile(e2eSamples.current, 50),
           p95: percentile(e2eSamples.current, 95),
           count: e2eSamples.current.length,
-        });
+        }));
         const sid = currentIdRef.current;
         setSessions((list) =>
           list.map((s) =>
