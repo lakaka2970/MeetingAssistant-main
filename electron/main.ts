@@ -46,7 +46,8 @@ import { SkillsManager } from './skills/manager';
 import { extractMemoFacts, formatFactsHint } from './consistency/facts';
 import { NativeAudioCapture } from './audio/nativeCapture';
 import { decideRoute, isOcrConfigured, ocrDataUrl } from './vision/ocrPrefilter';
-import { formatWebLines, webSearch, webSources } from './websearch';
+import { formatWebLines, webSearch, webSources, type WebSearchOutcome } from './websearch';
+import { supplementMessages, isNoSupplement } from '../shared/webSupplement';
 import { DEFAULT_SEARCH_PROVIDER } from '../shared/searchProviders';
 import { ExamBanks } from './exam/banks';
 import { CompanionBridge, type CompanionSettings } from './companion/bridge';
@@ -2186,7 +2187,9 @@ function bootstrap(): void {
       let ragConflicts: string[] = [];
       let factsHint: string | undefined;
       let qaHit: { question: string; answer: string } | undefined;
-      let webLines: string[] | undefined;
+      /** ③ 先答后补: started unawaited during routing, consumed after done */
+      let webPromise: Promise<WebSearchOutcome> | undefined;
+      let webQuestion = '';
       let retrieveMs: number | undefined;
       let ttftMs: number | undefined;
       if (!isTranslate) {
@@ -2236,29 +2239,25 @@ function bootstrap(): void {
             (h: RagHitView) => `[${h.source}${h.ref ? '|' + h.ref : ''}] ${h.text}`,
           );
         } else if (q.length >= MIN_QUERY_CHARS) {
-          // a real question the knowledge base has nothing on — try the web.
-          // Too-short utterances (greetings, "嗯？") never leave the machine.
+          // a real question the knowledge base has nothing on — the web.
+          // ③ 先答后补: NEVER awaited here; the answer starts on the model's
+          // own knowledge and whatever the search returns is appended after
+          // the stream completes. Too-short utterances still never leave.
           const ws = settings.data.webSearch;
           const apiKey = settings.getWebSearchApiKey();
-          if (ws?.enabled && apiKey) {
-            const provider = ws.providerId ?? DEFAULT_SEARCH_PROVIDER;
-            const w = await webSearch({
-              provider,
+          if (ws?.enabled && apiKey && !isTranslate) {
+            webPromise = webSearch({
+              provider: ws.providerId ?? DEFAULT_SEARCH_PROVIDER,
               apiKey,
               query: q,
               maxResults: ws.maxResults,
               timeoutMs: ws.timeoutMs,
             });
-            if (w.hits.length) {
-              webLines = formatWebLines(w.hits);
-              sendEv({ requestId: payload.requestId, kind: 'web', sources: webSources(w.hits) });
-              console.log(`[websearch] ${provider}: ${w.hits.length} hits in ${w.ms}ms`);
-            } else {
-              console.warn(`[websearch] ${provider}: no hits (${w.error ?? 'empty'}) ${w.ms}ms`);
-            }
+            webQuestion = q;
+            sendEv({ requestId: payload.requestId, kind: 'web-pending' });
           }
         }
-        if (ragContext || factsHint || qaHit || webLines) {
+        if (ragContext || factsHint || qaHit || webPromise) {
           console.log(`[rag] retrieve ${r.ms}ms: qa=${r.qa.length} hits=${r.hits.length}`);
         }
       }
@@ -2277,7 +2276,6 @@ function bootstrap(): void {
         ragContext: isTranslate ? undefined : ragContext,
         ragConflicts: isTranslate ? undefined : ragConflicts,
         qaHit: isTranslate ? undefined : qaHit,
-        webLines: isTranslate ? undefined : webLines,
         consistencyHint: isTranslate ? undefined : factsHint,
         skillInstruction,
         background: isTranslate ? undefined : payload.background || (hasMaterial ? undefined : knowledge.text),
@@ -2305,6 +2303,41 @@ function bootstrap(): void {
         lastPrefix = stablePrefixFor(payload.resume || payload.background, payload.jd);
         lastPrefixActivity = Date.now();
       }
+
+      // ③ the supplement call: small, non-streaming (so the NO_SUPPLEMENT
+      // sentinel can be filtered out before it ever reaches the screen), and
+      // it always closes the web-pending hint with web-done — success,
+      // silence, failure or cancel alike. The main answer stands on its own:
+      // a failed supplement stays silent.
+      const runSupplement = async (p: Promise<WebSearchOutcome>, mainText: string): Promise<void> => {
+        try {
+          const w = await p;
+          if (ac.signal.aborted) return;
+          if (!w.hits.length) {
+            console.warn(`[websearch] no hits (${w.error ?? 'empty'}) ${w.ms}ms`);
+            return;
+          }
+          console.log(`[websearch] supplement: ${w.hits.length} hits ${w.ms}ms`);
+          sendEv({ requestId: payload.requestId, kind: 'web', sources: webSources(w.hits) });
+          const s = await chatOnce(
+            {
+              baseUrl: settings.data.llm.baseUrl,
+              model: settings.data.llm.model,
+              apiKey: primary.apiKey ?? '',
+            },
+            supplementMessages(webQuestion, mainText, formatWebLines(w.hits)),
+            { maxTokens: 400, temperature: 0.3, signal: ac.signal },
+          );
+          const text = s.text.trim();
+          if (text && !isNoSupplement(text)) {
+            sendEv({ requestId: payload.requestId, kind: 'web-sup', text });
+          }
+        } catch (e) {
+          console.warn('[websearch] supplement failed:', (e as Error).message);
+        } finally {
+          sendEv({ requestId: payload.requestId, kind: 'web-done' });
+        }
+      };
 
       const work: Promise<{
         text: string;
@@ -2373,8 +2406,10 @@ function bootstrap(): void {
               : undefined,
             timings: { retrieveMs, ttftMs },
           });
+          if (webPromise) void runSupplement(webPromise, r.text);
         })
         .catch((e: Error) => {
+          if (webPromise) sendEv({ requestId: payload.requestId, kind: 'web-done' });
           if (ac.signal.aborted) return; // user cancelled — not an error
           console.error('[llm] request failed:', e.message);
           sendEv({ requestId: payload.requestId, kind: 'error', message: e.message });

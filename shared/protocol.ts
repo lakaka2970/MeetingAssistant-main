@@ -751,6 +751,9 @@ export interface StoredTurn {
   qa?: QaHitView;
   /** web sources behind an answer the knowledge base could not cover */
   web?: WebSourceView[];
+  /** ③ model-written web supplement block (persisted; webPending never is —
+   * a stale 'searching' after a restart would be a lie) */
+  webSup?: string;
 }
 
 /** one knowledge-base Q&A direct hit (rendered verbatim, then enriched) */
@@ -923,6 +926,13 @@ export type LlmEvent =
   | { requestId: string; kind: 'qa'; hit: QaHitView }
   /** the KB missed and the web search ran: the sources behind the answer */
   | { requestId: string; kind: 'web'; sources: WebSourceView[] }
+  /** ③ 先答后补: the KB missed and a web search is running behind the main
+   * answer — the renderer may show a waiting hint */
+  | { requestId: string; kind: 'web-pending' }
+  /** the finished supplement block, delivered whole (sentinel already filtered) */
+  | { requestId: string; kind: 'web-sup'; text: string }
+  /** the supplement path is over: appended, silent (no hits), failed or cancelled */
+  | { requestId: string; kind: 'web-done' }
   | {
       requestId: string;
       kind: 'done';

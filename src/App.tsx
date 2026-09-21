@@ -307,7 +307,13 @@ export function App() {
         setSessions(
           f.sessions.map((s) =>
             migrateKbSlots(
-              { ...s, segments: reindexSegments(s.segments ?? []) },
+              {
+                ...s,
+                segments: reindexSegments(s.segments ?? []),
+                // ③ webPending is a runtime-only flag: a persisted stale
+                // 'searching' after a restart would be a lie
+                turns: (s.turns ?? []).map((tu) => ({ ...tu, webPending: undefined })),
+              },
               tRef.current.app.legacyKbName,
             ),
           ),
@@ -405,6 +411,9 @@ export function App() {
             // let the stream below it be the AI's enrichment
             if (ev.kind === 'qa') return { ...t, qa: ev.hit };
             if (ev.kind === 'web') return { ...t, web: ev.sources };
+            if (ev.kind === 'web-pending') return { ...t, webPending: true };
+            if (ev.kind === 'web-sup') return { ...t, webSup: ev.text, webPending: false };
+            if (ev.kind === 'web-done') return { ...t, webPending: false };
             return { ...t, status: 'error', error: ev.message };
           }),
         })),

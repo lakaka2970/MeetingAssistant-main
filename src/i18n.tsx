@@ -112,6 +112,8 @@ const zh = {
     reasoningToggle: '🧠 思考过程',
     /** web-search fallback sources */
     webBadge: '🌐 网络来源',
+    webSupHeading: '联网补充',
+    webSearching: '联网检索中，稍后附上补充…',
     resume: '简历',
     resumeSetTitle: (name: string, chars: number) =>
       `简历：${name}（${chars}字）点击更换（.md/.txt/.docx/.pdf）`,
@@ -712,6 +714,8 @@ const en: Dict = {
     reasoningToggle: '🧠 Reasoning',
     /** web-search fallback sources */
     webBadge: '🌐 Web sources',
+    webSupHeading: 'Web supplement',
+    webSearching: 'Searching the web — a supplement follows…',
     resume: 'Resume',
     resumeSetTitle: (name: string, chars: number) =>
       `Resume: ${name} (${chars} chars) — click to replace (.md/.txt/.docx/.pdf)`,
