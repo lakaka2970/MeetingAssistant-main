@@ -50,7 +50,7 @@ describe('resolveTestApiKey', () => {
     capability: 'text-llm',
     providerId: 'deepseek',
     baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
+    model: 'deepseek-flash',
     slot: 'llm',
   };
 
@@ -96,7 +96,7 @@ describe('resolveTestApiKey', () => {
       capability: 'text-llm',
       providerId: 'deepseek',
       baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-chat',
+      model: 'deepseek-flash',
       slot: 'llm',
       useStoredKey: false,
       proxyUrl: '127.0.0.1:7897',
@@ -167,7 +167,7 @@ describe('runProviderTest — HTTP-backed capabilities', () => {
     capability: 'text-llm',
     providerId: 'deepseek',
     baseUrl,
-    model: 'deepseek-chat',
+    model: 'deepseek-flash',
     slot: 'llm',
   });
 
@@ -190,7 +190,7 @@ describe('runProviderTest — HTTP-backed capabilities', () => {
     expect(captured.url).toBe('/v1/chat/completions');
     expect(captured.auth).toBe('Bearer sk-live-1234');
     expect(captured.body).toMatchObject({
-      model: 'deepseek-chat',
+      model: 'deepseek-flash',
       max_tokens: 1,
       temperature: 0,
       stream: false,

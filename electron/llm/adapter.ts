@@ -4,6 +4,8 @@
  * Runs in the MAIN process only — the API key never reaches the renderer.
  */
 
+import { buildThinkingParams, type ThinkingLevel, type ThinkingStyle } from '../../shared/thinking';
+
 export interface LlmConfig {
   baseUrl: string; // e.g. https://api.deepseek.com/v1
   model: string;
@@ -22,6 +24,20 @@ export interface ChatMessage {
 
 export interface ChatStreamCallbacks {
   onDelta(text: string): void;
+  /** streamed reasoning_content from thinking models; separate so the answer
+   * text never mixes with it */
+  onReasoning?(text: string): void;
+}
+
+/** provider-specific thinking control, already resolved to style + level */
+export interface ChatThinkingOption {
+  style: ThinkingStyle;
+  level: ThinkingLevel;
+}
+
+export interface ChatStreamOpts {
+  temperature?: number;
+  thinking?: ChatThinkingOption;
 }
 
 export interface ChatResult {
@@ -64,6 +80,16 @@ export function extractDelta(payload: string): string {
   try {
     const j = JSON.parse(payload);
     return j?.choices?.[0]?.delta?.content ?? j?.choices?.[0]?.message?.content ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/** Extract the streamed reasoning_content delta (thinking models). */
+export function extractReasoningDelta(payload: string): string {
+  try {
+    const j = JSON.parse(payload);
+    return j?.choices?.[0]?.delta?.reasoning_content ?? '';
   } catch {
     return '';
   }
@@ -143,6 +169,7 @@ export async function chatStream(
   messages: ChatMessage[],
   callbacks: ChatStreamCallbacks,
   signal?: AbortSignal,
+  opts?: ChatStreamOpts,
 ): Promise<ChatResult> {
   const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
   const res = await fetch(url, {
@@ -155,7 +182,10 @@ export async function chatStream(
       model: config.model,
       messages,
       stream: true,
-      temperature: 0.5,
+      temperature: opts?.temperature ?? 0.5,
+      ...(opts?.thinking
+        ? buildThinkingParams(opts.thinking.style, opts.thinking.level)
+        : {}),
     }),
     signal,
   });
@@ -175,6 +205,8 @@ export async function chatStream(
     const { done, value } = await reader.read();
     if (done) break;
     for (const payload of parser.push(decoder.decode(value, { stream: true }))) {
+      const reasoning = extractReasoningDelta(payload);
+      if (reasoning) callbacks.onReasoning?.(reasoning);
       const delta = extractDelta(payload);
       if (delta) {
         full += delta;

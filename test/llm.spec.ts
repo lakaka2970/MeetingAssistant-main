@@ -534,7 +534,7 @@ describe('chatStream (mock OpenAI-compatible server)', () => {
     server.close();
   });
 
-  const cfg = () => ({ baseUrl, model: 'deepseek-v4-flash', apiKey: 'sk-test' });
+  const cfg = () => ({ baseUrl, model: 'deepseek-v4-pro', apiKey: 'sk-test' });
   const msgs: ChatMessage[] = [{ role: 'user', content: 'hi' }];
 
   it('sends the right request shape and assembles streamed deltas', async () => {
@@ -545,7 +545,7 @@ describe('chatStream (mock OpenAI-compatible server)', () => {
     expect(deltas.join('')).toBe('建议这样回答');
     expect(lastReq.url).toBe('/v1/chat/completions');
     expect(lastReq.auth).toBe('Bearer sk-test');
-    expect(lastReq.body.model).toBe('deepseek-v4-flash');
+    expect(lastReq.body.model).toBe('deepseek-v4-pro');
     expect(lastReq.body.stream).toBe(true);
     expect(lastReq.body.messages).toEqual(msgs);
   });

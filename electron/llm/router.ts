@@ -18,6 +18,7 @@
 import { chatStream, type ChatMessage } from './adapter';
 import type { ChatUsage } from './adapter';
 import { findPresetById } from '../../shared/providerCatalog';
+import type { ThinkingCapability, ThinkingLevel } from '../../shared/thinking';
 import type { QuestionKind } from '../../shared/textHeuristics';
 
 // ---------- types ----------
@@ -38,6 +39,10 @@ export interface Endpoint {
   apiKey?: string;
   /** human-readable identity for logs; never contains the key */
   label: string;
+  /** catalog thinking capability of this model; absent = no thinking control */
+  thinking?: ThinkingCapability;
+  /** user's configured effort; parameter is only sent when both are present */
+  thinkingLevel?: ThinkingLevel;
 }
 
 /** main-side resolved primary (llm settings slot) handed to the router */
@@ -75,7 +80,12 @@ export function isRouteTarget(presetId: string): boolean {
  */
 export function resolveEndpointForPreset(
   presetId: string,
-  opts: { primary: PrimaryContext; routeKeys: RouteKeyMap },
+  opts: {
+    primary: PrimaryContext;
+    routeKeys: RouteKeyMap;
+    /** presetId -> configured effort (falls back to the primary slot's) */
+    thinkingByPreset?: Record<string, ThinkingLevel>;
+  },
 ): Endpoint | undefined {
   const preset = findPresetById(presetId);
   if (!preset || preset.capability !== 'text-llm' || preset.baseUrl === '') return undefined;
@@ -92,6 +102,9 @@ export function resolveEndpointForPreset(
     model: preset.model,
     apiKey: apiKey || undefined,
     label: presetId,
+    thinking: preset.thinking,
+    thinkingLevel:
+        opts.thinkingByPreset?.[presetId] ?? opts.primary.endpoint.thinkingLevel,
   };
 }
 
@@ -217,6 +230,8 @@ export async function streamWithFallback(args: {
   endpoints: Endpoint[];
   messages: ChatMessage[];
   onDelta(text: string): void;
+  /** streamed reasoning_content, forwarded from whichever endpoint serves */
+  onReasoning?(text: string): void;
   signal?: AbortSignal;
   /** 0 / undefined = no first-token timeout */
   firstTokenTimeoutMs?: number;
@@ -253,8 +268,11 @@ export async function streamWithFallback(args: {
           chatStream(
             { baseUrl: ep.baseUrl, model: ep.model, apiKey: ep.apiKey ?? '' },
             args.messages,
-            { onDelta },
+            { onDelta, onReasoning: args.onReasoning },
             signal,
+            ep.thinking && ep.thinkingLevel
+              ? { thinking: { style: ep.thinking.style, level: ep.thinkingLevel } }
+              : undefined,
           ));
       const r = await attempt(ep, link.signal, trackDelta);
       if (args.signal?.aborted) throw abortError();

@@ -18,7 +18,7 @@ import {
 import type { ChatMessage } from '../electron/llm/adapter';
 
 const primary: PrimaryContext = {
-  endpoint: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: 'sk-primary', label: 'primary' },
+  endpoint: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-flash', apiKey: 'sk-primary', label: 'primary' },
   providerId: 'deepseek',
 };
 
@@ -29,10 +29,10 @@ const resolve = (presetId: string) =>
 
 describe('resolveEndpointForPreset', () => {
   it('reuses the primary key for same-provider presets', () => {
-    const ep = resolve('deepseek.text.thinking');
+    const ep = resolve('deepseek.text.deep');
     expect(ep).toMatchObject({
       baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-v4-pro',
       apiKey: 'sk-primary',
     });
   });
@@ -81,11 +81,11 @@ describe('planBackends', () => {
     const plan = planBackends({
       mode: 'segment',
       kind: 'coding',
-      routing: { enabled: true, byKind: { coding: 'deepseek.text.thinking' } },
+      routing: { enabled: true, byKind: { coding: 'deepseek.text.deep' } },
       primary,
       resolve,
     });
-    expect(plan[0].model).toBe('deepseek-v4-flash');
+    expect(plan[0].model).toBe('deepseek-v4-pro');
     expect(plan).toContain(primary.endpoint);
     expect(plan[0]).not.toBe(primary.endpoint);
   });
@@ -106,7 +106,7 @@ describe('planBackends', () => {
       const plan = planBackends({
         mode,
         kind: 'coding',
-        routing: { enabled: true, byKind: { coding: 'deepseek.text.thinking' }, fallbackChain: ['deepseek.text.deep'] },
+        routing: { enabled: true, byKind: { coding: 'deepseek.text.deep' }, fallbackChain: ['deepseek.text.deep'] },
         primary,
         resolve,
       });
@@ -119,13 +119,13 @@ describe('planBackends', () => {
       mode: 'segment',
       kind: 'other',
       routing: {
-        fallbackChain: ['deepseek.text.thinking', 'zhipu.text.flash', 'deepseek.text.thinking'],
+        fallbackChain: ['deepseek.text.deep', 'zhipu.text.flash', 'deepseek.text.deep'],
       },
       primary,
       resolve,
     });
     // zhipu has no route key -> unresolvable -> dropped; deepseek dedupes
-    expect(plan.map((p) => p.model)).toEqual(['deepseek-chat', 'deepseek-v4-flash']);
+    expect(plan.map((p) => p.model)).toEqual(['deepseek-flash', 'deepseek-v4-pro']);
   });
 
   it('returns the primary by reference when it opens the plan', () => {

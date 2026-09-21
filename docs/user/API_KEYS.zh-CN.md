@@ -36,7 +36,7 @@ MeetingAssistant 采用 **BYOK（Bring Your Own Key，自带 Key）**：
 
 ### DeepSeek（推荐用于 AI 回答）
 
-用途：AI 回答与转录内联翻译。默认模型 `deepseek-chat`（非思考模式，首个字最快）。
+用途：AI 回答与转录内联翻译。默认模型 `deepseek-flash`（首个字最快，也能读图）。
 
 1. 打开 [DeepSeek 开放平台](https://platform.deepseek.com/)。
 2. 使用手机号或邮箱登录；首次使用请先注册账号。
@@ -51,7 +51,10 @@ MeetingAssistant 采用 **BYOK（Bring Your Own Key，自带 Key）**：
 - 提示 `Insufficient Balance`：Key 本身有效，去平台充值即可。
 - Key 只显示一次：没记下就删掉重建，不影响账号。
 
-可选模型：`deepseek-chat`（快，默认）、`deepseek-v4-flash`（带推理链，首字更慢）、`deepseek-v4-pro`（最强推理，适合复盘不适合抢答）。
+可选模型：`deepseek-flash`（快，默认，可读图）、`deepseek-v4-pro`（最强推理，适合复盘不适合抢答）。
+
+> DeepSeek 只接受这两个模型名。旧的 `deepseek-chat` / `deepseek-v4-flash` / `deepseek-v4.1-flash` 会直接报 400
+> （`The supported API model names are deepseek-flash, deepseek-v4-pro`）；升级后应用会把你存过的旧名字自动改成 `deepseek-flash`。
 
 ### 阿里云百炼 · 中国大陆站（推荐用于实时语音识别）
 

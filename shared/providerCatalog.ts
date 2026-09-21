@@ -22,6 +22,9 @@
 
 export type ProviderCapability = 'text-llm' | 'vision' | 'asr-realtime' | 'asr-segment';
 
+import type { ThinkingCapability } from './thinking';
+export type { ThinkingCapability, ThinkingLevel, ThinkingStyle } from './thinking';
+
 export type ProviderId =
   | 'deepseek'
   | 'aliyun-dashscope-cn'
@@ -82,6 +85,13 @@ export interface ProviderPreset {
    * fails with a provider error the user cannot act on.
    */
   visionCapable?: boolean;
+  /**
+   * Model thinking-effort support: which request fields translate the UI's
+   * off/low/medium/high ladder, and which non-off levels the model exposes.
+   * Absent = no known thinking control — the UI hides the selector and the
+   * adapter never sends a thinking parameter for this model.
+   */
+  thinking?: ThinkingCapability;
   help: ProviderHelp;
 }
 
@@ -420,44 +430,24 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     id: 'deepseek.text.fast',
     providerId: 'deepseek',
     capability: 'text-llm',
-    nameZh: 'DeepSeek 快速·非思考 (deepseek-chat)',
-    nameEn: 'DeepSeek fast · non-thinking (deepseek-chat)',
-    descriptionZh: '首个字最快（实测约 0.4s），但不接受图片；回答只靠文本资料。',
-    descriptionEn: 'Fastest first token (measured ~0.4 s), but takes no image input.',
+    // DeepSeek's current lineup is exactly two names: 'deepseek-flash' and
+    // 'deepseek-v4-pro'. The older ids ('deepseek-chat', 'deepseek-v4-flash',
+    // 'deepseek-v4.1-flash') are rejected with
+    //   "The supported API model names are deepseek-flash, deepseek-v4-pro"
+    // so they were consolidated here on 2026-09-16 — see RETIRED_DEEPSEEK_MODELS
+    // in electron/settings.ts for profiles that already stored an old name.
+    nameZh: 'DeepSeek flash（可读图，默认）',
+    nameEn: 'DeepSeek flash (reads images, default)',
+    descriptionZh: '一个模型同时负责回答与看截图，配一个 Key 就够；首个字也最快。',
+    descriptionEn: 'One model answers and reads screenshots, so a single key covers both — and it has the fastest first token.',
     baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
-    region: 'cn',
-    help: deepseekHelp,
-  },
-  {
-    id: 'deepseek.text.v41flash',
-    providerId: 'deepseek',
-    capability: 'text-llm',
-    nameZh: 'DeepSeek v4.1-flash（可读图，默认）',
-    nameEn: 'DeepSeek v4.1-flash (reads images, default)',
-    descriptionZh: '一个模型同时负责回答与看截图，配一个 Key 就够；截图做题直接沿用文本配置。',
-    descriptionEn: 'One model answers and reads screenshots, so a single key covers both; screenshot answering reuses this config.',
-    baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-v4.1-flash',
+    model: 'deepseek-flash',
     region: 'cn',
     recommended: true,
     // The user asserts this model takes images. If that ever turns out to be
     // wrong, only the vision path breaks (with a clear provider error) — the
     // text answer path is unaffected.
     visionCapable: true,
-    help: deepseekHelp,
-  },
-  {
-    id: 'deepseek.text.thinking',
-    providerId: 'deepseek',
-    capability: 'text-llm',
-    nameZh: 'DeepSeek 思考·v4-flash',
-    nameEn: 'DeepSeek thinking · v4-flash',
-    descriptionZh: '带推理链，回答更完整，但首字更慢。',
-    descriptionEn: 'Reasoning chain first — richer answers, slower first token.',
-    baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-v4-flash',
-    region: 'cn',
     help: deepseekHelp,
   },
   {
@@ -471,6 +461,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     baseUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-v4-pro',
     region: 'cn',
+    thinking: { style: 'deepseek', levels: ['low', 'medium', 'high'] },
     help: deepseekHelp,
   },
   {
@@ -510,6 +501,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     model: 'glm-4.6',
     region: 'cn',
+    thinking: { style: 'thinking_type', levels: ['high'] },
     help: zhipuHelp,
   },
   {
@@ -523,6 +515,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     model: 'qwen-plus',
     region: 'cn',
+    thinking: { style: 'enable_thinking', levels: ['low', 'medium', 'high'] },
     help: qwenHelp,
   },
   {
@@ -614,12 +607,12 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     id: 'deepseek.vision',
     providerId: 'deepseek',
     capability: 'vision',
-    nameZh: 'DeepSeek 视觉·v4.1-flash',
-    nameEn: 'DeepSeek vision · v4.1-flash',
+    nameZh: 'DeepSeek 视觉·flash',
+    nameEn: 'DeepSeek vision · flash',
     descriptionZh: '与文本同一个 Key、国内直连；截图问答用它就不必再配第二家。',
     descriptionEn: 'Same key as the text model and reachable directly, so screenshot Q&A needs no second provider.',
     baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-v4.1-flash',
+    model: 'deepseek-flash',
     region: 'cn',
     defaultProxyUrl: '',
     visionCapable: true,

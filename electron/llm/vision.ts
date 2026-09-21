@@ -1,12 +1,14 @@
 /**
  * Vision (R5) transport — MAIN PROCESS ONLY (imports electron).
  *
- * DeepSeek has no image input (verified: official API rejects image_url on
- * all models), so screenshot Q&A needs a separate vision provider. Gemini is
- * multimodal but blocked in China, so this path routes through a proxied
- * Electron session (net.request) while the latency-critical DeepSeek answer
- * path stays on direct global fetch. Non-streaming: on-demand + proxy latency
- * dominates, so one round-trip is simpler and robust.
+ * Transport is provider-agnostic: whatever `getVisionConfig()` resolves to is
+ * posted here. The catalog marks DeepSeek's `deepseek-flash` as vision-capable
+ * (so a DeepSeek user needs one key for both jobs), while Gemini — multimodal
+ * but blocked in China — routes through a proxied Electron session
+ * (net.request) and the latency-critical answer path stays on direct fetch.
+ * If a provider turns out to reject image_url anyway, that surfaces here as a
+ * provider error on the vision path only. Non-streaming: on-demand + proxy
+ * latency dominates, so one round-trip is simpler and robust.
  */
 import { net, session, type Session } from 'electron';
 import { toProxyRules, type ChatMessage } from './adapter';

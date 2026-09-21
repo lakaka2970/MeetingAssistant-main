@@ -20,8 +20,13 @@ import type {
   SettingsPatch,
   UiLang,
 } from '../shared/protocol';
+import { clampPaneSplit, PANE_SPLIT_DEFAULT } from '../shared/protocol';
 import { defaultHotkeysForPlatform } from '../shared/platform';
-import { presetsForCapability, providerIdForEndpoint } from '../shared/providerCatalog';
+import {
+  findPresetById,
+  presetsForCapability,
+  providerIdForEndpoint,
+} from '../shared/providerCatalog';
 import {
   DEFAULT_SEARCH_MAX_RESULTS,
   DEFAULT_SEARCH_PROVIDER,
@@ -66,13 +71,10 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
     },
     llm: {
       baseUrl: 'https://api.deepseek.com/v1',
-      // v4.1-flash reads images too, so 截图做题 needs no second provider.
-      // NOTE: 'deepseek-chat' was the default because plain 'deepseek-v4-flash'
-      // streams a long reasoning chain before the answer (measured 2026-07-09,
-      // first token ~0.4 s for chat). Whether v4.1-flash shares that behaviour
-      // has not been measured here — if live answers feel slow to start, switch
-      // back to deepseek-chat in 设置 and point 视觉模型 at deepseek-v4.1-flash.
-      model: 'deepseek-v4.1-flash',
+      // deepseek-flash reads images too, so 截图做题 needs no second provider.
+      // It replaces 'deepseek-chat' / 'deepseek-v4.1-flash': DeepSeek now accepts
+      // only 'deepseek-flash' and 'deepseek-v4-pro' and 400s on anything else.
+      model: 'deepseek-flash',
       answerLang: 'chinese',
       answerWithVision: false,
       // upgrade P1: routing off by default — single provider stays the zero-
@@ -101,6 +103,10 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       hotkeyToggle: hotkeys.toggle,
       hotkeyShot: hotkeys.shot,
       hotkeyAnswer: hotkeys.answer,
+      // even halves: the transcript and the answer each need to be readable,
+      // and neither is secondary by default
+      paneSplit: PANE_SPLIT_DEFAULT,
+      answerOnly: false,
       opacity: 0.94,
       // medium = 16px answer body (was 13px) — readable at a glance mid-interview
       fontScale: 'medium',
@@ -188,25 +194,80 @@ function clampInt(value: number | undefined, min: number, max: number, def: numb
 }
 
 /**
+ * DeepSeek model names that stopped being accepted on 2026-09-16. The API now
+ * lists exactly two (`deepseek-flash`, `deepseek-v4-pro`) and rejects the rest
+ * with HTTP 400 "The supported API model names are …" — which reaches the user
+ * as a failed answer, not as something they can act on. A profile written by an
+ * older build still holds the old name, so it is rewritten on load.
+ *
+ * Scoped to DeepSeek's own endpoint on purpose: a relay that still fronts the
+ * old names under a different baseUrl is left exactly as the user typed it.
+ */
+const RETIRED_DEEPSEEK_MODELS: Record<string, string> = {
+  'deepseek-chat': 'deepseek-flash',
+  'deepseek-v4-flash': 'deepseek-flash',
+  'deepseek-v4.1-flash': 'deepseek-flash',
+};
+
+/** preset ids retired with those models — an old routing lane keeps working. */
+const RETIRED_PRESET_IDS: Record<string, string> = {
+  'deepseek.text.v41flash': 'deepseek.text.fast',
+  'deepseek.text.thinking': 'deepseek.text.deep',
+};
+
+function isDeepSeekEndpoint(baseUrl: string | undefined): boolean {
+  const deepseek = findPresetById('deepseek.text.fast')?.baseUrl;
+  if (!deepseek) return false;
+  const norm = (u: string): string => u.trim().replace(/\/+$/, '').toLowerCase();
+  return !!baseUrl && norm(baseUrl) === norm(deepseek);
+}
+
+/**
+ * Rewrite a retired model name in one endpoint slot. `inheritedBaseUrl` is the
+ * endpoint this slot falls back to when it names no baseUrl of its own — the
+ * vision slot rides on the text provider that way, and it is still DeepSeek.
+ * The slot's own baseUrl (or its absence) is never touched, so `inherited`
+ * stays answerable from the file.
+ */
+function withRetiredModels<T extends { baseUrl?: string; model?: string }>(
+  slot: T,
+  inheritedBaseUrl: string | undefined = undefined,
+): T {
+  const model = slot.model?.trim();
+  if (!model) return slot;
+  const endpoint = slot.baseUrl?.trim() ? slot.baseUrl : inheritedBaseUrl;
+  if (!isDeepSeekEndpoint(endpoint)) return slot;
+  const replacement = RETIRED_DEEPSEEK_MODELS[model];
+  return replacement ? { ...slot, model: replacement } : slot;
+}
+
+/**
  * Per-section spread merge against the defaults. Unknown keys in the stored
  * file survive (forward compatibility); missing ones get the default.
  */
 function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): SettingsFile {
   const dr = defaults.llm.routing ?? { enabled: false, byKind: {}, fallbackChain: [] as string[] };
+  const byKind: Record<string, string> = { ...dr.byKind, ...raw.llm?.routing?.byKind };
+  for (const [kind, id] of Object.entries(byKind)) {
+    if (RETIRED_PRESET_IDS[id]) byKind[kind] = RETIRED_PRESET_IDS[id];
+  }
+  const llm = withRetiredModels({ ...defaults.llm, ...raw.llm });
   return {
     version: 2,
     onboarding: { ...defaults.onboarding, ...raw.onboarding, schemaVersion: 1 },
     llm: {
-      ...defaults.llm,
-      ...raw.llm,
+      ...llm,
       routing: {
         ...dr,
         ...raw.llm?.routing,
-        byKind: { ...dr.byKind, ...raw.llm?.routing?.byKind },
-        fallbackChain: raw.llm?.routing?.fallbackChain ?? dr.fallbackChain,
+        byKind,
+        fallbackChain: (raw.llm?.routing?.fallbackChain ?? dr.fallbackChain ?? []).map(
+          (id) => RETIRED_PRESET_IDS[id] ?? id,
+        ),
       },
     },
-    vision: { ...defaults.vision, ...raw.vision },
+    // the vision slot with no baseUrl of its own runs on the text endpoint
+    vision: withRetiredModels({ ...defaults.vision, ...raw.vision }, llm.baseUrl),
     asr: {
       ...defaults.asr,
       ...raw.asr,
@@ -408,7 +469,11 @@ export class SettingsStore {
 
   applyPatch(patch: SettingsPatch): void {
     if (patch.llm) {
-      const { apiKey, routing, routeKeys, ...rest } = patch.llm;
+      const { apiKey, routing, routeKeys, thinking, ...rest } = patch.llm;
+      // '' (UI: 跟随默认) clears back to unset — stripUndefined alone cannot
+      // express "remove this key"
+      if (thinking === '') delete this.data.llm.thinking;
+      else if (thinking !== undefined) this.data.llm.thinking = thinking;
       Object.assign(this.data.llm, stripUndefined(rest));
       if (routing) {
         const cur = this.data.llm.routing ?? { enabled: false, byKind: {}, fallbackChain: [] as string[] };
@@ -574,6 +639,8 @@ export class SettingsStore {
         providerId: d.llm.providerId,
         apiKeyHint: d.llm.apiKeyHint,
         verification: d.llm.verification,
+        thinking: d.llm.thinking,
+        thinkingByPreset: d.llm.thinkingByPreset ?? {},
         routing: {
           enabled: !!d.llm.routing?.enabled,
           byKind: d.llm.routing?.byKind ?? {},
@@ -627,6 +694,10 @@ export class SettingsStore {
         // optional on disk (files written before the dual-screen answer key
         // existed) but always a string on the wire
         hotkeyAnswer: d.ui.hotkeyAnswer ?? defaultHotkeysForPlatform(process.platform).answer,
+        // clamped here so a hand-edited settings.json cannot produce a layout
+        // where one pane is 0 px wide and the divider is unreachable
+        paneSplit: clampPaneSplit(d.ui.paneSplit),
+        answerOnly: !!d.ui.answerOnly,
         lang: d.ui.lang ?? this.fallbackUiLang,
         // both are optional on disk (files written before Phase 4 lack them)
         // but always booleans on the wire, so the UI needs no ?? dance

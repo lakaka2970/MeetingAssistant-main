@@ -57,7 +57,7 @@ app
       data.llm = {
         ...(data.llm || {}),
         baseUrl: process.env.MC_LLM_URL || 'https://api.deepseek.com/v1',
-        model: process.env.MC_LLM_MODEL || 'deepseek-chat',
+        model: process.env.MC_LLM_MODEL || 'deepseek-flash',
         apiKeyEnc: safeStorage.encryptString(llmKey).toString('base64'),
       };
     }

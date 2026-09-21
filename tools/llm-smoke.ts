@@ -3,13 +3,13 @@
  * Secrets are runtime-only; the script prints no response body or key.
  *
  * Required: MC_LLM_KEY
- * Optional: MC_LLM_URL (DeepSeek default), MC_LLM_MODEL (deepseek-chat default)
+ * Optional: MC_LLM_URL (DeepSeek default), MC_LLM_MODEL (deepseek-flash default)
  */
 import { chatOnce, chatStream, type ChatMessage } from '../electron/llm/adapter';
 
 const apiKey = process.env.MC_LLM_KEY;
 const baseUrl = process.env.MC_LLM_URL ?? 'https://api.deepseek.com/v1';
-const model = process.env.MC_LLM_MODEL ?? 'deepseek-chat';
+const model = process.env.MC_LLM_MODEL ?? 'deepseek-flash';
 
 if (!apiKey) {
   console.error('LLM_SMOKE_FAIL: missing MC_LLM_KEY');

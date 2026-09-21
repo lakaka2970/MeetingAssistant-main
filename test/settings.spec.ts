@@ -11,6 +11,7 @@ import {
   type SecretCipher,
 } from '../electron/settings';
 import type { SettingsFile } from '../shared/protocol';
+import { PANE_SPLIT_DEFAULT, PANE_SPLIT_MAX, PANE_SPLIT_MIN } from '../shared/protocol';
 
 const fakeCipher: SecretCipher = {
   available: () => true,
@@ -35,10 +36,10 @@ describe('SettingsStore', () => {
   it('boots with defaults when no file exists', () => {
     const s = new SettingsStore(file, fakeCipher);
     expect(s.data).toEqual(defaultSettings());
-    // v4.1-flash is the default because it also reads images, so 截图做题 needs
-    // no second provider. deepseek-chat stays available and is faster on first
-    // token, so the choice is a real trade, not a free upgrade.
-    expect(s.data.llm.model).toBe('deepseek-v4.1-flash');
+    // deepseek-flash is the default because it also reads images, so 截图做题
+    // needs no second provider. It is the fast lane too, now that DeepSeek
+    // accepts only this name and deepseek-v4-pro.
+    expect(s.data.llm.model).toBe('deepseek-flash');
     expect(s.data.llm.answerLang).toBe('chinese');
     expect(s.data.ui.stealth).toBe(true);
     // v2: a brand new profile has never seen the wizard
@@ -112,9 +113,9 @@ describe('SettingsStore', () => {
       // Nothing is looked up in the vision list, so the model name cannot drift
       // away from what the user actually selected.
       const s = new SettingsStore(file, fakeCipher);
-      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4.1-flash', apiKey: 'sk-one' } });
+      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-flash', apiKey: 'sk-one' } });
       const v = s.getVisionConfig();
-      expect(v!.model).toBe('deepseek-v4.1-flash');
+      expect(v!.model).toBe('deepseek-flash');
       expect(v!.apiKey).toBe('sk-one');
       expect(v!.inherited).toBe(true);
     });
@@ -122,19 +123,21 @@ describe('SettingsStore', () => {
     it('inherits endpoint and key, taking the model from the catalog vision preset', () => {
       // This is what unblocks 截图做题: a DeepSeek user configures one key and
       // gets a working vision endpoint without ever opening 设置 → 视觉模型.
+      // deepseek-v4-pro is the text lane that does NOT take images, so the model
+      // has to come from the deepseek.vision preset.
       const s = new SettingsStore(file, fakeCipher);
-      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: 'sk-deep' } });
+      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-pro', apiKey: 'sk-deep' } });
       const v = s.getVisionConfig();
       expect(v).toBeDefined();
       expect(v!.baseUrl).toBe('https://api.deepseek.com/v1');
-      expect(v!.model).toBe('deepseek-v4.1-flash');
+      expect(v!.model).toBe('deepseek-flash');
       expect(v!.apiKey).toBe('sk-deep');
       expect(v!.inherited).toBe(true);
     });
 
     it('explicit vision settings win over the inherited ones', () => {
       const s = new SettingsStore(file, fakeCipher);
-      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: 'sk-deep' } });
+      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-flash', apiKey: 'sk-deep' } });
       s.applyPatch({ vision: { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4v', apiKey: 'sk-zhipu' } });
       const v = s.getVisionConfig();
       expect(v!.model).toBe('glm-4v');
@@ -152,7 +155,7 @@ describe('SettingsStore', () => {
 
     it('returns undefined when no key exists anywhere', () => {
       const s = new SettingsStore(file, fakeCipher);
-      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' } });
+      s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-flash' } });
       expect(s.getVisionConfig()).toBeUndefined();
     });
 
@@ -161,7 +164,7 @@ describe('SettingsStore', () => {
       process.env.MEETINGASSISTANT_VISION_API_KEY = 'sk-from-env';
       try {
         const s = new SettingsStore(file, fakeCipher);
-        s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' } });
+        s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-flash' } });
         expect(s.getVisionConfig()?.apiKey).toBe('sk-from-env');
       } finally {
         if (prev === undefined) delete process.env.MEETINGASSISTANT_VISION_API_KEY;
@@ -174,13 +177,106 @@ describe('SettingsStore', () => {
       process.env.MEETINGASSISTANT_VISION_API_KEY = 'sk-from-env';
       try {
         const s = new SettingsStore(file, fakeCipher);
-        s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: 'sk-llm' } });
+        s.applyPatch({ llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-flash', apiKey: 'sk-llm' } });
         s.applyPatch({ vision: { apiKey: 'sk-own' } });
         expect(s.getVisionConfig()?.apiKey).toBe('sk-own');
       } finally {
         if (prev === undefined) delete process.env.MEETINGASSISTANT_VISION_API_KEY;
         else process.env.MEETINGASSISTANT_VISION_API_KEY = prev;
       }
+    });
+  });
+
+  describe('retired DeepSeek model names', () => {
+    const write = (llm: Record<string, unknown>, vision?: Record<string, unknown>): void => {
+      writeFileSync(file, JSON.stringify({ version: 2, llm, ...(vision ? { vision } : {}) }), 'utf8');
+    };
+
+    it('rewrites an old name on load so the profile stops 400ing', () => {
+      for (const old of ['deepseek-chat', 'deepseek-v4-flash', 'deepseek-v4.1-flash']) {
+        write({ baseUrl: 'https://api.deepseek.com/v1', model: old });
+        expect(new SettingsStore(file, fakeCipher).data.llm.model, old).toBe('deepseek-flash');
+      }
+    });
+
+    it('rewrites the vision slot and the routing lanes too', () => {
+      write(
+        {
+          baseUrl: 'https://api.deepseek.com/v1',
+          model: 'deepseek-chat',
+          routing: {
+            enabled: true,
+            byKind: { coding: 'deepseek.text.thinking' },
+            fallbackChain: ['deepseek.text.v41flash', 'zhipu.text.flash'],
+          },
+        },
+        { model: 'deepseek-v4.1-flash' },
+      );
+      const s = new SettingsStore(file, fakeCipher);
+      expect(s.data.vision.model).toBe('deepseek-flash');
+      expect(s.data.llm.routing?.byKind?.coding).toBe('deepseek.text.deep');
+      expect(s.data.llm.routing?.fallbackChain).toEqual([
+        'deepseek.text.fast',
+        'zhipu.text.flash',
+      ]);
+    });
+
+    it('leaves a relay that still serves the old names exactly as typed', () => {
+      // only DeepSeek's own endpoint retired these — a proxy is not ours to edit
+      write({ baseUrl: 'https://relay.example.com/v1', model: 'deepseek-chat' });
+      expect(new SettingsStore(file, fakeCipher).data.llm.model).toBe('deepseek-chat');
+    });
+
+    it('leaves a current name alone', () => {
+      write({ baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-pro' });
+      expect(new SettingsStore(file, fakeCipher).data.llm.model).toBe('deepseek-v4-pro');
+    });
+  });
+
+  describe('ui.paneSplit (resizable panes)', () => {
+    it('defaults to an even split', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      expect(s.getPublic().ui.paneSplit).toBe(PANE_SPLIT_DEFAULT);
+      expect(s.getPublic().ui.answerOnly).toBe(false);
+    });
+
+    it('clamps a hand-edited value so the divider can never become unreachable', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ ui: { paneSplit: 0.001 } });
+      expect(s.getPublic().ui.paneSplit).toBe(PANE_SPLIT_MIN);
+      s.applyPatch({ ui: { paneSplit: 0.99 } });
+      expect(s.getPublic().ui.paneSplit).toBe(PANE_SPLIT_MAX);
+    });
+
+    it('falls back to the default on garbage instead of emitting a NaN width', () => {
+      // flex-basis:calc(NaN%) collapses the pane entirely, so a bad value in the
+      // file must never reach the renderer as a number
+      writeFileSync(
+        file,
+        JSON.stringify({
+          version: 2,
+          ui: {
+            stealth: true,
+            hotkeyToggle: 'Alt+Q',
+            hotkeyShot: 'Alt+W',
+            opacity: 0.9,
+            fontScale: 'medium',
+            theme: 'dark',
+            paneSplit: null,
+          },
+        }),
+        'utf8',
+      );
+      const s = new SettingsStore(file, fakeCipher);
+      expect(s.getPublic().ui.paneSplit).toBe(PANE_SPLIT_DEFAULT);
+    });
+
+    it('round-trips answerOnly', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ ui: { answerOnly: true } });
+      expect(s.data.ui.answerOnly).toBe(true);
+      expect(s.getPublic().ui.answerOnly).toBe(true);
+      expect(new SettingsStore(file, fakeCipher).getPublic().ui.answerOnly).toBe(true);
     });
   });
 
@@ -294,7 +390,7 @@ const V1_FILE = {
   version: 1,
   llm: {
     baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
+    model: 'deepseek-flash',
     answerLang: 'chinese',
     answerWithVision: false,
     apiKeyEnc: 'enc:c2stZGVlcHNlZWs=',
@@ -324,6 +420,11 @@ const V1_FILE = {
     // would be filled from the *running platform's* defaults, and the
     // byte-for-byte assertion below would then pass on Windows and fail on macOS
     hotkeyAnswer: 'Alt+E',
+    // pinned like every other field: anything left out is filled from the
+    // defaults, which would make this assertion test the defaults instead of
+    // the migration
+    paneSplit: 0.62,
+    answerOnly: true,
     opacity: 0.8,
     fontScale: 'large',
     theme: 'light',
@@ -665,7 +766,7 @@ describe('SettingsStore.recordVerification', () => {
   it('touches nothing but the one verification field', () => {
     const s = new SettingsStore(file, fakeCipher);
     s.applyPatch({
-      llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: 'sk-llm-1111' },
+      llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-flash', apiKey: 'sk-llm-1111' },
       asr: {
         backend: 'cloud-realtime',
         language: 'chinese',

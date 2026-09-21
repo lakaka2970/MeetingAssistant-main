@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '../i18n';
+import { OverlayShell } from './OverlayShell';
 
 const ISSUES_URL = 'https://github.com/lakaka2970/MeetingAssistant-main/issues';
 
@@ -51,8 +52,7 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="settings diagnostics-panel">
-      <div className="settings-section">{t.diagnostics.title}</div>
+    <OverlayShell title={t.diagnostics.title} onClose={onClose} variant="diagnostics-panel">
       <div className="settings-hint">{t.diagnostics.intro}</div>
 
       {error ? (
@@ -81,10 +81,7 @@ export function DiagnosticsPanel({ onClose }: { onClose: () => void }) {
         <button className="btn" onClick={load}>
           {t.diagnostics.refresh}
         </button>
-        <button className="btn" onClick={onClose}>
-          {t.diagnostics.close}
-        </button>
       </div>
-    </div>
+    </OverlayShell>
   );
 }

@@ -17,6 +17,7 @@
   "include": [
     "electron/**/*.ts",
     "shared/**/*.ts",
+    "src/components/prompt/focusTurn.ts",
     "test/**/*.ts",
     "tools/**/*.ts",
     "electron.vite.config.ts"

@@ -18,6 +18,7 @@ import type { AppInfo } from '../../shared/protocol';
 import { PROVIDER_HELP } from '../../shared/providerCatalog';
 import { DOCS, docUrl, type LocalizedDoc } from '../../shared/docsLinks';
 import { useT } from '../i18n';
+import { OverlayShell } from './OverlayShell';
 
 /**
  * The providers a user actually has to sign up with. `as const` on purpose:
@@ -129,8 +130,7 @@ export function HelpPanel({
   );
 
   return (
-    <div className="settings help-panel">
-      <div className="settings-section">{h.title}</div>
+    <OverlayShell title={h.title} onClose={onClose} variant="help-panel">
       <div className="settings-hint">{h.intro}</div>
 
       {topic(
@@ -248,12 +248,6 @@ export function HelpPanel({
           </div>
         ),
       )}
-
-      <div className="settings-actions">
-        <button className="btn" onClick={onClose}>
-          {h.close}
-        </button>
-      </div>
-    </div>
+    </OverlayShell>
   );
 }
