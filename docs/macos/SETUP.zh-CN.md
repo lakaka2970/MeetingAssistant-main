@@ -57,7 +57,7 @@ npm start
 
 ## 隐身限制
 
-「隐身」开关仍会应用 Electron 内容保护，旧式采集 API 会遵守；但基于新版 **ScreenCaptureKit** 的应用可能仍能捕获窗口——macOS 上请把隐身当作尽力而为。全局快捷键默认 **Command+B**（隐藏/呼出）、**Command+Shift+S**（框选截图问答）。
+「隐身」开关仍会应用 Electron 内容保护，旧式采集 API 会遵守；但基于新版 **ScreenCaptureKit** 的应用可能仍能捕获窗口——macOS 上请把隐身当作尽力而为。全局快捷键默认 **Command+B**（隐藏/呼出）、**Command+Shift+S**（整屏截屏问答：先查题库 → AI → 联网兜底；需要先框选请用 📷 按钮）。
 
 ## 数据位置
 

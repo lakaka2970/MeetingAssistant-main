@@ -51,7 +51,14 @@ Get-FileHash .\MeetingAssistant-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 - **真实连接测试**：一次极小的真实请求即可分辨是 Key、网络还是账号的问题，14 个统一错误代码 + 对应建议，测试结果会持久化显示。
 - **服务状态与本地诊断**：状态栏芯片一眼看出转写 / AI / 声音是否可用；诊断报告在本机生成，不含 Key、转写和简历内容，可直接贴进 issue。
 - **系统托盘**：显示 / 隐藏窗口、开始 / 停止转写、新建会话、设置、服务状态、帮助与教程、检查更新、退出；窗口隐身且不占任务栏时，托盘是可靠的兜底入口。可选「开机自动启动」，默认关闭。
-- **应用内帮助与教程**：10 个可折叠主题，含各服务商 Key 教程，离线可读。
+- **做题模式（在线测评 / 笔试）**：标题栏「做题」打开小窗悬浮面板，对录屏 / 共享 / 截图强制不可见；四种题型各绑定本机题库目录，原题命中约 1 毫秒直接给答案、完全离线，未命中才交给 AI，仍不确定时按开关联网检索。「题目卷 + 答案卷」成对 PDF 自动配对，屏幕打乱选项时答案按选项文字重新锚回字母。
+- **手机显示（双屏）**：设置或标题栏「双屏」开启后，本机成为局域网内的小型网页服务：手机扫码 + 6 位配对码连上（令牌存手机本地，之后免配对），实时转写与大字答案推到手机，电脑主窗自动隐藏并强制隐身。截屏热键可配置为「只送手机」：拍屏 → 读题 → 先查本机题库 → 答案直接出现在手机上，全程不看电脑。默认 HTTPS 自签证书、端口 18765，关闭即停止监听，数据只在两机之间直连。
+- **截屏问答**：热键（默认 `Ctrl+Shift+S`）整屏抓取 → 本地 OCR 或视觉模型读题 → 先查本机题库与资料 → AI 作答 → 仍不确定才联网，答案出现在提词卡；需要先圈选时用 📷 按钮拖框。
+- **持续答门控**：寒暄与流程安排由本地启发式免费挡掉，拿不准的一句才花一次极小的分类调用判断，判定超时或失败一律回退成「照答」。
+- **公式与排版渲染**：回答里的 `$…$` / `$$…$$` 等写法由 KaTeX 排版，`**加粗**`、`*斜体*`、`### 小标题` 直接渲染成格式，不再把 markdown 原样吐在屏幕上。
+- **提词主视图与延迟 HUD**：转录收成可拖拽调宽的导轨（点开展全部），右下角显示端到端延迟（末条 / p50 / p95）、首字与推理耗时，慢在哪一步一眼可见。
+- **热键自定义与校验**：显示 / 隐藏、截屏问答、答最新一句、打开做题窗、做题作答五个热键都可在 设置 → 通用 里修改；格式不合法的在保存时挡下，被占用的在启动时经托盘气泡点名。
+- **应用内帮助与教程**：12 个可折叠主题，含各服务商 Key 教程、双屏连接与做题模式说明，离线可读。
 - **面向普通用户的文档**：`docs/user/` 下的快速开始、API Key 指南、故障排查、Windows / macOS 安装说明。
 
 ### 已知问题
@@ -63,6 +70,9 @@ Get-FileHash .\MeetingAssistant-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 - **阿里云国际站为 Beta**：实时识别接入地址与中国大陆站不同且仍在验证，本版本未提供预设，建议使用中国大陆站账号。
 - **MiMo 极简方案为 Beta**：分段识别按整句返回，字幕跟随性弱于流式方案。
 - **macOS 隐身尽力而为**：新版 ScreenCaptureKit 仍可能捕获窗口。
+- **手机显示用自签证书**：手机首次访问会提示证书不受信任，需要「高级 → 继续前往」或在连接窗口「改用 HTTP」（代价是不能保持常亮）；仅建议在可信局域网使用。
+- **读题依赖本地 OCR 或视觉模型**：两者都没有时截屏会明确告诉你缺什么；可装 `npm i tesseract.js`（全离线）或配一个支持图片的 Key，也可以粘贴题干作答。
+- **帮助与教程刚做过一轮修订**：个别界面词与文档措辞仍可能与实际有出入，遇到请以应用内行为为准并欢迎反馈。
 
 遇到问题：先看应用内「帮助与教程」和 [TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)，仍未解决就带上诊断信息到 [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant-main/issues)。
 
@@ -112,7 +122,14 @@ Full walkthrough: [QUICK_START.en.md](QUICK_START.en.md).
 - **Real connection tests**: one tiny live request tells you whether the key, the network or the account is at fault, with 14 normalized error codes and a concrete next action; verdicts persist across restarts.
 - **Service status and local diagnostics**: status-bar chips show at a glance whether transcription, answers and audio are working; the diagnostics report is built locally with no keys, transcripts or resume text in it.
 - **System tray**: show/hide, start/stop transcription, new session, settings, service status, help, check for updates and quit — the reliable way back to a window that is hidden and deliberately absent from the taskbar. Optional start-at-login, off by default.
-- **In-app help center**: 10 collapsible topics including the per-provider key guides, readable offline.
+- **Exam mode (online assessments)**: the title-bar 做题 button opens a small floating panel that is forcibly invisible to recording, sharing and screenshots. Each of the four sub-modes binds its own local question-bank folder; an exact bank hit answers in ~1 ms fully offline, the LLM only covers what the bank lacks, the web only by your switch. Paired question/answer PDFs are joined automatically, and shuffled on-screen options are re-anchored onto the answer's option text.
+- **Phone display (dual-screen)**: the PC becomes a LAN-only web service — scan the QR code, enter the 6-digit pairing code (the token then lives on the phone), and the live transcript plus large-type answers stream to the phone while the PC window auto-hides under forced stealth. The screenshot hotkey can be set to answer straight to the phone: capture → read → local bank first → answer on the phone, without looking at the PC. HTTPS with a self-signed cert on port 18765 by default; off stops the listener, and data goes PC-to-phone through no third-party server.
+- **Screenshot Q&A**: the hotkey (`Ctrl+Shift+S` by default) captures the full screen, reads it with local OCR or a vision model, checks your local bank and material first, asks the AI, and only reaches the web when still unsure — the answer lands on the prompt card. Use the 📷 button to crop a region first.
+- **Gated auto-answering**: greetings and logistics are blocked locally for free; only a genuinely question-like line spends one tiny classifier call, and any timeout or failure falls back to answering.
+- **Maths and markdown render properly**: `$…$` / `$$…$$` are typeset with KaTeX and `**bold**`, `*italic*`, `### headings` render as formatting instead of raw markdown.
+- **Prompt main view + latency HUD**: the transcript becomes a drag-resizable rail (click to expand), and the corner shows end-to-end latency (last / p50 / p95), first-token and inference times — which step is slow is visible at a glance.
+- **Customizable, validated hotkeys**: show/hide, screenshot Q&A, answer-the-last-line, open-exam-window and exam-answer all live in Settings → General; invalid formats are refused on save, occupied ones are named in a tray balloon at startup.
+- **In-app help center**: 12 collapsible topics including the per-provider key guides, dual-screen pairing and exam mode, readable offline.
 - **User-facing documentation**: quick start, API key guide, troubleshooting and the Windows / macOS install notes, all under `docs/user/`.
 
 ### Known issues
@@ -124,5 +141,8 @@ Full walkthrough: [QUICK_START.en.md](QUICK_START.en.md).
 - **Alibaba Cloud international is Beta**: its realtime endpoint differs from the mainland one and is still unverified, so no preset ships. Prefer a mainland account.
 - **The MiMo minimal plan is Beta**: per-segment recognition returns whole sentences, so captions trail the streaming plan.
 - **Stealth on macOS is best-effort**: recent ScreenCaptureKit clients may still capture the window.
+- **Phone display uses a self-signed certificate**: the phone warns on first visit — choose "Advanced → Continue", or "Switch to HTTP" in the connect window (the phone then cannot stay awake). Trusted LANs only.
+- **Reading the screen needs local OCR or a vision model**: with neither installed, a capture tells you exactly what is missing; install `npm i tesseract.js` (fully offline) or configure a vision-capable key, or paste the stem instead.
+- **Help and docs just went through a revision pass**: if a wording still differs from the app, trust the app and file an issue.
 
 Problems: start with the in-app **Help & guides** and [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md); if that does not solve it, bring the diagnostics report to [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant-main/issues).

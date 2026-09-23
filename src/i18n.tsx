@@ -63,9 +63,6 @@ const zh = {
     modeTitle: '显示放在哪里：单屏＝这台电脑的悬浮窗；双屏＝手机浏览器显示，电脑后台运行（自动开持续答与隐身）',
     modeSingle: '单屏',
     modeDual: '双屏',
-    dividerTitle: '拖动调整左右宽度 · 双击回到各占一半',
-    hideTranscriptTitle: '只看答案（收起左侧转写）',
-    showTranscriptTitle: '恢复显示转写',
     settingsTitle: '设置',
     hideTitle: '隐藏窗口（快捷键再次呼出）',
     quitTitle: '退出',
@@ -197,7 +194,7 @@ const zh = {
     libraryHint: '导入多个文件或整个文件夹，回答时按问题语义召回相关片段。支持 .md / .txt / .docx / .pdf / .pptx；旧版 .doc / .ppt 请先转成 .docx / .pptx。',
     qaTitle: '准备的答案（自动识别）',
     qaHint:
-      '文档或笔记里写成「问：… 答：…」「Q: … A: …」「【问题】…【回答】…」的段落会被识别成问答对。面试官的问题命中时，右栏先原样亮出你准备的答案，再由 AI 在其基础上充实——这条路径完全离线，最快。',
+      '文档或笔记里写成「问：… 答：…」「Q: … A: …」「【问题】…【回答】…」的段落会被识别成问答对。面试官的问题命中时，提词卡先原样亮出你准备的答案，再由 AI 在其基础上充实——这条路径完全离线，最快。',
     qaEmpty: '还没有识别到问答对。在简历 / JD / 文档 / 笔记里按上面的写法准备几道题即可。',
     qaBtn: '查看已识别的问答对',
     qaCount: (n: number) => `已识别 ${n} 条准备的答案`,
@@ -286,6 +283,7 @@ const zh = {
     intro: '全部内容都在本机，不需要联网即可阅读；带链接的按钮会用系统浏览器打开官方页面。',
     close: '关闭',
     fullGuide: '查看完整教程',
+    guideTroubleshoot: '连接排查指南',
     openPage: '打开官方页面',
     openKeyPage: '打开 Key 页面',
     openDocs: '打开官方文档',
@@ -311,9 +309,9 @@ const zh = {
         title: '1. 快速开始（三步）',
         lines: [
           '第一步：在设置或配置向导里填入 API Key —— 转写和 AI 回答各需要一个，同一个服务商的 Key 可以复用。',
-          '第二步：让电脑放一段有人说话的声音（视频、会议、播客都行），点标题栏的「▶ 开始」，左栏应当出现文字。',
-          '第三步：在左栏任意一句上点「⚡答」，右栏就会生成可以直接照着念的回答；打开「持续答」则由 AI 自动接话。',
-          '想让回答贴合你的经历，先在右栏点「📄简历」「📋JD」导入资料（支持 .md/.txt/.docx/.pdf，全部本地解析）。',
+          '第二步：让电脑放一段有人说话的声音（视频、会议、播客都行），点标题栏的「▶ 开始」，转录导轨应当出现文字（点导轨可展开全部转录）。',
+          '第三步：在导轨里对方任意一句上点「⚡答」，提词卡就会生成可以直接照着念的回答；打开「持续答」则由 AI 自动接话。',
+          '想让回答贴合你的经历，先在提词卡上点「📄简历」「📋JD」导入资料（支持 .md/.txt/.docx/.pdf，全部本地解析）。',
         ],
       },
       apiKey: {
@@ -332,7 +330,7 @@ const zh = {
         ],
       },
       noSound: {
-        title: '4. 没有声音 / 左栏不出字',
+        title: '4. 没有声音 / 转录不出字',
         lines: [
           '先确认对方那侧真的在出声：电脑正在播放视频或会议，并且音量不是静音。',
           'Windows 采集的是系统回环声音（对方的声音从你的扬声器/耳机出来），因此播放设备必须是当前正在发声的那个设备。',
@@ -360,8 +358,27 @@ const zh = {
           '安装好环境后仍然失败，请打开「诊断信息」查看最后几条错误，再对照下面的完整教程排查。',
         ],
       },
+      dualScreen: {
+        title: '7. 把答案显示到手机上（双屏）',
+        lines: [
+          '点标题栏「双屏」会弹出连接窗口：手机扫码、输入电脑上显示的 6 位配对码即可连上。配对码只显示在电脑上，局域网里的其他设备无法自助配对。',
+          '双屏期间电脑主窗自动隐藏并强制隐身，共享 / 录制里看不到任何答案；转写与答案由主进程直推手机，不经过界面窗口。',
+          '手机首次访问若报 ERR_CERT_AUTHORITY_INVALID，点「高级 → 继续前往」；若报 ERR_CERT_INVALID 则没有绕过入口，点连接窗口里的「改用 HTTP」（代价是手机不能保持常亮）。',
+          'Windows 第一次监听会弹防火墙提示，请点「允许」并勾选「专用网络」；点错拒绝后的表现是手机永远连不上而电脑侧毫无异常。',
+          '手机与电脑须连同一 Wi-Fi；默认端口 18765，关闭开关即停止监听；数据只在电脑与手机之间直连，不经过任何第三方服务器。',
+        ],
+      },
+      examHelp: {
+        title: '8. 截屏答题与做题模式',
+        lines: [
+          '「截屏问答」热键（默认 Ctrl+Shift+S）整屏抓取 → 读题 → 先查本机题库与资料 → 未命中再问 AI → 仍不确定可按开关联网，答案出现在提词卡。',
+          '需要先框选：用主窗口的 📷 按钮，或做题小窗里的「截屏答题」，拖框圈住题干再作答。',
+          '做题模式（标题栏「做题」）是小窗悬浮面板，对录屏 / 截图强制不可见；四种题型各绑定题库目录，原题命中约 1 毫秒直接给答案，完全离线。',
+          '读题需要本地 OCR（npm i tesseract.js）或支持图片的模型 Key，两者都没有时会明确提示缺什么；此时可把题干粘进做题小窗用「作答这题」。',
+        ],
+      },
       windowsSecurity: {
-        title: '7. Windows 提示「不安全」怎么办',
+        title: '9. Windows 提示「不安全」怎么办',
         lines: [
           '当前是未做代码签名的 Beta 版本，Windows SmartScreen 会提示「已保护你的电脑」，这是未签名应用的通用提醒。',
           '确认文件来自本项目的 GitHub Releases 页面后，点「更多信息」→「仍要运行」即可。',
@@ -370,7 +387,7 @@ const zh = {
         ],
       },
       macosAudio: {
-        title: '8. macOS 音频配置',
+        title: '10. macOS 音频配置',
         lines: [
           'macOS 无法像 Windows 那样直接采集系统声音，需要一个虚拟音频设备把会议声音「引」进来。',
           '常用做法是安装 BlackHole，并用「聚集设备 / 多输出设备」同时把声音送到耳机和 BlackHole。',
@@ -379,7 +396,7 @@ const zh = {
         ],
       },
       feedback: {
-        title: '9. 如何反馈问题',
+        title: '11. 如何反馈问题',
         lines: [
           '先点下面的「打开诊断信息」并复制报告：它在本机生成，不含 API Key、简历和转写内容。',
           '到 GitHub Issues 新建一条，贴上诊断信息，并说明你做了什么、期望什么、实际发生了什么。',
@@ -387,7 +404,7 @@ const zh = {
         ],
       },
       about: {
-        title: '10. 关于 MeetingAssistant',
+        title: '12. 关于 MeetingAssistant',
         lines: [
           '本地优先的会议 / 面试助手：转写与回答分别连接你自己配置的服务商，没有账号、没有服务器、没有遥测。',
           '设置、会话、简历等数据保存在本机的用户数据目录，卸载默认不会删除。',
@@ -404,7 +421,7 @@ const zh = {
     copy: '复制诊断信息',
     copied: '已复制到剪贴板。',
     copyFail: (msg: string) => `复制失败：${msg}`,
-    openLogs: '打开日志文件夹',
+    openLogs: '打开数据文件夹',
     openLogsFail: '无法打开数据文件夹。',
     issues: '前往 GitHub Issues',
     refresh: '重新生成',
@@ -588,13 +605,13 @@ const zh = {
     themeDark: '深色',
     themeLight: '浅色',
     themeSystem: '跟随系统',
-    fontScaleLabel: '答案字号（只影响右栏答案正文）',
+    fontScaleLabel: '答案字号（只影响提词卡答案正文）',
     fontSmall: '小（13px）',
     fontMedium: '中（16px，默认）',
     fontLarge: '大（19px）',
     otherSection: '其他',
     otherHint:
-      '麦克风开关与多模态切换在标题栏；简历/岗位JD 在右栏「📄简历」「📋JD」按会话导入（支持 docx/pdf）。',
+      '麦克风开关与多模态切换在标题栏；简历/岗位JD 在提词卡「📄简历」「📋JD」按会话导入（支持 docx/pdf）。',
     hotkeyToggle: '呼出/隐藏快捷键',
     deviceNote: '设备列表在打开设置时刷新；插拔麦克风后重新打开设置即可看到新设备。',
     hotkeyShot: '截屏问答快捷键（整屏抓取：题库 → AI → 联网兜底；需要先框选请用 📷 按钮）',
@@ -678,9 +695,6 @@ const en: Dict = {
       'Where the display lives: single = this machine’s overlay; dual = a phone browser shows it and the PC runs in the background (continuous answering and stealth turn on)',
     modeSingle: 'Single',
     modeDual: 'Dual',
-    dividerTitle: 'Drag to resize the two panes · double-click to split evenly',
-    hideTranscriptTitle: 'Answer only (hide the transcript)',
-    showTranscriptTitle: 'Show the transcript again',
     settingsTitle: 'Settings',
     hideTitle: 'Hide window (press the hotkey to bring it back)',
     quitTitle: 'Quit',
@@ -813,7 +827,7 @@ const en: Dict = {
     libraryHint: 'Import several files or a whole folder; answers recall relevant passages per question. Supports .md / .txt / .docx / .pdf / .pptx; convert legacy .doc / .ppt to .docx / .pptx first.',
     qaTitle: 'Prepared answers (auto-detected)',
     qaHint:
-      'Passages written as 「问：… 答：…」, 「Q: … A: …」 or 「【问题】…【回答】…」 in a document or note become a question/answer pair. When an interview question matches one, the right pane shows your prepared answer first and the AI only enriches it — that path is fully offline and the fastest of all.',
+      'Passages written as 「问：… 答：…」, 「Q: … A: …」 or 「【问题】…【回答】…」 in a document or note become a question/answer pair. When an interview question matches one, the prompt card shows your prepared answer first and the AI only enriches it — that path is fully offline and the fastest of all.',
     qaEmpty: 'No question/answer pairs detected yet. Prepare a few in your resume, JD, documents or notes using the formats above.',
     qaBtn: 'Show detected question/answer pairs',
     qaCount: (n: number) => `${n} prepared answers detected`,
@@ -904,6 +918,7 @@ const en: Dict = {
       'Everything here is local — no network needed to read it. Buttons with a link open the official page in your browser.',
     close: 'Close',
     fullGuide: 'Read the full guide',
+    guideTroubleshoot: 'Connection troubleshooting guide',
     openPage: 'Open the official page',
     openKeyPage: 'Open the key page',
     openDocs: 'Open the official docs',
@@ -929,9 +944,9 @@ const en: Dict = {
         title: '1. Quick start (three steps)',
         lines: [
           'Step 1: add your API keys in Settings or the setup wizard — one for transcription, one for AI answers; a key from the same provider can serve both.',
-          'Step 2: play something with speech in it (a video, a meeting, a podcast), click "▶ Start" in the title bar, and text should appear in the left pane.',
-          'Step 3: click "⚡Ans" on any line to get an answer you can read aloud, or turn on "Auto" and let the AI reply to questions by itself.',
-          'For answers grounded in your own experience, import your resume and the job description with "📄Resume" / "📋JD" (.md/.txt/.docx/.pdf, parsed locally).',
+          'Step 2: play something with speech in it (a video, a meeting, a podcast), click "▶ Start" in the title bar, and text should appear in the transcript rail (click the rail to open the full transcript).',
+          'Step 3: click "⚡Ans" on any of their lines and the prompt card shows an answer you can read aloud, or turn on "Auto" and let the AI reply to questions by itself.',
+          'For answers grounded in your own experience, import your resume and the job description with "📄Resume" / "📋JD" on the prompt card (.md/.txt/.docx/.pdf, parsed locally).',
         ],
       },
       apiKey: {
@@ -948,7 +963,7 @@ const en: Dict = {
         lines: ['These are the same steps the setup wizard shows — follow them one by one.'],
       },
       noSound: {
-        title: '4. No sound / nothing appears in the left pane',
+        title: '4. No sound / nothing appears in the transcript',
         lines: [
           'First make sure the other side really is making noise: a video or meeting is playing and the volume is not muted.',
           'Windows captures system loopback audio (what comes out of your speakers or headphones), so the playback device must be the one currently making sound.',
@@ -976,8 +991,27 @@ const en: Dict = {
           'If it still fails with the environment in place, open Diagnostics for the last errors and follow the full setup guide below.',
         ],
       },
+      dualScreen: {
+        title: '7. Show answers on your phone (dual-screen)',
+        lines: [
+          'Clicking "Dual-screen" in the title bar opens the connect window: scan the QR code with the phone and enter the 6-digit pairing code — the code is only ever shown on the PC, so nothing else on the LAN can pair itself in.',
+          'While on dual-screen the PC window auto-hides under forced stealth; a share or recording sees nothing. Transcript and answers stream from the main process straight to the phone, not through the UI window.',
+          'On the first visit a phone reporting ERR_CERT_AUTHORITY_INVALID can tap "Advanced → Continue"; ERR_CERT_INVALID has no bypass — press "Switch to HTTP" in the connect window (the phone then cannot keep the screen awake).',
+          'The first time Windows starts listening it asks about the firewall: click Allow and tick Private networks. If you cancelled, the phone can never connect while the PC looks perfectly healthy.',
+          'Phone and PC must share one Wi-Fi; the default port is 18765; switching the feature off stops the listener, and data goes PC-to-phone directly through no third-party server.',
+        ],
+      },
+      examHelp: {
+        title: '8. Screenshot Q&A and exam mode',
+        lines: [
+          'The screenshot hotkey (Ctrl+Shift+S by default) captures the full screen, reads it, checks your local question bank and material first, asks the AI on a miss, and reaches the web only by your switch — the answer lands on the prompt card.',
+          'To crop instead: use the 📷 button in the main window, or "Capture & answer" in the exam window, and drag a box around the question.',
+          'Exam mode ("做题" in the title bar) is a small floating panel, forcibly invisible to recording and screenshots; each of the four sub-modes binds its own bank folder, and an exact bank hit answers in ~1 ms, fully offline.',
+          'Reading the screen needs local OCR (npm i tesseract.js) or a vision-capable key; with neither the app says exactly what is missing — paste the stem into the exam window and use "Answer this" meanwhile.',
+        ],
+      },
       windowsSecurity: {
-        title: '7. Windows says the app is unsafe',
+        title: '9. Windows says the app is unsafe',
         lines: [
           'This beta is not code-signed yet, so Windows SmartScreen shows "Windows protected your PC" — the standard warning for unsigned apps.',
           'Once you have confirmed the file came from this project\'s GitHub Releases page, click "More info" → "Run anyway".',
@@ -986,7 +1020,7 @@ const en: Dict = {
         ],
       },
       macosAudio: {
-        title: '8. macOS audio setup',
+        title: '10. macOS audio setup',
         lines: [
           'macOS cannot capture system audio the way Windows does; a virtual audio device has to route the meeting sound into the app.',
           'The usual setup is BlackHole plus an Aggregate / Multi-Output device, so the sound reaches both your headphones and BlackHole.',
@@ -995,7 +1029,7 @@ const en: Dict = {
         ],
       },
       feedback: {
-        title: '9. Reporting a problem',
+        title: '11. Reporting a problem',
         lines: [
           'Click "Open diagnostics" below and copy the report: it is built locally and contains no API keys, resume text or transcripts.',
           'Open a GitHub issue, paste the report, and describe what you did, what you expected and what happened instead.',
@@ -1003,7 +1037,7 @@ const en: Dict = {
         ],
       },
       about: {
-        title: '10. About MeetingAssistant',
+        title: '12. About MeetingAssistant',
         lines: [
           'A local-first meeting and interview copilot: transcription and answers each talk to the provider you configured. No accounts, no server, no telemetry.',
           'Settings, sessions and imported material live in the per-user data folder on this machine and survive an uninstall by default.',
@@ -1209,13 +1243,13 @@ const en: Dict = {
     themeDark: 'Dark',
     themeLight: 'Light',
     themeSystem: 'Follow system',
-    fontScaleLabel: 'Answer font size (right pane body only)',
+    fontScaleLabel: 'Answer font size (prompt-card answer text only)',
     fontSmall: 'Small (13px)',
     fontMedium: 'Medium (16px, default)',
     fontLarge: 'Large (19px)',
     otherSection: 'Other',
     otherHint:
-      'The mic toggle and Text/Vision live in the title bar; import the resume/JD per session via “📄Resume” “📋JD” in the right pane (docx/pdf supported).',
+      'The mic toggle and Text/Vision live in the title bar; import the resume/JD per session via “📄Resume” “📋JD” on the prompt card (docx/pdf supported).',
     hotkeyToggle: 'Show/hide hotkey',
     deviceNote: 'The list refreshes when Settings opens — re-open Settings after plugging a mic in.',
     hotkeyShot: 'Screenshot Q&A hotkey (full-screen capture: bank → AI → web; use the 📷 button to crop first)',

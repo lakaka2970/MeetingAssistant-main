@@ -22,7 +22,7 @@ The same content is available offline inside the app: tray menu → "Help & guid
 | `NETWORK_UNREACHABLE` | Could not reach the provider | Check the network connection and retry |
 | `DNS_ERROR` | DNS resolution failed | Check the DNS or proxy settings |
 | `TLS_ERROR` | The secure connection failed | Check the system clock, certificates and proxy settings |
-| `PROXY_ERROR` | The proxy connection failed | Check that the proxy address works (the vision proxy lives in Settings → Advanced → Vision proxy) |
+| `PROXY_ERROR` | The proxy connection failed | Check that the proxy address works (the vision proxy lives in Settings → Vision & Search) |
 | `TIMEOUT` | The connection to the service timed out | Retry once, or switch to a more stable network |
 | `PROVIDER_ERROR` | The provider is temporarily failing | Retry later |
 | `UNKNOWN_ERROR` | Unknown error | Copy the diagnostics and report it |
@@ -75,7 +75,7 @@ The main window deliberately stays out of the taskbar, so after hiding it there 
 - press the show/hide hotkey (`Control+B` by default);
 - click the MeetingAssistant icon in the system tray, or pick "Show window" from its menu.
 
-If another app already owns that hotkey, registration fails silently — the tray is the fallback for exactly that case. You can also pick a different combination in Settings.
+If another app already owns that hotkey, registration fails and the app shows a tray notification naming the keys that could not be registered — the tray is the fallback for exactly that case. You can also pick a different combination in Settings.
 
 ## 7. A saved API key stopped working
 
@@ -90,8 +90,19 @@ If another app already owns that hotkey, registration fails silently — the tra
 
 ---
 
+## 9. The phone cannot reach the PC (dual-screen / phone display)
+
+Work through this in order:
+
+1. **Firewall**: the first time Windows starts listening it shows a prompt — you must click **Allow** and tick **Private networks**. If you cancelled, the phone can never connect while the PC looks perfectly healthy. Re-enable listening from Settings → General → Phone display (or the title-bar **Dual-screen**) or allow the app in Windows Defender Firewall.
+2. **Same subnet**: phone and PC must be on the same Wi-Fi; turn off the phone's mobile-data fallback or the request may not take the LAN route.
+3. **Is anything listening**: if the connect window says "not listening", the reason appears next to it. When port 18765 is taken the app automatically moves to the next free port, and the connect window always shows the real one; you can also pick a different port under Settings → General → Phone display.
+4. **Tell the cert errors apart**: `ERR_CERT_AUTHORITY_INVALID` → tap "Advanced → Continue". `ERR_CERT_INVALID` is a hard block with no bypass — press **"Switch to HTTP"** in the connect window (the phone then cannot keep the screen awake).
+5. **http auto-upgraded**: if the address is `http://` but the phone still reports `ERR_PROTOCOL_ERROR`, the browser upgraded it to https — type the full `http://` prefix or disable "always use secure connections" in the browser.
+6. **Pairing code**: the 6-digit code is shown **only on the PC**, never on the phone. After tapping "Request pairing" on the phone, read the code from the connect window. If a code expires, request a new one.
+
 ## Still stuck
 
-1. Settings → Advanced → "Diagnostics" → "Copy diagnostics". The report is built locally and contains **no API keys, resume/JD text or transcripts**, so it is safe to paste into a public issue.
+1. Settings → General → "Diagnostics" (also in the title-bar `⋯` menu) → "Copy diagnostics". The report is built locally and copied to the clipboard only (nothing is written to disk); it contains **no API keys, resume/JD text or transcripts**, so it is safe to paste into a public issue.
 2. Open an issue at [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant-main/issues) with the report and: what you did, what you expected, what happened instead.
 3. If a provider is involved, include the error code and request id from "Test connection".

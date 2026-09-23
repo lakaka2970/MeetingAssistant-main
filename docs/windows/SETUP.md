@@ -81,7 +81,8 @@ config/tokenizer files). The encoder runs on the GPU via DirectML.
 Content protection (`Stealth` toggle in the title bar, on by default) excludes
 the window from OBS, screen shares and screenshots on Windows. The global
 hotkeys default to **Control+B** (hide/show) and **Control+Shift+S**
-(region-screenshot Q&A).
+(full-screen screenshot Q&A: local bank → AI → web fallback; use the 📷 button
+to crop a region first).
 
 ## Data locations
 

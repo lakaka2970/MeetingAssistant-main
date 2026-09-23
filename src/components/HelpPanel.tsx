@@ -198,6 +198,23 @@ export function HelpPanel({
       )}
 
       {topic(
+        'dualScreen',
+        topics.dualScreen.title,
+        topics.dualScreen.lines,
+        <>
+          {linkButton(h.fullGuide, DOCS.quickStart)}
+          {linkButton(h.guideTroubleshoot, DOCS.troubleshooting)}
+        </>,
+      )}
+
+      {topic(
+        'examHelp',
+        topics.examHelp.title,
+        topics.examHelp.lines,
+        linkButton(h.fullGuide, DOCS.quickStart),
+      )}
+
+      {topic(
         'windowsSecurity',
         topics.windowsSecurity.title,
         topics.windowsSecurity.lines,

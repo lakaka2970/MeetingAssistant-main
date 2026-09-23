@@ -101,7 +101,7 @@ Used for: the vision model, `https://generativelanguage.googleapis.com/v1beta/op
 1. Open the [API key page in Google AI Studio](https://aistudio.google.com/app/apikey).
 2. Sign in with your Google account.
 3. Click "Create API key" and pick or create a Google Cloud project when asked.
-4. Copy the key and paste it into the vision key field (Settings → Advanced → Vision model).
+4. Copy the key and paste it into the vision key field (Settings → Vision & Search).
 5. Google is usually unreachable directly from mainland China — set a local proxy in "Vision proxy" (e.g. `127.0.0.1:7897`).
 6. Visual Q&A is optional and can be skipped; the screenshot button then reports it is not configured.
 

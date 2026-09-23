@@ -83,8 +83,8 @@ Review the summary and click "Enter MeetingAssistant". The wizard writes the who
 ## Step 3 — your first meeting
 
 1. Play something with speech in it (a meeting, a video, a podcast).
-2. Click **▶ Start** in the title bar; the Transcript pane on the left starts filling.
-3. Click **⚡Ans** on one of their lines and the right pane streams an answer written to be read aloud.
+2. Click **▶ Start** in the title bar; the **transcript rail** starts filling (one line per sentence — click it to open the full transcript, drag its right edge to resize).
+3. Click **⚡Ans** on one of their lines and the prompt card streams an answer written to be read aloud.
 4. Turn on **Auto** in the title bar to let the AI answer by itself — only question-like sentences trigger it.
 5. For answers grounded in your experience, import material with **📄Resume** / **📋JD** (`.md/.txt/.docx/.pdf`). Parsing is local; the text is only sent to the LLM you configured, and only as context for a question you asked.
 
@@ -97,6 +97,23 @@ Other title-bar controls:
 | `🎤Mic` | Transcribe your own voice separately |
 | `Stealth:On/Off` | Hides the window from recording / sharing / screenshots (Windows; best-effort on macOS) |
 | `—` | Hide the window; the hotkey or the tray icon brings it back |
+
+---
+
+## Show answers on your phone (dual-screen, optional)
+
+Sharing your screen and don't want the answer window in the share? Click **Dual-screen** in the title bar: the PC keeps listening, checking your local question bank and calling the AI, while the phone browser only *displays* — live transcript and current answer stream to the phone, and the PC window auto-hides under forced stealth, invisible to sharing and recording.
+
+1. Put the phone and the PC on the **same Wi-Fi** (turn off the phone's mobile-data fallback, or it may take another route).
+2. Click **Dual-screen** on the PC — a connect window pops up: big QR code plus a 6-digit pairing code.
+3. Scan the QR code with the phone's camera (typing the address manually works too, e.g. `https://192.168.x.x:18765/`).
+4. Tap "Request pairing" on the phone, then **read the 6-digit code on the PC's connect window** and enter it on the phone. The code is only ever displayed on this machine and never sent back to the phone, so nothing else on the LAN can pair itself in. Afterwards a long-lived token lives on the phone; reopening the page connects without re-pairing.
+5. The first visit warns about the self-signed certificate: for `ERR_CERT_AUTHORITY_INVALID` tap "Advanced → Continue"; for `ERR_CERT_INVALID` (a hard block, no bypass offered) press **"Switch to HTTP"** in the connect window — the cost is that the phone cannot keep the screen awake.
+6. The first time Windows starts listening it asks about the firewall: click **Allow** and tick **Private networks**. If you clicked Cancel, the phone can never connect while the PC looks perfectly healthy.
+7. Tap **"Keep awake"** once on the phone (browsers require that tap before allowing wake lock).
+8. Click **▶ Start** on the PC as usual; transcript and answers keep streaming to the phone. Entering dual-screen turns **Auto** answering on by itself.
+
+> Privacy: the machine only listens on a LAN port after you enable this; data goes directly between PC and phone through no third-party server; switching it off stops the listener (default port **18765**). The troubleshooting order for failed connections is in [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md).
 
 ---
 
@@ -115,4 +132,4 @@ The tray menu also has Start/Stop transcription, New session, Settings, Service 
 
 1. Open **Help & guides** in the app (tray menu, or Settings → Help & guides). It works offline.
 2. Read [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md) for the full error-code table.
-3. Still stuck: Settings → Advanced → Diagnostics, copy the report (it has no keys, resume text or transcripts) and open an issue at [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant-main/issues).
+3. Still stuck: Settings → General → Diagnostics (or the title-bar `⋯` menu), copy the report (it has no keys, resume text or transcripts) and open an issue at [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant-main/issues).

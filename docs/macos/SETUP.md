@@ -80,7 +80,8 @@ The `Stealth` toggle still applies Electron content protection, and legacy
 capture APIs respect it. However, apps built on modern **ScreenCaptureKit**
 may capture the window anyway — treat stealth as best-effort on macOS. The
 global hotkeys default to **Command+B** (hide/show) and **Command+Shift+S**
-(region-screenshot Q&A).
+(full-screen screenshot Q&A: local bank → AI → web fallback; use the 📷 button
+to crop a region first).
 
 ## Data locations
 

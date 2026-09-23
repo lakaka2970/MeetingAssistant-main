@@ -73,7 +73,7 @@ Compare the output with the value inside the `.sha256` file.
 | Global knowledge base | `%APPDATA%\MeetingAssistant\knowledge.md` |
 | Local Whisper models (if used) | `%APPDATA%\MeetingAssistant\models\` |
 
-Type `%APPDATA%\MeetingAssistant` into the Explorer address bar, or use Settings → Advanced → Diagnostics → "Open the data folder".
+Type `%APPDATA%\MeetingAssistant` into the Explorer address bar, or use Settings → General → Diagnostics → "Open the data folder".
 
 **API keys are not stored in clear text**: they are encrypted with Windows DPAPI before being written to `settings.json`, which binds them to the current Windows user — after switching accounts or reinstalling Windows you have to enter them again.
 

@@ -66,7 +66,7 @@ C:/ProgramData/miniconda3/Scripts/conda.exe run -n moss-asr python -m pip instal
 
 ## 隐身
 
-内容保护（标题栏「隐身」开关，默认开启）让窗口在 Windows 的 OBS、屏幕共享、截图中不可见。全局快捷键默认 **Control+B**（隐藏/呼出）、**Control+Shift+S**（框选截图问答）。
+内容保护（标题栏「隐身」开关，默认开启）让窗口在 Windows 的 OBS、屏幕共享、截图中不可见。全局快捷键默认 **Control+B**（隐藏/呼出）、**Control+Shift+S**（整屏截屏问答：先查题库 → AI → 联网兜底；需要先框选请用 📷 按钮）。
 
 ## 数据位置
 

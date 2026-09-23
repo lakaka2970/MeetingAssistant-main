@@ -100,7 +100,7 @@ MeetingAssistant 采用 **BYOK（Bring Your Own Key，自带 Key）**：
 1. 打开 [Google AI Studio 的 API Key 页面](https://aistudio.google.com/app/apikey)。
 2. 使用 Google 账号登录。
 3. 点击 Create API key，按提示选择或新建一个 Google Cloud 项目。
-4. 复制生成的 Key，回到 MeetingAssistant 粘贴到视觉模型的 Key 输入框（设置 → 高级设置 → 视觉模型）。
+4. 复制生成的 Key，回到 MeetingAssistant 粘贴到视觉模型的 Key 输入框（设置 → 视觉与搜索）。
 5. 中国大陆网络通常无法直连 Google，请在「视觉代理」里填写本机代理地址（例如 `127.0.0.1:7897`）。
 6. 视觉问答是可选功能，可以跳过；跳过后截图提问会提示尚未配置。
 

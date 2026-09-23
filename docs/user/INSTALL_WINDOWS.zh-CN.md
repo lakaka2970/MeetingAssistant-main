@@ -73,7 +73,7 @@ Get-FileHash .\MeetingAssistant-<版本>-win-x64.exe -Algorithm SHA256
 | 全局知识库 | `%APPDATA%\MeetingAssistant\knowledge.md` |
 | 本地 Whisper 模型（若使用） | `%APPDATA%\MeetingAssistant\models\` |
 
-在资源管理器地址栏输入 `%APPDATA%\MeetingAssistant` 即可打开，或者用 设置 → 高级设置 → 诊断信息 →「打开日志文件夹」。
+在资源管理器地址栏输入 `%APPDATA%\MeetingAssistant` 即可打开，或者用 设置 → 通用 → 诊断信息 →「打开数据文件夹」。
 
 **API Key 不是明文保存的**：先用 Windows DPAPI 加密再写入 `settings.json`，且与当前 Windows 用户绑定——换用户或重装系统后需要重新填写。
 
