@@ -174,10 +174,10 @@ conda run -n moss-asr python -m pip install -r requirements-moss.txt
 ```bash
 git clone https://github.com/lakaka2970/MeetingAssistant-main.git
 cd MeetingAssistant-main
-npm install        # postinstall 会应用 patches/（transformers.js 补丁，勿删）
-npm run build
-start.bat          # Windows 一键启动（自动构建），或 npm start
+start.bat          # Windows 一键启动：首次运行自动自检并装配环境，或手动 npm install && npm start
 ```
+
+> Windows 下双击 `start.bat` 即可，不必先手动执行安装与构建：它会依次自检 Node.js ≥ 20（缺失时给出安装指引）、安装 npm 依赖（默认源失败时自动写入 `.npmrc` 国内镜像并重试一次）、校验 transformers.js 补丁、补下载 Electron 二进制（失败自动改用镜像）、构建，最后启动应用；本地 ASR / OCR / 原生音频等可选能力只做提示，不阻塞启动。逻辑在 `tools/start-check.ps1`（`start.bat` 只是纯 ASCII 壳，cmd 对 UTF-8 批处理会截行）。
 
 > 🇨🇳 npm / Electron 下载慢时，在项目根目录建 `.npmrc`：
 > `registry=https://registry.npmmirror.com` 与 `electron_mirror=https://npmmirror.com/mirrors/electron/`

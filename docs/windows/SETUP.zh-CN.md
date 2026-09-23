@@ -21,9 +21,7 @@ MeetingAssistant 诞生于 Windows：通过**系统回环音频**直接采集对
 ```bash
 git clone https://github.com/lakaka2970/MeetingAssistant-main.git
 cd MeetingAssistant-main
-npm install        # postinstall 自动应用 patches/（transformers.js 补丁，勿删）
-npm run build
-start.bat          # 或 npm start
+start.bat          # 首次运行自动装依赖（postinstall 应用 patches/，勿删）、构建并启动；也可手动 npm install && npm start
 ```
 
 > 🇨🇳 国内 npm / Electron 下载慢时，在项目根目录建 `.npmrc`：

@@ -17,3 +17,7 @@
 *.woff2 binary
 *.ttf binary
 *.otf binary
+
+# Windows batch files must keep CRLF in the working tree or the
+# parser can mis-seek labels on LF-only checkouts.
+*.bat text eol=crlf
