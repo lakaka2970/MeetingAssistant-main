@@ -16,6 +16,7 @@ models/
 HANDOFF.md
 PLAN.en.md
 PLAN.zh.md
+.superpowers/
 
 # optional native audio module (rust/, built via `npm run native:build`):
 # the compiled binary drops into resources/native/, and cargo's build output

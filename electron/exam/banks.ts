@@ -1,7 +1,7 @@
 /**
  * Main-process glue for the exam-mode question banks.
  *
- * Real banks (D:\…\题库) ship as PDF pairs — `…-学生版.pdf` with the questions
+ * Real banks ship as PDF pairs — `…-学生版.pdf` with the questions
  * and `…-答案版.pdf` with 「N.【答案】D。解析：…」 — and the numbering restarts
  * per 部分, so the two files have to be read together and joined by
  * (section, number): see shared/answerKey.ts, which this drives. Prose notes

@@ -28,11 +28,15 @@ import { metaFieldOf, parseKbIndex, type KbChunk } from '../electron/rag/kbIndex
 import { KbRetrieval } from '../electron/rag/kbRetrieval';
 
 /**
- * Paths are literals, not argv: a CJK path handed to cmd.exe arrives with
- * stray spaces inserted, which reads as "the index is empty" and looks like a
- * parser bug rather than a broken argument.
+ * The KB root is a required argument. Under cmd.exe a bare CJK path arrives
+ * with stray spaces inserted, which reads as "the index is empty" and looks
+ * like a parser bug rather than a broken argument — quote it.
  */
-const KB_ROOT = process.argv[2] || 'D:\\LZY\\就业\\知识准备\\面试知识库';
+const KB_ROOT = process.argv[2];
+if (!KB_ROOT) {
+  console.error('usage: npx vite-node tools/kb-eval.ts -- "<kbRootDir>"');
+  process.exit(1);
+}
 const INDEX_FILE = join(KB_ROOT, '99_元数据与检索', '991_index.jsonl');
 const GOLDEN_FILE = join(KB_ROOT, '99_元数据与检索', '_rag', 'golden.jsonl');
 /** skip the tooling/model trees: they are not knowledge content */

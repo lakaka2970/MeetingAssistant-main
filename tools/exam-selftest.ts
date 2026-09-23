@@ -13,7 +13,11 @@ import { ExamBanks } from '../electron/exam/banks';
 import { parseSingleQuestion } from '../shared/bankParse';
 import { decideBankAnswer, formatBankBlock } from '../shared/bankStore';
 
-const dir = process.argv[2] ?? 'D:\\LZY\\就业\\知识准备\\题库';
+const dir = process.argv[2];
+if (!dir) {
+  console.error('usage: npm run exam:selftest -- <bankDir> [extra question…]');
+  process.exit(1);
+}
 const extra = process.argv.slice(3);
 
 const banks = new ExamBanks();

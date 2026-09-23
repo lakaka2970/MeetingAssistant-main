@@ -7,8 +7,6 @@ macOS 版保留了完整链路——流式转录、提词式回答、简历/JD �
 1. **没有系统回环采集。** Electron 的 `audio: 'loopback'` 仅支持 Windows，macOS 上「对方」通道改为从可选择的**音频输入设备**录制。要听到会议软件的声音，需要经 BlackHole 等虚拟设备路由系统音频（见下文）。
 2. **隐身是尽力而为。** 新版 ScreenCaptureKit 客户端仍可能捕获窗口，macOS 上无法保证完全隐身。
 
-工程细节见 [移植 SDD](macos-port-sdd.md)。
-
 ## 环境要求
 
 | 组件 | 要求 |

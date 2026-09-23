@@ -12,8 +12,6 @@ resume/JD grounding — but two platform realities differ from Windows:
 2. **Stealth is best-effort.** Recent ScreenCaptureKit clients may still
    capture the window; full invisibility is not guaranteed on macOS.
 
-Engineering details live in the [port SDD](macos-port-sdd.md).
-
 ## Requirements
 
 | Component | Requirement |
