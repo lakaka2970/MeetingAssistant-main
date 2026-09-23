@@ -40,6 +40,10 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     resolve: { alias: { '@shared': resolve(__dirname, 'shared') } },
     build: {
+      // electron-vite leaves main/preload unminified by default, which would
+      // ship the repository's identifiers and code layout verbatim inside
+      // app.asar.
+      minify: true,
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'electron/main.ts'),
@@ -52,6 +56,7 @@ export default defineConfig({
   preload: {
     plugins: [externalizeDepsPlugin()],
     build: {
+      minify: true,
       rollupOptions: {
         // `setup` is the minimal bridge for the onboarding window; the main
         // overlay keeps the full McApi in `index`.
@@ -80,6 +85,7 @@ export default defineConfig({
     plugins: [react(), cleanRendererOut],
     resolve: { alias: { '@shared': resolve(__dirname, 'shared') } },
     build: {
+      minify: true,
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/index.html'),

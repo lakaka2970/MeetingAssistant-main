@@ -26,6 +26,13 @@ files:
   - '!electron.vite.config.ts'
   - '!tsconfig*.json'
   - '!**/{.npmrc,.editorconfig,start.bat,start-funasr-local.bat}'
+  # Upstream packages carry 691 sourcemaps (69 MB) and 374 loose .ts files into
+  # app.asar. None of them are ours, but a .map is literally restorable source,
+  # and no runtime path reads one -- the bundles are imported by their own file
+  # names. Stripping both also shrinks the installer by that 69 MB.
+  - '!**/*.map'
+  - '!**/*.ts'
+  - '!**/*.tsx'
 
 asar: true
 # @huggingface/transformers is loaded through a dynamic ESM import of

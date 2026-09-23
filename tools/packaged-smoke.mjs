@@ -48,7 +48,14 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exePath = join(repoRoot, 'release', 'win-unpacked', 'MeetingAssistant.exe');
 const logPath = join(repoRoot, 'release', 'packaged-smoke.log');
 
-const BOOT_TIMEOUT_MS = 30_000;
+/**
+ * The main-window scenario's evidence line cannot arrive before the wizard-free
+ * boot has finished: the MC_E2E_LLM hook in electron/main.ts polls
+ * `ragStatus`/`ragQaList` for up to 180 x 500 ms before it gives up on an empty
+ * knowledge base, so a fresh profile needs ~90 s plus process startup. 30 s
+ * timed out on a perfectly healthy build.
+ */
+const BOOT_TIMEOUT_MS = 150_000;
 const LLM_MARKER = '[e2e-llm]';
 const SETUP_WINDOW_MARKER = '[setup] window created';
 const SETUP_READY_MARKER = '[setup] wizard ready';
