@@ -20,7 +20,7 @@ import type {
   SettingsPatch,
   UiLang,
 } from '../shared/protocol';
-import { clampPaneSplit, PANE_SPLIT_DEFAULT } from '../shared/protocol';
+import { clampPaneSplit, clampRailSplit, PANE_SPLIT_DEFAULT, RAIL_SPLIT_DEFAULT } from '../shared/protocol';
 import { defaultHotkeysForPlatform } from '../shared/platform';
 import {
   findPresetById,
@@ -106,6 +106,7 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       // even halves: the transcript and the answer each need to be readable,
       // and neither is secondary by default
       paneSplit: PANE_SPLIT_DEFAULT,
+      railSplit: RAIL_SPLIT_DEFAULT,
       answerOnly: false,
       opacity: 0.94,
       // medium = 16px answer body (was 13px) — readable at a glance mid-interview
@@ -697,6 +698,7 @@ export class SettingsStore {
         // clamped here so a hand-edited settings.json cannot produce a layout
         // where one pane is 0 px wide and the divider is unreachable
         paneSplit: clampPaneSplit(d.ui.paneSplit),
+        railSplit: clampRailSplit(d.ui.railSplit),
         answerOnly: !!d.ui.answerOnly,
         lang: d.ui.lang ?? this.fallbackUiLang,
         // both are optional on disk (files written before Phase 4 lack them)

@@ -56,6 +56,7 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
       hotkeyShot: 'Control+Shift+S',
       hotkeyAnswer: 'Control+Alt+A',
       paneSplit: 0.5,
+      railSplit: 0.16,
       answerOnly: false,
       opacity: 0.94,
       fontScale: 'medium',

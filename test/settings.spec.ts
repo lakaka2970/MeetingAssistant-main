@@ -12,6 +12,7 @@ import {
 } from '../electron/settings';
 import type { SettingsFile } from '../shared/protocol';
 import { PANE_SPLIT_DEFAULT, PANE_SPLIT_MAX, PANE_SPLIT_MIN } from '../shared/protocol';
+import { RAIL_SPLIT_DEFAULT, RAIL_SPLIT_MAX, RAIL_SPLIT_MIN } from '../shared/protocol';
 
 const fakeCipher: SecretCipher = {
   available: () => true,
@@ -280,6 +281,42 @@ describe('SettingsStore', () => {
     });
   });
 
+  describe('ui.railSplit (draggable glance rail)', () => {
+    it('defaults to the narrow glance width, not the old half-screen paneSplit', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      expect(s.getPublic().ui.railSplit).toBe(RAIL_SPLIT_DEFAULT);
+    });
+
+    it('clamps so the rail can never vanish nor swallow the answer pane', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ ui: { railSplit: 0.01 } });
+      expect(s.getPublic().ui.railSplit).toBe(RAIL_SPLIT_MIN);
+      s.applyPatch({ ui: { railSplit: 0.99 } });
+      expect(s.getPublic().ui.railSplit).toBe(RAIL_SPLIT_MAX);
+    });
+
+    it('falls back to the default on garbage instead of emitting a NaN width', () => {
+      writeFileSync(
+        file,
+        JSON.stringify({
+          version: 2,
+          ui: {
+            stealth: true,
+            hotkeyToggle: 'Alt+Q',
+            hotkeyShot: 'Alt+W',
+            opacity: 0.9,
+            fontScale: 'medium',
+            theme: 'dark',
+            railSplit: 'wide',
+          },
+        }),
+        'utf8',
+      );
+      const s = new SettingsStore(file, fakeCipher);
+      expect(s.getPublic().ui.railSplit).toBe(RAIL_SPLIT_DEFAULT);
+    });
+  });
+
   it('defaults asr backend to local streaming Fun-ASR-Nano', () => {
     const s = new SettingsStore(file, fakeCipher);
     expect(s.data.asr.backend).toBe('local-realtime');
@@ -447,7 +484,7 @@ describe('migrateSettingsV1ToV2 (pure)', () => {
     // Phase 4 added two ui fields. Everything the user had configured survives
     // untouched; the new ones arrive with their OFF defaults, so upgrading can
     // never silently register an existing profile for auto-start.
-    expect(v2.ui).toEqual({ ...V1_FILE.ui, autoLaunch: false, trayNoticeShown: false });
+    expect(v2.ui).toEqual({ ...V1_FILE.ui, autoLaunch: false, trayNoticeShown: false, railSplit: RAIL_SPLIT_DEFAULT });
     expect(v2.audio).toEqual({ ...V1_FILE.audio, captureBackend: 'webaudio' });
   });
 

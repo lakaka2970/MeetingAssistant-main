@@ -374,14 +374,31 @@ body {
   border-right: 1px solid var(--border-1);
 }
 
-/* glance rail: one truncated line per sentence; click anywhere expands */
+/* glance rail: one truncated line per sentence; click anywhere expands.
+   Width follows --rail-split (fraction of the shell, set by App from
+   settings.ui.railSplit and live-dragged by .rail-resizer). */
 .transcript-rail {
-  flex: 0 0 150px;
+  flex: 0 0 calc(var(--rail-split, 0.16) * 100%);
   display: flex;
   min-height: 0;
   border-right: 1px solid var(--border-1);
   background: var(--surface-soft);
   cursor: pointer;
+}
+
+/* the drag strip that resizes the glance rail */
+.rail-resizer {
+  flex: 0 0 6px;
+  margin-left: -4px; /* overlap the rail's border so the strip feels contiguous */
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+  z-index: 1;
+}
+
+.rail-resizer:hover,
+.rail-resizer:active {
+  background: var(--accent-soft, rgba(120, 160, 255, 0.25));
 }
 
 .rail-rows {

@@ -172,6 +172,20 @@ export function clampPaneSplit(v: number | undefined): number {
   return Math.min(PANE_SPLIT_MAX, Math.max(PANE_SPLIT_MIN, v));
 }
 
+/**
+ * Glance-rail width bounds (fraction of the prompt-shell width). The default
+ * matches the historical fixed 150px rail at common window sizes, so enabling
+ * dragging causes no out-of-box visual change.
+ */
+export const RAIL_SPLIT_MIN = 0.1;
+export const RAIL_SPLIT_MAX = 0.5;
+export const RAIL_SPLIT_DEFAULT = 0.16;
+
+export function clampRailSplit(v: number | undefined): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return RAIL_SPLIT_DEFAULT;
+  return Math.min(RAIL_SPLIT_MAX, Math.max(RAIL_SPLIT_MIN, v));
+}
+
 export interface SettingsFile {
   version: 2;
   /** first-run wizard state; added in v2 (migrated files are grandfathered) */
@@ -285,6 +299,12 @@ export interface SettingsFile {
      * divider every launch.
      */
     paneSplit?: number;
+    /**
+     * Glance-rail width as a fraction of the prompt-shell width (clamped to
+     * 0.10–0.50). Drag-to-set, persisted so the rail keeps its width across
+     * launches; the rail's click-to-expand overlay is unaffected.
+     */
+    railSplit?: number;
     /** Collapse the transcript away and give the whole window to the answer. */
     answerOnly?: boolean;
     opacity: number;
@@ -494,6 +514,8 @@ export interface PublicSettings {
     hotkeyAnswer: string;
     /** transcript pane fraction, already clamped by getPublic() */
     paneSplit: number;
+    /** glance-rail fraction, already clamped by getPublic() */
+    railSplit: number;
     answerOnly: boolean;
     opacity: number;
     fontScale: FontScale;
@@ -621,6 +643,7 @@ export interface SettingsPatch {
     hotkeyShot?: string;
     hotkeyAnswer?: string;
     paneSplit?: number;
+    railSplit?: number;
     answerOnly?: boolean;
     opacity?: number;
     fontScale?: FontScale;

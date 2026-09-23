@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type {
   AnswerLang,
   AsrEvent,
@@ -15,6 +16,7 @@ import {
   reindexSegments,
   type TranscriptSegment,
 } from '../shared/transcript';
+import { RAIL_SPLIT_DEFAULT } from '../shared/protocol';
 import { heuristic } from '../shared/questionGate';
 import { captureKindForPlatform } from '../shared/platform';
 import { deriveServiceHealth } from '../shared/healthState';
@@ -750,6 +752,11 @@ export function App() {
   );
 
   const dual = !!settings?.companion?.enabled;
+  /** one settings write per rail-divider drag (pointerup), not per frame */
+  const persistRailSplit = useCallback(async (ratio: number) => {
+    const updated = await window.mc.setSettings({ ui: { railSplit: ratio } });
+    setSettings(updated);
+  }, []);
   /** how many phones are receiving right now — polled only while 双屏 is on */
   const [cOnline, setCOnline] = useState(0);
   useEffect(() => {
@@ -1082,7 +1089,10 @@ export function App() {
         />
       )}
 
-      <div className="prompt-shell">
+      <div
+        className="prompt-shell"
+        style={{ '--rail-split': String(settings?.ui.railSplit ?? RAIL_SPLIT_DEFAULT) } as CSSProperties}
+      >
         <TranscriptRail
           segments={segments}
           partials={partials}
@@ -1091,6 +1101,8 @@ export function App() {
           onAsk={(text) => askLlm('segment', text)}
           onTranslate={translateSegment}
           onClear={clearTranscript}
+          railSplit={settings?.ui.railSplit ?? RAIL_SPLIT_DEFAULT}
+          onCommitRailSplit={persistRailSplit}
         />
         <PromptFocus
           sessions={sessions}
