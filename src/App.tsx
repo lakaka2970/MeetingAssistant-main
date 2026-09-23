@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AnswerLang,
   AsrEvent,
+  ExamEvent,
   KbSlot,
   LlmAskPayload,
   PublicSettings,
@@ -268,6 +269,11 @@ export function App() {
     continuousRef.current = continuous;
   }, [continuous]);
 
+  /** 整屏截屏问答 (main-initiated exam events mirrored here): requestId → the
+   * session the turn was created in, so a session switch mid-answer cannot
+   * strand the streaming text on the wrong session */
+  const shotSidRef = useRef(new Map<string, string>());
+
   const askShot = useCallback(
     (question: string, imageDataUrl?: string) => {
       const sid = currentIdRef.current;
@@ -443,6 +449,44 @@ export function App() {
     });
 
     const offShot = window.mc.onShotHotkey(() => void doRegionShot());
+    // 整屏截屏问答: main mirrors its shot pipeline here (every event on this
+    // channel is shot-originated). stage/note/bank/ambiguous belong to the
+    // exam window's UI; the prompt surface keeps the question + answer turn.
+    const offExamShot = window.mc.onExamEvent((ev: ExamEvent) => {
+      const patchTurn = (fn: (t: StoredSession['turns'][number]) => StoredSession['turns'][number]): void => {
+        const sid = shotSidRef.current.get(ev.requestId);
+        if (!sid) return;
+        setSessions((list) =>
+          list.map((s) =>
+            s.id !== sid
+              ? s
+              : { ...s, turns: s.turns.map((t) => (t.id === ev.requestId ? fn(t) : t)) },
+          ),
+        );
+      };
+      if (ev.kind === 'begin') {
+        const sid = currentIdRef.current;
+        if (!sid) return;
+        shotSidRef.current.set(ev.requestId, sid);
+        appendTurn(sid, {
+          id: ev.requestId,
+          kind: 'vision',
+          label: tRef.current.app.shotAuto,
+          text: '',
+          status: 'streaming',
+        });
+        return;
+      }
+      if (ev.kind === 'question') patchTurn((t) => ({ ...t, label: ev.text }));
+      else if (ev.kind === 'delta') patchTurn((t) => ({ ...t, text: t.text + ev.text }));
+      else if (ev.kind === 'done') {
+        patchTurn((t) => ({ ...t, text: ev.text || t.text, status: 'done' }));
+        shotSidRef.current.delete(ev.requestId);
+      } else if (ev.kind === 'error') {
+        patchTurn((t) => ({ ...t, status: 'error', error: ev.message }));
+        shotSidRef.current.delete(ev.requestId);
+      }
+    });
     // 双屏: the window is hidden, so the only way to ask about what was just
     // said is this key. 'continuous' already resolves the other party's latest
     // line, which is exactly what ⚡答 on a bubble does.
@@ -460,6 +504,7 @@ export function App() {
     return () => {
       off();
       offLlm();
+      offExamShot();
       offShot();
       offAnswer();
       offConnected();

@@ -63,6 +63,7 @@ import { parseSingleQuestion, type BankEntry } from '../shared/bankParse';
 import { decideBankAnswer, formatBankBlock, type ExamSubMode } from '../shared/bankStore';
 import { buildPersonaBlock, defaultPersona, parsePersona } from '../shared/persona';
 import { GATE_TIMEOUT_MS, gateMessages, heuristic, parseVerdict, GateMemory } from '../shared/questionGate';
+import { decideShotWeb } from '../shared/shotWeb';
 import type {
   CompanionState,
   ExamAskPayload,
@@ -1403,7 +1404,13 @@ function bootstrap(): void {
       return { dropped };
     });
     ipcMain.handle(IPC.sessionsLoad, () => sessionStore.load());
-    ipcMain.on(IPC.sessionsSave, (_e, data) => sessionStore.save(data));
+    ipcMain.on(IPC.sessionsSave, (_e, data) => {
+      // the renderer owns the session lifecycle; keep the shot pipeline's
+      // fallback session pointer fresh (it fires from a hotkey, no payload)
+      const cid = (data as { currentId?: unknown })?.currentId;
+      if (typeof cid === 'string' && cid) lastKnownSessionId = cid;
+      sessionStore.save(data);
+    });
     // the renderer owns the JSON file, so a delete has to also reach the vector
     // index: otherwise the session's resume/JD/facts keep answering questions
     ipcMain.handle(IPC.sessionDelete, (_e, sessionId: string) => {
@@ -1485,6 +1492,14 @@ function bootstrap(): void {
     // explanation or handles what the bank does not have, and the web is the
     // last resort. Nothing here reads the interview session or the RAG index.
     const examControllers = new Map<string, AbortController>();
+
+    /**
+     * The session the renderer last asked about (llmAsk / speculative
+     * prefetch). The whole-screen shot hotkey is main-initiated and carries no
+     * session, so the exam pipeline borrows this id to give the shot the same
+     * RAG material the spoken questions get.
+     */
+    let lastKnownSessionId = '';
 
     const examSend = (ev: ExamEvent): void => {
       if (examWin && !examWin.isDestroyed()) examWin.webContents.send(IPC.examEvent, ev);
@@ -1578,17 +1593,25 @@ function bootstrap(): void {
     };
 
     /**
-     * The whole 做题 answer pipeline: screen → read → bank → model → web.
-     * Named (rather than inline in the IPC handler) because the companion
-     * bridge drives the exact same pipeline headlessly — a phone-only press of
-     * the ask hotkey must produce the identical answer, and a copy of this body
-     * would be a second set of gates to drift. Every result leaves through
-     * `examSend`, which already fans out to the window and to the phones.
+     * The whole 做题 answer pipeline: screen → read → bank → (RAG material) →
+     * model → web. Named (rather than inline in the IPC handler) because the
+     * companion bridge drives the exact same pipeline headlessly — a phone-only
+     * press of the ask hotkey must produce the identical answer, and a copy of
+     * this body would be a second set of gates to drift. Every result leaves
+     * through `send`, which fans out to the exam window, the phones, and — for
+     * main-initiated shot requests (`payload.shot`) — the main window's turn
+     * surface. A shot request has no owning window, so it opens with `begin`:
+     * without it the exam window's requestId filter silently dropped the lot.
      */
     const runExamAsk = async (payload: ExamAskPayload): Promise<void> => {
       const t0 = Date.now();
+      const send = (ev: ExamEvent): void => {
+        examSend(ev);
+        if (payload.shot && win && !win.isDestroyed()) win.webContents.send(IPC.examEvent, ev);
+      };
+      if (payload.shot) send({ requestId: payload.requestId, kind: 'begin' });
       const sendErr = (message: string): void =>
-        examSend({ requestId: payload.requestId, kind: 'error', message });
+        send({ requestId: payload.requestId, kind: 'error', message });
       const ac = new AbortController();
       examControllers.set(payload.requestId, ac);
       const ms: Record<string, number> = {};
@@ -1597,7 +1620,7 @@ function bootstrap(): void {
         let question = (payload.question ?? '').trim();
         let readVia: 'ocr' | 'vision' = 'vision';
         if (!question && payload.imageDataUrl) {
-          examSend({ requestId: payload.requestId, kind: 'stage', stage: 'reading' });
+          send({ requestId: payload.requestId, kind: 'stage', stage: 'reading' });
           const canRead = examScreenReadable();
           const read =
             canRead.why === undefined
@@ -1606,16 +1629,17 @@ function bootstrap(): void {
           if (!read) {
             // two different failures, and the user needs to know which one: no
             // OCR/vision configured at all (a setup gap they can fix), versus a
-            // capture that genuinely held no question
+            // capture that genuinely held no question — an empty `done` read as
+            // a dead pipeline, so both now surface as an explicit error
             if (canRead.why) sendErr(canRead.why);
-            else examSend({ requestId: payload.requestId, kind: 'done', text: '', origin: 'none', ms });
+            else sendErr(payload.wholeScreen ? '整屏里没有找到题目，请用框选（Ctrl+Alt+S）圈出题干后重试' : '截屏里没有识别出题面，请框选题目区域后重试');
             return;
           }
           question = read.text;
           readVia = read.via;
           ms.read = Date.now() - t0;
           if (read.ambiguous) {
-            examSend({
+            send({
               requestId: payload.requestId,
               kind: 'note',
               text: `屏幕上还有另一道题像是候选：${read.ambiguous}。我按上面这道作答，答错了请重新框选那一道。`,
@@ -1626,7 +1650,7 @@ function bootstrap(): void {
           sendErr(payload.wholeScreen ? '整屏里没有找到题目，请改用框选（Ctrl+Alt+S）' : '没有题目：请框选题目区域后再试');
           return;
         }
-        examSend({
+        send({
           requestId: payload.requestId,
           kind: 'question',
           text: question,
@@ -1634,7 +1658,7 @@ function bootstrap(): void {
         });
 
         // 2. look it up in the bound banks
-        examSend({ requestId: payload.requestId, kind: 'stage', stage: 'searching' });
+        send({ requestId: payload.requestId, kind: 'stage', stage: 'searching' });
         const screen = parseSingleQuestion(question);
         const asked = screen.stem || question;
         let subMode: ExamSubMode = payload.subMode;
@@ -1670,7 +1694,7 @@ function bootstrap(): void {
           decision.near.length > 1 &&
           (best.confidence !== 'exact' || decision.disagree)
         ) {
-          examSend({
+          send({
             requestId: payload.requestId,
             kind: 'ambiguous',
             candidates: decision.near.map((h) => bankView(h.entry, subMode, h.score)),
@@ -1682,9 +1706,9 @@ function bootstrap(): void {
         // authority: a near-miss printed as a certainty would be answered wrong.
         const exactObjective = decision.direct;
         if (hitView && verdict.mode === 'bank' && exactObjective && !wantsExplanation) {
-          examSend({ requestId: payload.requestId, kind: 'bank', hit: hitView, letter });
+          send({ requestId: payload.requestId, kind: 'bank', hit: hitView, letter });
           ms.total = Date.now() - t0;
-          examSend({
+          send({
             requestId: payload.requestId,
             kind: 'done',
             text: hitView.answer,
@@ -1693,10 +1717,10 @@ function bootstrap(): void {
           });
           return;
         }
-        if (hitView) examSend({ requestId: payload.requestId, kind: 'bank', hit: hitView, letter });
+        if (hitView) send({ requestId: payload.requestId, kind: 'bank', hit: hitView, letter });
 
         // 4. model answer (bank as authority/hint), web only when the bank was silent
-        examSend({ requestId: payload.requestId, kind: 'stage', stage: 'thinking' });
+        send({ requestId: payload.requestId, kind: 'stage', stage: 'thinking' });
         const llmKey = settings.getLlmApiKey() ?? '';
         const llmCfg: LlmConfig = {
           baseUrl: settings.data.llm.baseUrl,
@@ -1707,32 +1731,59 @@ function bootstrap(): void {
           ms.total = Date.now() - t0;
           // the bank hit above is still a complete answer for the user
           if (hitView) {
-            examSend({ requestId: payload.requestId, kind: 'done', text: hitView.answer, origin: 'bank', ms });
+            send({ requestId: payload.requestId, kind: 'done', text: hitView.answer, origin: 'bank', ms });
             return;
           }
           sendErr(T().noApiKey);
           return;
         }
-        let webLines: string[] | undefined;
-        let origin: ExamOrigin = hitView ? 'bank+model' : 'model';
-        if (!hitView && settings.data.exam?.webFallback) {
-          const ws = settings.data.webSearch;
-          const apiKey = settings.getWebSearchApiKey();
-          if (ws?.enabled && apiKey) {
-            examSend({ requestId: payload.requestId, kind: 'stage', stage: 'searching-web' });
-            const w = await webSearch({
-              provider: ws.providerId ?? DEFAULT_SEARCH_PROVIDER,
-              apiKey,
-              query: asked.slice(0, 120),
-              maxResults: ws.maxResults,
-              timeoutMs: ws.timeoutMs,
-            });
-            ms.web = w.ms;
-            if (w.hits.length) {
-              webLines = formatWebLines(w.hits);
-              origin = 'model+web';
-            }
+        // local knowledge second: the bank was silent, so try the session's
+        // RAG material (the same knowledge base spoken questions get). Only
+        // when both local sources came up empty does the web get consulted —
+        // and an unconfigured web must not read as a dead pipeline.
+        let ragBlock: string | undefined;
+        if (!hitView && lastKnownSessionId && rag.status().state === 'ready') {
+          try {
+            const rr = await rag.retrieve(asked, lastKnownSessionId);
+            const topQa = rr.qa[0];
+            if (topQa) ragBlock = `【知识库问答】${topQa.question}\n${topQa.answer}`;
+            else if (rr.hits.length)
+              ragBlock = rr.hits.map((h) => `[${h.source}${h.ref ? '|' + h.ref : ''}] ${h.text}`).join('\n');
+          } catch {
+            // a failed retrieval is just "local said nothing"; the model still answers
           }
+          if (ragBlock) console.log(`[shot] rag context ${ragBlock.length} chars (session ${lastKnownSessionId})`);
+        }
+        let webLines: string[] | undefined;
+        let origin: ExamOrigin = hitView ? 'bank+model' : ragBlock ? 'model+rag' : 'model';
+        const ws = settings.data.webSearch;
+        const webApiKey = settings.getWebSearchApiKey();
+        const webDec = decideShotWeb({
+          bankHit: !!hitView,
+          ragHit: !!ragBlock,
+          webFallback: !!settings.data.exam?.webFallback,
+          webConfigured: !!(ws?.enabled && webApiKey),
+        });
+        if (webDec.run) {
+          send({ requestId: payload.requestId, kind: 'stage', stage: 'searching-web' });
+          const w = await webSearch({
+            provider: ws!.providerId ?? DEFAULT_SEARCH_PROVIDER,
+            apiKey: webApiKey!,
+            query: asked.slice(0, 120),
+            maxResults: ws!.maxResults,
+            timeoutMs: ws!.timeoutMs,
+          });
+          ms.web = w.ms;
+          if (w.hits.length) {
+            webLines = formatWebLines(w.hits);
+            origin = 'model+web';
+          }
+        } else if (webDec.hint) {
+          send({
+            requestId: payload.requestId,
+            kind: 'note',
+            text: '题库和本地知识素材里都没有这道题，联网检索也未启用（设置 → 联网搜索），以下答案来自模型自身知识。',
+          });
         }
         const persona = settings.data.exam?.persona ?? defaultPersona();
         const messages = buildExamAskMessages({
@@ -1740,6 +1791,7 @@ function bootstrap(): void {
           question,
           instruction: payload.instruction,
           bankBlock,
+          ragBlock,
           personaBlock: subMode === 'personality' ? buildPersonaBlock(persona, {}) : undefined,
           priorAnswer: payload.priorAnswer,
           webLines,
@@ -1750,15 +1802,15 @@ function bootstrap(): void {
         // even more, and `done` below stays authoritative — its text replaces
         // whatever was streamed, so a missed or duplicated delta cannot corrupt
         // the answer that gets persisted.
-        const r = await chatStream(llmCfg, messages, { onDelta: (t) => examSend({ requestId: payload.requestId, kind: 'delta', text: t }) }, ac.signal);
+        const r = await chatStream(llmCfg, messages, { onDelta: (t) => send({ requestId: payload.requestId, kind: 'delta', text: t }) }, ac.signal);
         ms.model = Date.now() - tAnswer;
         ms.total = Date.now() - t0;
         const text = r.text.trim();
         if (!text && hitView) {
-          examSend({ requestId: payload.requestId, kind: 'done', text: hitView.answer, origin: 'bank', ms });
+          send({ requestId: payload.requestId, kind: 'done', text: hitView.answer, origin: 'bank', ms });
           return;
         }
-        examSend({ requestId: payload.requestId, kind: 'done', text, origin, ms });
+        send({ requestId: payload.requestId, kind: 'done', text, origin, ms });
         console.log(
           `[exam] ${subMode} ${origin} in ${ms.total}ms` +
             ` (read=${ms.read ?? 0} bank=${ms.bank ?? 0} model=${ms.model ?? 0})`,
@@ -1785,6 +1837,13 @@ function bootstrap(): void {
         // Desktop Duplication produces no frames while the session is locked or
         // an RDP client is disconnected — say so rather than silently nothing.
         console.warn('[shot] 截图为空（桌面可能已锁定或会话已断开）');
+        const requestId = `c${Date.now().toString(36)}`;
+        const mirror = (ev: ExamEvent): void => {
+          examSend(ev);
+          if (win && !win.isDestroyed()) win.webContents.send(IPC.examEvent, ev);
+        };
+        mirror({ requestId, kind: 'begin' });
+        mirror({ requestId, kind: 'error', message: '整屏抓取为空：桌面可能已锁定，或远程会话已断开' });
         return { ok: false, ms: Date.now() - t0, seq: 0 };
       }
       const c = settings.data.companion;
@@ -1795,6 +1854,8 @@ function bootstrap(): void {
         imageDataUrl: cap.imageDataUrl,
         // nothing was cropped, so the reader has to locate the question first
         wholeScreen: true,
+        // no window owns this request — announce with begin, mirror to the main window
+        shot: true,
       });
       console.log(`[shot] 整屏 seq=${cap.seq} 抓屏=${cap.ms}ms → 已送题库/模型`);
       return { ok: true, ms: cap.ms, seq: cap.seq };
@@ -1997,6 +2058,7 @@ function bootstrap(): void {
       if (!SPECULATIVE_RETRIEVAL) return;
       const text = String(p?.text ?? '').trim();
       if (!text) return;
+      if (p?.sessionId) lastKnownSessionId = String(p.sessionId);
       if (specTimer) clearTimeout(specTimer);
       specTimer = setTimeout(() => {
         // speculation never spawns the worker or waits for a download
@@ -2133,6 +2195,7 @@ function bootstrap(): void {
     });
 
     ipcMain.on(IPC.llmAsk, async (_e, payload: LlmAskPayload) => {
+      if (payload.sessionId) lastKnownSessionId = payload.sessionId;
       const sendEv = (ev: LlmEvent): void => publishLlm(ev);
       const primary = resolvePrimaryEndpoint();
       // keyless primary is only valid for providers that need no key (Ollama)

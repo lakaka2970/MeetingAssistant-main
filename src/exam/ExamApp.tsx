@@ -82,6 +82,18 @@ export function ExamApp() {
       setScanCurrent(p.current ?? '');
     });
     const off = window.mcExam.onExamEvent((ev: ExamEvent) => {
+      // a main-initiated shot (whole-screen hotkey) has no owning window:
+      // begin makes this window the owner before the requestId filter below
+      // would have silently dropped the entire run
+      if (ev.kind === 'begin') {
+        activeRef.current = ev.requestId;
+        setError('');
+        setNote('');
+        setCandidates(null);
+        setStage(t.reading);
+        setAnswer({ question: '', text: '', origin: 'none', ms: {}, streaming: true });
+        return;
+      }
       if (ev.requestId !== activeRef.current) return;
       switch (ev.kind) {
         case 'stage':

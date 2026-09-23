@@ -138,6 +138,8 @@ export interface ExamAskInput {
   instruction?: string;
   /** the bank block, when the user's own bank had this question */
   bankBlock?: string;
+  /** the session's RAG material context, when the bank was silent (截屏问答兜底) */
+  ragBlock?: string;
   /** the persona + ledger block for personality items */
   personaBlock?: string;
   /** a previous answer for the same screen (re-ask with a different instruction) */
@@ -160,6 +162,11 @@ export function buildExamAskMessages(input: ExamAskInput): ChatMessage[] {
       input.subMode === 'personality'
         ? `${input.bankBlock}\n（题库里已有该题的既定答法，照它选，并保证与上述人设一致。）`
         : `${input.bankBlock}\n（上面是用户自己题库里的原题与答案。以它为准作答：结论必须与之一致，只补充必要的简短依据；若与屏幕上的选项冲突，说明冲突并按屏幕选项重新判断。）`,
+    );
+  }
+  if (input.ragBlock) {
+    parts.push(
+      `【本地知识素材】（题库里没有这道题；以下是用户资料中相关的内容）\n${input.ragBlock.slice(0, 2500)}\n（优先依据它作答；素材与题目冲突时以题目为准，并说明冲突。）`,
     );
   }
   if (input.webLines?.length) {

@@ -794,7 +794,7 @@ export interface ExamBankCandidateView {
 }
 
 /** how an exam answer was produced — the UI labels the result with it */
-export type ExamOrigin = 'bank' | 'bank+model' | 'model' | 'model+web' | 'none';
+export type ExamOrigin = 'bank' | 'bank+model' | 'model' | 'model+rag' | 'model+web' | 'none';
 
 export interface ExamAskPayload {
   requestId: string;
@@ -814,9 +814,21 @@ export interface ExamAskPayload {
   priorAnswer?: string;
   /** the user picked this candidate manually after a "confirm" prompt */
   forceCandidate?: ExamBankCandidateView;
+  /**
+   * Main-process shot (whole-screen hotkey / companion): no window owns this
+   * request, so runExamAsk announces it with a `begin` event and mirrors every
+   * event to the main window's turn surface as well.
+   */
+  shot?: boolean;
 }
 
 export type ExamEvent =
+  /**
+   * "this request is main-initiated — adopt it": the exam window drops events
+   * whose requestId it did not start itself, which silently blanked every
+   * hotkey ask. A window seeing begin sets it as active before any other event.
+   */
+  | { requestId: string; kind: 'begin' }
   | { requestId: string; kind: 'stage'; stage: 'reading' | 'searching' | 'thinking' | 'searching-web'; subMode?: ExamSubMode }
   | { requestId: string; kind: 'question'; text: string; via: 'ocr' | 'vision' | 'typed' }
   /** a caveat worth showing but not blocking on (e.g. a second question on

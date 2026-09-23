@@ -4,6 +4,7 @@ import {
   type AppInfo,
   type AsrEvent,
   type CompanionState,
+  type ExamEvent,
   type KbSlot,
   type KnowledgeFilesState,
   type KnowledgeImportResult,
@@ -83,6 +84,9 @@ export interface McApi {
    * sessionId also refreshes the session's claimed-fact vectors (upgrade P3) */
   memoUpdate(p: { memo: string; question: string; answer: string; sessionId?: string }): Promise<string>;
   onLlmEvent(cb: (ev: LlmEvent) => void): () => void;
+  /** 截屏问答热键 (main-initiated): the exam-event stream mirrored to this
+   * window so the answer lands on the prompt surface too */
+  onExamEvent(cb: (ev: ExamEvent) => void): () => void;
   onShotHotkey(cb: () => void): () => void;
   /** tray menu entries only the renderer can service (capture / session /
    * panels). Main has already made the window visible when this fires. */
@@ -197,6 +201,11 @@ const api: McApi = {
     const listener = (_e: Electron.IpcRendererEvent, ev: LlmEvent) => cb(ev);
     ipcRenderer.on(IPC.llmEvent, listener);
     return () => ipcRenderer.removeListener(IPC.llmEvent, listener);
+  },
+  onExamEvent: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, ev: ExamEvent) => cb(ev);
+    ipcRenderer.on(IPC.examEvent, listener);
+    return () => ipcRenderer.removeListener(IPC.examEvent, listener);
   },
   onShotHotkey: (cb) => {
     const listener = () => cb();
