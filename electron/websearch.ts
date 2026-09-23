@@ -117,8 +117,19 @@ export async function webSearch(
   const apiKey = req.apiKey.trim();
   if (!query) return { hits: [], ms: 0, error: 'empty query' };
   if (!apiKey) return { hits: [], ms: 0, error: 'no api key' };
-  const limit = Math.max(1, Math.min(10, req.maxResults ?? DEFAULT_SEARCH_MAX_RESULTS));
-  const timeoutMs = Math.max(500, req.timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS);
+  // settings.json is user-editable, so `??` defaults are not enough: a NaN
+  // would reach AbortSignal.timeout and throw straight out of this
+  // never-throw function.
+  const rawLimit = req.maxResults;
+  const limit =
+    typeof rawLimit === 'number' && Number.isFinite(rawLimit)
+      ? Math.max(1, Math.min(10, Math.round(rawLimit)))
+      : DEFAULT_SEARCH_MAX_RESULTS;
+  const rawTimeout = req.timeoutMs;
+  const timeoutMs =
+    typeof rawTimeout === 'number' && Number.isFinite(rawTimeout)
+      ? Math.min(Math.max(500, Math.round(rawTimeout)), 120_000)
+      : DEFAULT_SEARCH_TIMEOUT_MS;
   const doFetch = deps.fetchFn ?? globalThis.fetch;
 
   const url =

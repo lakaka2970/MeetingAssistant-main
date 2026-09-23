@@ -163,6 +163,19 @@ describe('webSearch — failure modes never throw (the answer must still stream)
     expect(JSON.parse(String(calls[0].init.body)).max_results).toBe(10);
   });
 
+  it('replaces NaN settings values with the shared defaults', async () => {
+    // maxResults/timeoutMs come from a user-editable settings file: `??`
+    // lets NaN through, which poisons the request body and AbortSignal.
+    const { fn, calls } = mockFetch(json({ results: [] }));
+    const r = await webSearch(
+      { provider: 'tavily', apiKey: 'k', query: 'x', maxResults: NaN, timeoutMs: NaN },
+      { fetchFn: fn as unknown as typeof fetch },
+    );
+    expect(r.error).toBeUndefined();
+    expect(JSON.parse(String(calls[0].init.body)).max_results).toBe(5);
+    expect(calls[0].init.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it('defaults the timeout from the shared catalog constant', async () => {
     const { fn } = mockFetch(json({ results: [] }));
     const r = await webSearch(

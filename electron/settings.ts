@@ -725,7 +725,7 @@ export class SettingsStore {
         providerId: d.webSearch?.providerId ?? DEFAULT_SEARCH_PROVIDER,
         apiKeySet: !!d.webSearch?.apiKeyEnc,
         apiKeyHint: d.webSearch?.apiKeyHint,
-        maxResults: d.webSearch?.maxResults ?? DEFAULT_SEARCH_MAX_RESULTS,
+        maxResults: clampInt(d.webSearch?.maxResults, 1, 10, DEFAULT_SEARCH_MAX_RESULTS),
       },
       exam: {
         banks: d.exam?.banks ?? {},

@@ -118,6 +118,13 @@ const MODEL_ID = 'onnx-community/whisper-large-v3-turbo-ONNX';
  * documentation link. */
 const RELEASES_URL = 'https://github.com/lakaka2970/MeetingAssistant-main/releases/latest';
 
+/**
+ * Transcripts and questions are the most sensitive bytes this app touches —
+ * they never reach the default log. Set MC_VERBOSE_LOGS=1 when diagnosing a
+ * pipeline issue on your own machine; never ship it in a support bundle.
+ */
+const VERBOSE_LOGS = process.env.MC_VERBOSE_LOGS === '1';
+
 /** Region-selection overlay: shows the captured screen as an opaque bg (so a
  * content-protected window never renders black locally) and lets the user drag
  * a rectangle. Uses window.mc from the shared preload. */
@@ -258,11 +265,11 @@ function bootstrap(): void {
   );
   /** one place where an ASR event reaches the overlay AND the phones */
   const publishAsr = (ev: AsrEvent): void => {
-    win?.webContents.send(IPC.asrEvent, ev);
+    if (win && !win.isDestroyed()) win.webContents.send(IPC.asrEvent, ev);
     companion.publishAsr(ev);
   };
   const publishLlm = (ev: LlmEvent): void => {
-    win?.webContents.send(IPC.llmEvent, ev);
+    if (win && !win.isDestroyed()) win.webContents.send(IPC.llmEvent, ev);
     companion.publishLlm(ev);
   };
   /** upgrade P1.5: optional napi-rs loopback — absent artifact = graceful
@@ -515,61 +522,59 @@ function bootstrap(): void {
 
   function registerHotkeys(): void {
     globalShortcut.unregisterAll();
-    const toggle = settings.data.ui.hotkeyToggle;
-    const shot = settings.data.ui.hotkeyShot;
-    try {
-      if (toggle) {
-        const ok = globalShortcut.register(toggle, () => toggleWindow());
-        if (!ok) console.warn(`[main] hotkey ${toggle} registration failed (in use?)`);
+    const failed: string[] = [];
+    // one poisoned or occupied accelerator must not silence every other key —
+    // register each in isolation and surface the aggregate to the user
+    const reg = (key: string | undefined, handler: () => void): void => {
+      if (!key) return;
+      try {
+        if (!globalShortcut.register(key, handler)) failed.push(key);
+      } catch {
+        failed.push(key);
       }
-      if (shot) {
-        // 截屏问答热键 = 整屏抓取 → 题库 → AI → 网络. It used to hand off to the
-        // renderer's drag-a-region flow, which needs you to look at this screen
-        // and answers through the vision model only — useless when the display is
-        // a phone and wasteful even when it is not, since the local bank is both
-        // faster and the source of truth. The 📷 button still does the region
-        // flow for anyone who wants to crop first.
-        // Before startMainApp exists there is no pipeline to call, so the old
-        // renderer-routed flow remains the fallback rather than a dead key.
-        const ok = globalShortcut.register(shot, () => {
-          if (screenShotAsk) void screenShotAsk();
-          else win?.webContents.send(IPC.shotHotkey);
-        });
-        if (!ok) console.warn(`[main] shot hotkey ${shot} registration failed (in use?)`);
+    };
+    reg(settings.data.ui.hotkeyToggle, () => toggleWindow());
+    // 截屏问答热键 = 整屏抓取 → 题库 → AI → 网络. It used to hand off to the
+    // renderer's drag-a-region flow, which needs you to look at this screen
+    // and answers through the vision model only — useless when the display is
+    // a phone and wasteful even when it is not, since the local bank is both
+    // faster and the source of truth. The 📷 button still does the region
+    // flow for anyone who wants to crop first.
+    // Before startMainApp exists there is no pipeline to call, so the old
+    // renderer-routed flow remains the fallback rather than a dead key.
+    reg(settings.data.ui.hotkeyShot, () => {
+      if (screenShotAsk) void screenShotAsk();
+      else if (win && !win.isDestroyed()) win.webContents.send(IPC.shotHotkey);
+    });
+    // Dual-screen has no reachable ⚡答 button (the window is hidden), so the
+    // one thing you still need — "answer what they just said" — gets a key.
+    reg(settings.data.ui.hotkeyAnswer, () => {
+      if (win && !win.isDestroyed()) win.webContents.send(IPC.answerHotkey);
+    });
+    // 做题模式: one hotkey raises the small window, one captures + answers.
+    // The ask hotkey opens the window first so a cold press still works.
+    reg(settings.data.exam?.hotkeyOpen, () => openExamWindow());
+    reg(settings.data.exam?.hotkeyAsk, () => {
+      // Phone-only mode: nothing appears on this screen, so a press works
+      // even when the PC is face-down and the display is the phone.
+      const c = settings.data.companion;
+      if (c?.enabled && c.hotkeyToPhone && screenShotAsk) {
+        void screenShotAsk();
+        return;
       }
-      // Dual-screen has no reachable ⚡答 button (the window is hidden), so the
-      // one thing you still need — "answer what they just said" — gets a key.
-      const answerKey = settings.data.ui.hotkeyAnswer;
-      if (answerKey) {
-        const ok = globalShortcut.register(answerKey, () => {
-          if (win && !win.isDestroyed()) win.webContents.send(IPC.answerHotkey);
-        });
-        if (!ok) console.warn(`[main] answer hotkey ${answerKey} registration failed (in use?)`);
-      }
-      // 做题模式: one hotkey raises the small window, one captures + answers.
-      // The ask hotkey opens the window first so a cold press still works.
-      const examOpenKey = settings.data.exam?.hotkeyOpen;
-      if (examOpenKey) {
-        const ok = globalShortcut.register(examOpenKey, () => openExamWindow());
-        if (!ok) console.warn(`[main] exam hotkey ${examOpenKey} registration failed (in use?)`);
-      }
-      const examAskKey = settings.data.exam?.hotkeyAsk;
-      if (examAskKey) {
-        const ok = globalShortcut.register(examAskKey, () => {
-          // Phone-only mode: nothing appears on this screen, so a press works
-          // even when the PC is face-down and the display is the phone.
-          const c = settings.data.companion;
-          if (c?.enabled && c.hotkeyToPhone && screenShotAsk) {
-            void screenShotAsk();
-            return;
-          }
-          const w = openExamWindow();
-          w.webContents.send(IPC.examShot);
-        });
-        if (!ok) console.warn(`[main] exam ask hotkey ${examAskKey} registration failed (in use?)`);
-      }
-    } catch (e) {
-      console.warn('[main] hotkey register error:', (e as Error).message);
+      const w = openExamWindow();
+      // A cold-just-created window has no renderer to receive the event yet;
+      // sending immediately silently drops the press.
+      const sendShot = (): void => {
+        if (!w.isDestroyed()) w.webContents.send(IPC.examShot);
+      };
+      if (w.webContents.isLoading()) w.webContents.once('did-finish-load', sendShot);
+      else sendShot();
+    });
+    if (failed.length) {
+      console.warn(`[main] hotkey registration failed (in use or invalid): ${failed.join(', ')}`);
+      const t = T();
+      tray.notifyHidden(t.hotkeyFailTitle, t.hotkeyFailBody(failed.join(', ')));
     }
   }
 
@@ -2197,7 +2202,16 @@ function bootstrap(): void {
       thinkingLevel: settings.data.llm.thinking,
     });
 
-    ipcMain.on(IPC.llmAsk, async (_e, payload: LlmAskPayload) => {
+    ipcMain.on(IPC.llmAsk, (_e, payload: LlmAskPayload) => {
+      // a throw before the `work` chain is built must not become an unhandled
+      // rejection: the renderer would wait for a done event that never comes
+      void runAsk(payload).catch((e: Error) => {
+        console.error('[llm] ask handler failed:', e.message);
+        llmControllers.delete(payload.requestId);
+        publishLlm({ requestId: payload.requestId, kind: 'error', message: e.message });
+      });
+    });
+    const runAsk = async (payload: LlmAskPayload): Promise<void> => {
       if (payload.sessionId) lastKnownSessionId = payload.sessionId;
       const sendEv = (ev: LlmEvent): void => publishLlm(ev);
       const primary = resolvePrimaryEndpoint();
@@ -2262,7 +2276,7 @@ function bootstrap(): void {
         const q =
           payload.mode === 'free'
             ? freeQuestion ?? ''
-            : payload.question || payload.recentTranscript.at(-1) || '';
+            : payload.question || payload.recentTranscript?.at(-1) || '';
         // speculative reuse: exact text only, and an in-flight guess that has
         // not landed within the wait budget loses to a real retrieve
         let r: RetrieveResult;
@@ -2271,7 +2285,9 @@ function bootstrap(): void {
         if (raced) {
           r = raced;
           specHits++;
-          console.log(`[spec] hit ${specHits}/${specHits + specMisses}: "${q.slice(0, 40)}"`);
+          console.log(
+            `[spec] hit ${specHits}/${specHits + specMisses}` + (VERBOSE_LOGS ? `: "${q.slice(0, 40)}"` : ''),
+          );
         } else {
           if (specP) specMisses++;
           r = await rag.retrieve(q, payload.sessionId);
@@ -2357,7 +2373,7 @@ function bootstrap(): void {
           routeKeys: settings.getRouteKeys(),
           thinkingByPreset: settings.data.llm.thinkingByPreset,
         });
-      const kind = classifyQuestion(payload.question || payload.recentTranscript.at(-1) || '');
+      const kind = classifyQuestion(payload.question || payload.recentTranscript?.at(-1) || '');
       const plan = llmFailures.reorder(
         planBackends({ mode: payload.mode, kind, routing: settings.data.llm.routing, primary: primaryCtx, resolve }),
       );
@@ -2481,7 +2497,7 @@ function bootstrap(): void {
           sendEv({ requestId: payload.requestId, kind: 'error', message: e.message });
         })
         .finally(() => llmControllers.delete(payload.requestId));
-    });
+    };
     ipcMain.on(IPC.llmCancel, (_e, requestId: string) => {
       llmControllers.get(requestId)?.abort();
       llmControllers.delete(requestId);
@@ -2594,7 +2610,10 @@ function bootstrap(): void {
     asr.onEvent((ev: AsrEvent) => {
       if (ev.kind === 'segment') {
         const e2e = ev.timings.inferEndTs - ev.timings.speechEndTs;
-        console.log(`[asr] #${ev.id} (${ev.lang ?? '?'}, ${ev.audioMs}ms audio, e2e ${e2e}ms) ${ev.text}`);
+        console.log(
+          `[asr] #${ev.id} (${ev.lang ?? '?'}, ${ev.audioMs}ms audio, e2e ${e2e}ms)` +
+            (VERBOSE_LOGS ? ` ${ev.text}` : ''),
+        );
       } else if (ev.kind === 'ready') {
         console.log(`[asr] ready ep=${ev.ep} load=${ev.loadMs}ms warm=${ev.warmMs}ms gpuSuspect=${ev.gpuSuspect}`);
         if (process.env.MC_E2E_QUIT_ON_ASR_READY === '1') {
@@ -2644,6 +2663,10 @@ function bootstrap(): void {
     void companion.dispose();
     destroyConnectWindow(connectWin);
     connectWin = null;
+    // the exam window hides instead of closing on ✕; without this explicit
+    // destroy its close() handler would veto app.quit() forever
+    if (examWin && !examWin.isDestroyed()) destroyExamWindow(examWin);
+    examWin = null;
     void rag?.dispose(); // flush the pending index write, stop the embed worker
   });
 

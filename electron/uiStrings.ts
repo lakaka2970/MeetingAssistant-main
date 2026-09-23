@@ -42,6 +42,9 @@ const zh = {
   } satisfies TrayMenuLabels,
   trayNoticeTitle: 'MeetingAssistant 仍在运行',
   trayNoticeBody: '窗口已隐藏，可从系统托盘图标重新打开；托盘菜单里也能直接退出。',
+  hotkeyFailTitle: '部分热键注册失败',
+  hotkeyFailBody: (keys: string) =>
+    `以下热键被其他程序占用或格式无效，已停用：${keys}。可在 设置→通用 中修改。`,
 };
 
 type MainDict = typeof zh;
@@ -83,6 +86,9 @@ const en: MainDict = {
   trayNoticeTitle: 'MeetingAssistant is still running',
   trayNoticeBody:
     'The window is hidden — reopen it from the tray icon. The tray menu also has Quit.',
+  hotkeyFailTitle: 'Some hotkeys failed to register',
+  hotkeyFailBody: (keys: string) =>
+    `These hotkeys are already in use or invalid and were disabled: ${keys}. Change them in Settings → General.`,
 };
 
 const dicts: Record<UiLang, MainDict> = { zh, en };

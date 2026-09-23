@@ -13,6 +13,7 @@ import {
 import type { SettingsFile } from '../shared/protocol';
 import { PANE_SPLIT_DEFAULT, PANE_SPLIT_MAX, PANE_SPLIT_MIN } from '../shared/protocol';
 import { RAIL_SPLIT_DEFAULT, RAIL_SPLIT_MAX, RAIL_SPLIT_MIN } from '../shared/protocol';
+import { DEFAULT_SEARCH_MAX_RESULTS } from '../shared/searchProviders';
 
 const fakeCipher: SecretCipher = {
   available: () => true,
@@ -66,6 +67,16 @@ describe('SettingsStore', () => {
     expect(s2.data.ui.hotkeyToggle).toBe('Alt+X');
     // untouched sections keep defaults
     expect(s2.data.llm.baseUrl).toBe('https://api.deepseek.com/v1');
+  });
+
+  it('clamps webSearch.maxResults in the public view', () => {
+    // settings.json is user-editable; the renderer echo must not show 999
+    // or NaN, matching how the companion port is clamped at the same line
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({ webSearch: { maxResults: 999 } });
+    expect(s.getPublic().webSearch.maxResults).toBe(10);
+    s.applyPatch({ webSearch: { maxResults: NaN } });
+    expect(s.getPublic().webSearch.maxResults).toBe(DEFAULT_SEARCH_MAX_RESULTS);
   });
 
   it('encrypts the api key at rest and never leaks it via getPublic', () => {

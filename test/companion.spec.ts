@@ -101,6 +101,16 @@ describe('companion admission', () => {
     expect(pairing.currentCode()?.code).toMatch(/^\d{6}$/);
   });
 
+  it('a spam pair_request cannot rotate away the code a real user is entering', () => {
+    // pair_request is unauthenticated LAN input. If it always re-issued the
+    // code, any device could invalidate an in-progress pairing indefinitely.
+    const code = pairing.startPairing();
+    handleControlMessage({ type: 'pair_request', device: 'attacker' }, session(), pairing, CAPS);
+    expect(pairing.currentCode()?.code).toBe(code);
+    // the user-initiated path still rotates on demand
+    expect(pairing.startPairing()).not.toBe(code);
+  });
+
   it('pairs, issues a token, and admits a later hello with it', () => {
     const s1 = session();
     const code = pairing.startPairing();

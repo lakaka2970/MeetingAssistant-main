@@ -6,7 +6,7 @@
 import { utilityProcess } from 'electron';
 import { join } from 'path';
 import type { EmbedWorkerIn, EmbedWorkerOut } from './embedWorker';
-import { getEmbeddingModel } from './embedding';
+import { getEmbeddingModel, vectorFromB64 } from './embedding';
 
 export interface EmbedClientEvents {
   onState?(state: EmbedClientState): void;
@@ -52,6 +52,13 @@ export class EmbedClient {
    * fails.
    */
   private initWatchdog: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Reject hook for the init currently in flight. A model switch disposes the
+   * old worker and forks a new one; without this the superseded ensure()
+   * promise would settle (or never settle) through whoever disposes, not the
+   * exit event of a process that no longer owns the client.
+   */
+  private rejectInit: ((e: Error) => void) | null = null;
 
   state: EmbedClientState = 'idle';
   ready: EmbedReadyInfo | null = null;
@@ -108,6 +115,7 @@ export class EmbedClient {
         stdio: 'pipe',
       });
       this.child = child;
+      this.rejectInit = reject;
       child.stdout?.on('data', (d: Buffer) => process.stdout.write(d));
       child.stderr?.on('data', (d: Buffer) => process.stderr.write(d));
       const t0 = Date.now();
@@ -115,6 +123,9 @@ export class EmbedClient {
         this.onMessage(msg, resolve, reject, t0, child),
       );
       child.on('exit', (code) => {
+        // a worker that was already replaced (model switch → dispose → fork)
+        // must not sabotage the one now in charge
+        if (this.child !== child) return;
         this.child = null;
         this.clearWatchdog();
         const err = new Error(
@@ -124,6 +135,7 @@ export class EmbedClient {
         if (this.state !== 'ready') {
           this.lastError = err.message;
           this.setState('error');
+          this.rejectInit = null;
           reject(err);
           this.initPromise = null;
         }
@@ -141,10 +153,13 @@ export class EmbedClient {
     t0: number,
     child: Electron.UtilityProcess,
   ): void {
+    // late messages from a superseded worker are not for this client anymore
+    if (this.child !== child) return;
     switch (msg.type) {
       case 'ready': {
         this.ready = { modelKey: msg.modelKey, dim: msg.dim, source: msg.source, loadMs: Date.now() - t0 };
         this.lastError = '';
+        this.rejectInit = null;
         this.setState('ready');
         resolveReady(this.ready);
         break;
@@ -154,7 +169,7 @@ export class EmbedClient {
         if (p) {
           clearTimeout(p.timer);
           this.pending.delete(msg.reqId);
-          p.resolve(msg.vectors.map((b64) => new Float32Array(Buffer.from(b64, 'base64').buffer)));
+          p.resolve(msg.vectors.map(vectorFromB64));
         }
         break;
       }
@@ -238,6 +253,10 @@ export class EmbedClient {
     this.setState('idle');
     if (!child) return;
     this.failAll(new Error('embed worker disposed'));
+    // the replaced child's exit handler now early-returns, so whoever waits on
+    // this init must be released here instead
+    this.rejectInit?.(new Error('embed worker disposed'));
+    this.rejectInit = null;
     child.postMessage({ type: 'shutdown' } satisfies EmbedWorkerIn);
     const timeout = new Promise<void>((res) => setTimeout(res, 1500));
     const exited = new Promise<void>((res) => child.once('exit', () => res()));

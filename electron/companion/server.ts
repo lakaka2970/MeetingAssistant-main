@@ -85,8 +85,9 @@ export function handleControlMessage(
   if (kind === 'pair_request') {
     session.device = String((msg as { device?: unknown }).device || '未知设备');
     // The code goes to the PC only (log + settings panel). Echoing it here
-    // would let any LAN device pair itself.
-    pairing.startPairing();
+    // would let any LAN device pair itself. ensurePairing: an unauthenticated
+    // request may arm pairing but must not rotate a code that is still live.
+    pairing.ensurePairing();
     return { reply: { type: 'pair_request_ok' } };
   }
 

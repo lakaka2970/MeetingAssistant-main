@@ -64,6 +64,15 @@ export class PairingManager {
     return code;
   }
 
+  /**
+   * Arm pairing for a LAN-initiated request without ever rotating a live code:
+   * pair_request carries no auth, so an attacker must not be able to keep
+   * invalidating the code a real user is mid-entry on the PC screen.
+   */
+  ensurePairing(): string {
+    return this.currentCode()?.code ?? this.startPairing();
+  }
+
   /** Verify a submitted code; returns the token (persisted) or null. */
   confirm(code: string, deviceName: string): string | null {
     const pending = this.pending;
