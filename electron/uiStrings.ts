@@ -45,6 +45,18 @@ const zh = {
   hotkeyFailTitle: '部分热键注册失败',
   hotkeyFailBody: (keys: string) =>
     `以下热键被其他程序占用或格式无效，已停用：${keys}。可在 设置→通用 中修改。`,
+  // 截屏问答管线里 renderer 原样展示的三条引导语
+  shotNoQuestionWhole: '整屏里没有找到题目，请用框选（Ctrl+Alt+S）圈出题干后重试',
+  shotNoQuestionRegion: '截屏里没有识别出题面，请框选题目区域后重试',
+  shotAmbiguous: (frag: string) =>
+    `屏幕上还有另一道题像是候选：${frag}。我按上面这道作答，答错了请重新框选那一道。`,
+  shotWebMiss:
+    '题库和本地知识素材里都没有这道题，联网检索也未启用（设置 → 联网搜索），以下答案来自模型自身知识。',
+  shotCaptureEmpty: '整屏抓取为空：桌面可能已锁定，或远程会话已断开',
+  noModelAny:
+    '无法读屏：还没有任何模型服务可用。请先在设置（或首次向导）里配好文本大模型的 Base URL 与 API Key。',
+  noModelVision: (base: string) =>
+    `无法读屏：文本服务商 ${base} 没有可用的视觉模型。请在 设置 → 视觉模型 里填一个支持图片的模型（DeepSeek 可选 deepseek-flash），或装本地 OCR：npm i tesseract.js 后开启「截图 OCR 前置」。也可以直接把题干粘贴到输入框作答。`,
 };
 
 type MainDict = typeof zh;
@@ -89,6 +101,20 @@ const en: MainDict = {
   hotkeyFailTitle: 'Some hotkeys failed to register',
   hotkeyFailBody: (keys: string) =>
     `These hotkeys are already in use or invalid and were disabled: ${keys}. Change them in Settings → General.`,
+  shotNoQuestionWhole:
+    'No question found on the full screen — press the hotkey again and drag a box around it (Ctrl+Alt+S).',
+  shotNoQuestionRegion:
+    'No question was recognised in the capture — drag a box around the question and retry.',
+  shotAmbiguous: (frag: string) =>
+    `Another region looks like a candidate: ${frag}. I answered the one above; if that was wrong, re-capture around the right question.`,
+  shotWebMiss:
+    'Neither the question bank nor the local knowledge base matched, and web search is off (Settings → Web search). This answer comes from the model alone.',
+  shotCaptureEmpty:
+    'Full-screen capture came back empty — the desktop may be locked or the remote session disconnected.',
+  noModelAny:
+    'Cannot read the screen: no model service is configured yet. Set the text model Base URL and API Key in Settings (or the first-run wizard).',
+  noModelVision: (base: string) =>
+    `Cannot read the screen: the text provider ${base} has no usable vision model. Add an image-capable model under Settings → Vision (for DeepSeek: deepseek-flash), or install local OCR (npm i tesseract.js) and enable the screenshot OCR prefilter. You can also paste the question text directly.`,
 };
 
 const dicts: Record<UiLang, MainDict> = { zh, en };

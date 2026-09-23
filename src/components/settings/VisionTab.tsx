@@ -150,9 +150,11 @@ export function VisionTab({ d }: { d: SettingsDraft }) {
             : SEARCH_PROVIDERS[d.wsProvider].billingEn}
         </span>
       </div>
+      {d.wsEnabled && !d.live.webSearch?.apiKeySet && !d.wsKey.value.trim() && (
+        <div className="settings-warn">{t.settings.webSearchNoKeyWarn}</div>
+      )}
       <div className="settings-row">
-        <label>{t.settings.webSearchMax}</label>
-        <select value={String(d.wsMax)} onChange={(e) => d.setWsMax(Number(e.target.value))}>
+        <label>{t.settings.webSearchMax}</label>        <select value={String(d.wsMax)} onChange={(e) => d.setWsMax(Number(e.target.value))}>
           {[3, 5, 8, 10].map((n) => (
             <option key={n} value={String(n)}>
               {n}

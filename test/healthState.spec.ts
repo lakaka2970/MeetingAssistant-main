@@ -55,10 +55,7 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
       hotkeyToggle: 'Control+Shift+M',
       hotkeyShot: 'Control+Shift+S',
       hotkeyAnswer: 'Control+Alt+A',
-      paneSplit: 0.5,
       railSplit: 0.16,
-      answerOnly: false,
-      opacity: 0.94,
       fontScale: 'medium',
       theme: 'dark',
       lang: 'zh',
@@ -76,7 +73,6 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
       hotkeyOpen: 'Control+Alt+B',
       hotkeyAsk: 'Control+Alt+S',
     },
-    privacy: { auditEnabled: false, captureReturns: false, maxEntries: 500 },
     companion: {
       enabled: false,
       port: 18765,

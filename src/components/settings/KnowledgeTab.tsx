@@ -213,7 +213,7 @@ export function KnowledgeTab({
         >
           {Object.values(EMBEDDING_MODELS).map((m) => (
             <option key={m.key} value={m.key}>
-              {m.labelZh}（{m.dim}d · ~{m.sizeHintMb}MB）
+              {t.uiLang === 'zh' ? m.labelZh : m.labelEn}（{m.dim}d · ~{m.sizeHintMb}MB）
             </option>
           ))}
         </select>

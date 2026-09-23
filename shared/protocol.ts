@@ -159,20 +159,6 @@ export interface AppInfo {
 }
 
 /**
- * Transcript-pane width bounds, shared by the renderer's drag handler and the
- * main-process clamp. Two independent copies of these numbers always drift.
- */
-export const PANE_SPLIT_MIN = 0.15;
-export const PANE_SPLIT_MAX = 0.85;
-export const PANE_SPLIT_DEFAULT = 0.5;
-
-/** NaN / Infinity / absent all land on the default instead of poisoning the layout */
-export function clampPaneSplit(v: number | undefined): number {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return PANE_SPLIT_DEFAULT;
-  return Math.min(PANE_SPLIT_MAX, Math.max(PANE_SPLIT_MIN, v));
-}
-
-/**
  * Glance-rail width bounds (fraction of the prompt-shell width). The default
  * matches the historical fixed 150px rail at common window sizes, so enabling
  * dragging causes no out-of-box visual change.
@@ -287,27 +273,11 @@ export interface SettingsFile {
      */
     hotkeyAnswer?: string;
     /**
-     * Start answering while the other party is still speaking, as soon as the
-     * in-flight line reads as a complete question, instead of waiting for the
-     * VAD hangover (~1.4 s of silence) plus the continuous-mode debounce.
-     */
-    earlyAnswer?: boolean;
-    /**
-     * Width of the transcript pane as a fraction of the window (clamped to
-     * 0.15–0.85). Persisted because the useful split depends on how dense the
-     * other party talks and on the screen size — nobody wants to re-drag the
-     * divider every launch.
-     */
-    paneSplit?: number;
-    /**
      * Glance-rail width as a fraction of the prompt-shell width (clamped to
      * 0.10–0.50). Drag-to-set, persisted so the rail keeps its width across
      * launches; the rail's click-to-expand overlay is unaffected.
      */
     railSplit?: number;
-    /** Collapse the transcript away and give the whole window to the answer. */
-    answerOnly?: boolean;
-    opacity: number;
     /** answer-body font size (small=13px / medium=16px / large=19px) */
     fontScale: FontScale;
     theme: ThemeMode;
@@ -390,18 +360,6 @@ export interface SettingsFile {
     hotkeyOpen?: string;
     /** global hotkey for "capture the screen and answer" */
     hotkeyAsk?: string;
-  };
-  /**
-   * Privacy access audit: when on, sensitive local-capability use and system
-   * inventory probes are written as JSONL with the API name and the actual
-   * system response (secrets redacted, payloads truncated).
-   */
-  privacy: {
-    auditEnabled?: boolean;
-    /** include full system probe payloads (process list, extensions, devices) */
-    captureReturns?: boolean;
-    /** ring / file cap; older entries drop first */
-    maxEntries?: number;
   };
   /**
    * LAN companion bridge: phone (mobile web app) connects over the local
@@ -512,12 +470,8 @@ export interface PublicSettings {
     hotkeyShot: string;
     /** see SettingsFile.ui.hotkeyAnswer — the dual-screen answer trigger */
     hotkeyAnswer: string;
-    /** transcript pane fraction, already clamped by getPublic() */
-    paneSplit: number;
     /** glance-rail fraction, already clamped by getPublic() */
     railSplit: number;
-    answerOnly: boolean;
-    opacity: number;
     fontScale: FontScale;
     theme: ThemeMode;
     lang: UiLang;
@@ -562,12 +516,6 @@ export interface PublicSettings {
     webFallback: boolean;
     hotkeyOpen: string;
     hotkeyAsk: string;
-  };
-  /** privacy audit — public view (no log payloads, no secrets) */
-  privacy: {
-    auditEnabled: boolean;
-    captureReturns: boolean;
-    maxEntries: number;
   };
   /** LAN companion bridge — public view (no token) */
   companion: {
@@ -642,10 +590,7 @@ export interface SettingsPatch {
     hotkeyToggle?: string;
     hotkeyShot?: string;
     hotkeyAnswer?: string;
-    paneSplit?: number;
     railSplit?: number;
-    answerOnly?: boolean;
-    opacity?: number;
     fontScale?: FontScale;
     theme?: ThemeMode;
     lang?: UiLang;
@@ -678,11 +623,6 @@ export interface SettingsPatch {
     webFallback?: boolean;
     hotkeyOpen?: string;
     hotkeyAsk?: string;
-  };
-  privacy?: {
-    auditEnabled?: boolean;
-    captureReturns?: boolean;
-    maxEntries?: number;
   };
   companion?: {
     enabled?: boolean;

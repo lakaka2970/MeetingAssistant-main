@@ -63,6 +63,58 @@ export function GeneralTab({
         />
       </div>
       <div className="settings-row">
+        <label>{t.settings.hotkeyAnswer}</label>
+        <input
+          value={d.hotkeyAnswer}
+          onChange={(e) => d.setHotkeyAnswer(e.target.value)}
+          spellCheck={false}
+        />
+      </div>
+      {d.hotkeyError && (
+        <div className="settings-warn">{t.settings.hotkeyInvalid(d.hotkeyError)}</div>
+      )}
+
+      <div className="settings-section">{t.settings.examSection}</div>
+      <div className="settings-hint">{t.settings.examHint}</div>
+      <div className="settings-row">
+        <label>{t.settings.hotkeyExamOpen}</label>
+        <input
+          value={d.examHotkeyOpen}
+          onChange={(e) => d.setExamHotkeyOpen(e.target.value)}
+          spellCheck={false}
+        />
+      </div>
+      <div className="settings-row">
+        <label>{t.settings.hotkeyExamAsk}</label>
+        <input
+          value={d.examHotkeyAsk}
+          onChange={(e) => d.setExamHotkeyAsk(e.target.value)}
+          spellCheck={false}
+        />
+      </div>
+      <div className="settings-row">
+        <label>
+          <input
+            type="checkbox"
+            checked={d.examPreferOcr}
+            onChange={(e) => d.setExamPreferOcr(e.target.checked)}
+          />{' '}
+          {t.settings.examPreferOcr}
+        </label>
+        <span className="settings-inline-hint">{t.settings.examPreferOcrHint}</span>
+      </div>
+      <div className="settings-row">
+        <label>
+          <input
+            type="checkbox"
+            checked={d.examWebFallback}
+            onChange={(e) => d.setExamWebFallback(e.target.checked)}
+          />{' '}
+          {t.settings.examWebFallback}
+        </label>
+      </div>
+
+      <div className="settings-row">
         <label>{t.settings.autoLaunch}</label>
         <select
           value={d.autoLaunch ? 'on' : 'off'}
@@ -99,6 +151,7 @@ export function GeneralTab({
         <select value={d.micDeviceId} onChange={(e) => d.setMicDeviceId(e.target.value)}>
           {deviceOptions}
         </select>
+        <span className="settings-inline-hint">{t.settings.deviceNote}</span>
       </div>
 
       <div className="settings-section">{t.settings.companionSection}</div>

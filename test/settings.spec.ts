@@ -11,7 +11,6 @@ import {
   type SecretCipher,
 } from '../electron/settings';
 import type { SettingsFile } from '../shared/protocol';
-import { PANE_SPLIT_DEFAULT, PANE_SPLIT_MAX, PANE_SPLIT_MIN } from '../shared/protocol';
 import { RAIL_SPLIT_DEFAULT, RAIL_SPLIT_MAX, RAIL_SPLIT_MIN } from '../shared/protocol';
 import { DEFAULT_SEARCH_MAX_RESULTS } from '../shared/searchProviders';
 
@@ -245,24 +244,11 @@ describe('SettingsStore', () => {
     });
   });
 
-  describe('ui.paneSplit (resizable panes)', () => {
-    it('defaults to an even split', () => {
-      const s = new SettingsStore(file, fakeCipher);
-      expect(s.getPublic().ui.paneSplit).toBe(PANE_SPLIT_DEFAULT);
-      expect(s.getPublic().ui.answerOnly).toBe(false);
-    });
-
-    it('clamps a hand-edited value so the divider can never become unreachable', () => {
-      const s = new SettingsStore(file, fakeCipher);
-      s.applyPatch({ ui: { paneSplit: 0.001 } });
-      expect(s.getPublic().ui.paneSplit).toBe(PANE_SPLIT_MIN);
-      s.applyPatch({ ui: { paneSplit: 0.99 } });
-      expect(s.getPublic().ui.paneSplit).toBe(PANE_SPLIT_MAX);
-    });
-
-    it('falls back to the default on garbage instead of emitting a NaN width', () => {
-      // flex-basis:calc(NaN%) collapses the pane entirely, so a bad value in the
-      // file must never reach the renderer as a number
+  describe('retired ui fields (paneSplit / answerOnly / opacity / earlyAnswer) + privacy', () => {
+    it('loads an old file that still carries them, and keeps them off the wire', () => {
+      // mergeWithDefaults is forward-compatible, so the keys survive in
+      // data; the guarantee delivery needs is that getPublic never emits
+      // them and boot never throws on them
       writeFileSync(
         file,
         JSON.stringify({
@@ -271,24 +257,24 @@ describe('SettingsStore', () => {
             stealth: true,
             hotkeyToggle: 'Alt+Q',
             hotkeyShot: 'Alt+W',
-            opacity: 0.9,
+            earlyAnswer: true,
+            paneSplit: 0.62,
+            answerOnly: true,
+            opacity: 0.8,
             fontScale: 'medium',
             theme: 'dark',
-            paneSplit: null,
           },
+          privacy: { auditEnabled: true, captureReturns: true, maxEntries: 99 },
         }),
         'utf8',
       );
       const s = new SettingsStore(file, fakeCipher);
-      expect(s.getPublic().ui.paneSplit).toBe(PANE_SPLIT_DEFAULT);
-    });
-
-    it('round-trips answerOnly', () => {
-      const s = new SettingsStore(file, fakeCipher);
-      s.applyPatch({ ui: { answerOnly: true } });
-      expect(s.data.ui.answerOnly).toBe(true);
-      expect(s.getPublic().ui.answerOnly).toBe(true);
-      expect(new SettingsStore(file, fakeCipher).getPublic().ui.answerOnly).toBe(true);
+      const ui = JSON.stringify(s.getPublic().ui);
+      expect(ui).not.toMatch(/paneSplit|answerOnly|opacity|earlyAnswer/);
+      expect(s.getPublic()).not.toHaveProperty('privacy');
+      // live neighbours survive
+      expect(s.getPublic().ui.hotkeyToggle).toBe('Alt+Q');
+      expect(s.getPublic().ui.railSplit).toBe(RAIL_SPLIT_DEFAULT);
     });
   });
 

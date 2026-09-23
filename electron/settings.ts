@@ -20,7 +20,7 @@ import type {
   SettingsPatch,
   UiLang,
 } from '../shared/protocol';
-import { clampPaneSplit, clampRailSplit, PANE_SPLIT_DEFAULT, RAIL_SPLIT_DEFAULT } from '../shared/protocol';
+import { clampRailSplit, RAIL_SPLIT_DEFAULT } from '../shared/protocol';
 import { defaultHotkeysForPlatform } from '../shared/platform';
 import {
   findPresetById,
@@ -103,12 +103,7 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       hotkeyToggle: hotkeys.toggle,
       hotkeyShot: hotkeys.shot,
       hotkeyAnswer: hotkeys.answer,
-      // even halves: the transcript and the answer each need to be readable,
-      // and neither is secondary by default
-      paneSplit: PANE_SPLIT_DEFAULT,
       railSplit: RAIL_SPLIT_DEFAULT,
-      answerOnly: false,
-      opacity: 0.94,
       // medium = 16px answer body (was 13px) — readable at a glance mid-interview
       fontScale: 'medium',
       theme: 'dark',
@@ -155,12 +150,6 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       webFallback: false,
       hotkeyOpen: platform === 'darwin' ? 'Command+Alt+B' : 'Control+Alt+B',
       hotkeyAsk: platform === 'darwin' ? 'Command+Alt+S' : 'Control+Alt+S',
-    },
-    // the audit trail stays off until asked for: it writes sensitive use to disk
-    privacy: {
-      auditEnabled: false,
-      captureReturns: false,
-      maxEntries: 500,
     },
     // nothing listens on a LAN port until the user turns this on
     companion: {
@@ -289,7 +278,6 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
       // binding the user still has (the patch uses null for that instead)
       banks: { ...defaults.exam.banks, ...raw.exam?.banks },
     },
-    privacy: { ...defaults.privacy, ...raw.privacy },
     companion: { ...defaults.companion, ...raw.companion },
   };
 }
@@ -567,9 +555,6 @@ export class SettingsStore {
       if (persona === null) delete this.data.exam.persona;
       else if (persona) this.data.exam.persona = persona;
     }
-    if (patch.privacy) {
-      this.data.privacy = { ...this.data.privacy, ...stripUndefined(patch.privacy) };
-    }
     if (patch.companion) {
       this.data.companion = { ...this.data.companion, ...stripUndefined(patch.companion) };
     }
@@ -691,15 +676,20 @@ export class SettingsStore {
       // knowledge lives in a separate file; main fills the real char count
       knowledge: { chars: 0 },
       ui: {
-        ...d.ui,
+        // listed key-by-key: an old settings.json still carries retired
+        // fields (paneSplit, answerOnly, opacity, earlyAnswer) through the
+        // forward-compatible merge, and they must not ride onto the wire
+        stealth: d.ui.stealth,
+        hotkeyToggle: d.ui.hotkeyToggle,
+        hotkeyShot: d.ui.hotkeyShot,
         // optional on disk (files written before the dual-screen answer key
         // existed) but always a string on the wire
         hotkeyAnswer: d.ui.hotkeyAnswer ?? defaultHotkeysForPlatform(process.platform).answer,
-        // clamped here so a hand-edited settings.json cannot produce a layout
-        // where one pane is 0 px wide and the divider is unreachable
-        paneSplit: clampPaneSplit(d.ui.paneSplit),
+        // clamped here so a hand-edited settings.json cannot produce a rail
+        // that swallows the answer column
         railSplit: clampRailSplit(d.ui.railSplit),
-        answerOnly: !!d.ui.answerOnly,
+        fontScale: d.ui.fontScale,
+        theme: d.ui.theme,
         lang: d.ui.lang ?? this.fallbackUiLang,
         // both are optional on disk (files written before Phase 4 lack them)
         // but always booleans on the wire, so the UI needs no ?? dance
@@ -736,11 +726,6 @@ export class SettingsStore {
         webFallback: !!d.exam?.webFallback,
         hotkeyOpen: d.exam?.hotkeyOpen ?? 'Control+Alt+B',
         hotkeyAsk: d.exam?.hotkeyAsk ?? 'Control+Alt+S',
-      },
-      privacy: {
-        auditEnabled: !!d.privacy?.auditEnabled,
-        captureReturns: !!d.privacy?.captureReturns,
-        maxEntries: d.privacy?.maxEntries ?? 500,
       },
       companion: {
         enabled: !!d.companion?.enabled,

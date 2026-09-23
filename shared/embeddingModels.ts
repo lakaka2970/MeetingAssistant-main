@@ -43,7 +43,7 @@ export const EMBEDDING_MODELS: Record<string, EmbeddingModelDescriptor> = {
     pooling: 'cls',
     dtype: 'q8',
     sizeHintMb: 24,
-    labelZh: 'BGE-small-zh（轻量·24MB）',
+    labelZh: 'BGE-small-zh（轻量·~24MB）',
     labelEn: 'BGE-small-zh (light · 24MB)',
   },
 };

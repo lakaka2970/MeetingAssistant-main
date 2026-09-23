@@ -29,6 +29,7 @@ import {
   type EndpointTarget,
 } from '../../../shared/providerTestRequests';
 import { sanitizeApiKeyInput } from '../../../shared/keyInput';
+import { isLikelyAccelerator } from '../../../shared/accelerator';
 import {
   DEFAULT_SEARCH_MAX_RESULTS,
   DEFAULT_SEARCH_PROVIDER,
@@ -165,6 +166,13 @@ export function useSettingsDraft(
     settings.asr.localRealtime.model ?? 'fun-asr-nano',
   );
   const [hotkeyShot, setHotkeyShot] = useState(settings.ui.hotkeyShot);
+  const [hotkeyAnswer, setHotkeyAnswer] = useState(settings.ui.hotkeyAnswer);
+  const [examHotkeyOpen, setExamHotkeyOpen] = useState(settings.exam.hotkeyOpen);
+  const [examHotkeyAsk, setExamHotkeyAsk] = useState(settings.exam.hotkeyAsk);
+  const [examPreferOcr, setExamPreferOcr] = useState(settings.exam.preferOcr);
+  const [examWebFallback, setExamWebFallback] = useState(settings.exam.webFallback);
+  /** the hotkeys the last save attempt refused ('' = none) */
+  const [hotkeyError, setHotkeyError] = useState('');
   const [autoLaunch, setAutoLaunch] = useState(settings.ui.autoLaunch);
   const [fontScale, setFontScale] = useState<FontScale>(settings.ui.fontScale ?? 'medium');
   const [theme, setTheme] = useState<ThemeMode>(settings.ui.theme ?? 'dark');
@@ -327,6 +335,21 @@ export function useSettingsDraft(
   /** pre-flight: ask before the plaintext leaves the renderer, so 「返回」
    * really means the key was never persisted */
   const requestSave = () => {
+    // an unparseable accelerator makes globalShortcut.register THROW on the
+    // next re-register — surface it here instead of a post-save balloon
+    const keys = [
+      hotkey,
+      hotkeyShot,
+      hotkeyAnswer,
+      examHotkeyOpen,
+      examHotkeyAsk,
+    ].map((k) => k.trim());
+    const invalid = keys.filter((k) => k && !isLikelyAccelerator(k));
+    if (invalid.length) {
+      setHotkeyError(invalid.join(', '));
+      return;
+    }
+    setHotkeyError('');
     if (settings.weakCrypto && savesAKey()) {
       setConfirmWeak(true);
       return;
@@ -420,10 +443,17 @@ export function useSettingsDraft(
         ui: {
           hotkeyToggle: hotkey.trim(),
           hotkeyShot: hotkeyShot.trim(),
+          hotkeyAnswer: hotkeyAnswer.trim(),
           fontScale,
           theme,
           lang: uiLang,
           autoLaunch,
+        },
+        exam: {
+          hotkeyOpen: examHotkeyOpen.trim(),
+          hotkeyAsk: examHotkeyAsk.trim(),
+          preferOcr: examPreferOcr,
+          webFallback: examWebFallback,
         },
         audio: {
           themDeviceId: themDeviceId || undefined,
@@ -702,6 +732,17 @@ export function useSettingsDraft(
     setRtLocalModel,
     hotkeyShot,
     setHotkeyShot,
+    hotkeyAnswer,
+    setHotkeyAnswer,
+    examHotkeyOpen,
+    setExamHotkeyOpen,
+    examHotkeyAsk,
+    setExamHotkeyAsk,
+    examPreferOcr,
+    setExamPreferOcr,
+    examWebFallback,
+    setExamWebFallback,
+    hotkeyError,
     autoLaunch,
     setAutoLaunch,
     fontScale,

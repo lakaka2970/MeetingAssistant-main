@@ -1564,8 +1564,8 @@ function bootstrap(): void {
       // not go looking for a field that is already filled.
       return {
         why: !l.baseUrl || !settings.getLlmApiKey()
-          ? '无法读屏：还没有任何模型服务可用。请先在设置（或首次向导）里配好文本大模型的 Base URL 与 API Key。'
-          : `无法读屏：文本服务商 ${l.baseUrl} 没有可用的视觉模型。请在 设置 → 视觉模型 里填一个支持图片的模型（DeepSeek 可选 deepseek-flash），或装本地 OCR：npm i tesseract.js 后开启「截图 OCR 前置」。也可以直接把题干粘贴到输入框作答。`,
+          ? T().noModelAny
+          : T().noModelVision(l.baseUrl),
       };
     };
 
@@ -1639,7 +1639,7 @@ function bootstrap(): void {
             // capture that genuinely held no question — an empty `done` read as
             // a dead pipeline, so both now surface as an explicit error
             if (canRead.why) sendErr(canRead.why);
-            else sendErr(payload.wholeScreen ? '整屏里没有找到题目，请用框选（Ctrl+Alt+S）圈出题干后重试' : '截屏里没有识别出题面，请框选题目区域后重试');
+            else sendErr(payload.wholeScreen ? T().shotNoQuestionWhole : T().shotNoQuestionRegion);
             return;
           }
           question = read.text;
@@ -1649,12 +1649,12 @@ function bootstrap(): void {
             send({
               requestId: payload.requestId,
               kind: 'note',
-              text: `屏幕上还有另一道题像是候选：${read.ambiguous}。我按上面这道作答，答错了请重新框选那一道。`,
+              text: T().shotAmbiguous(read.ambiguous),
             });
           }
         }
         if (!question) {
-          sendErr(payload.wholeScreen ? '整屏里没有找到题目，请改用框选（Ctrl+Alt+S）' : '没有题目：请框选题目区域后再试');
+          sendErr(payload.wholeScreen ? T().shotNoQuestionWhole : T().shotNoQuestionRegion);
           return;
         }
         send({
@@ -1789,7 +1789,7 @@ function bootstrap(): void {
           send({
             requestId: payload.requestId,
             kind: 'note',
-            text: '题库和本地知识素材里都没有这道题，联网检索也未启用（设置 → 联网搜索），以下答案来自模型自身知识。',
+            text: T().shotWebMiss,
           });
         }
         const persona = settings.data.exam?.persona ?? defaultPersona();
@@ -1850,7 +1850,7 @@ function bootstrap(): void {
           if (win && !win.isDestroyed()) win.webContents.send(IPC.examEvent, ev);
         };
         mirror({ requestId, kind: 'begin' });
-        mirror({ requestId, kind: 'error', message: '整屏抓取为空：桌面可能已锁定，或远程会话已断开' });
+        mirror({ requestId, kind: 'error', message: T().shotCaptureEmpty });
         return { ok: false, ms: Date.now() - t0, seq: 0 };
       }
       const c = settings.data.companion;
