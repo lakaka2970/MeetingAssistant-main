@@ -31,3 +31,16 @@ export function decideShotWeb(i: ShotWebInput): ShotWebDecision {
   // letting the silence read as a dead pipeline. Switched off is their choice.
   return { run: false, hint: i.webFallback };
 }
+
+/**
+ * Whole-screen shot: does this machine raise the exam window? When the
+ * dual-screen companion is on, the paired device is THE display (every exam
+ * event is published to it regardless), so popping a window here is noise the
+ * user explicitly does not want. hotkeyToPhone governs the region-crop hotkey
+ * routing only — it does not resurrect the popup for the whole-screen shot.
+ */
+export function shouldRaiseLocalExamWindow(
+  companion: { enabled?: boolean; hotkeyToPhone?: boolean } | undefined,
+): boolean {
+  return !companion?.enabled;
+}

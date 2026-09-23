@@ -63,7 +63,7 @@ import { parseSingleQuestion, type BankEntry } from '../shared/bankParse';
 import { decideBankAnswer, formatBankBlock, type ExamSubMode } from '../shared/bankStore';
 import { buildPersonaBlock, defaultPersona, parsePersona } from '../shared/persona';
 import { GATE_TIMEOUT_MS, gateMessages, heuristic, parseVerdict, GateMemory } from '../shared/questionGate';
-import { decideShotWeb } from '../shared/shotWeb';
+import { decideShotWeb, shouldRaiseLocalExamWindow } from '../shared/shotWeb';
 import type {
   CompanionState,
   ExamAskPayload,
@@ -208,8 +208,10 @@ function bootstrap(): void {
    * Named through this binding because registerHotkeys() runs before
    * `startMainApp` builds the pipeline it closes over.
    *
-   * When the phone is not the display, the exam window is raised first: an
-   * answer that goes only to a hidden overlay is an answer nobody sees.
+   * When the dual-screen companion is off, the exam window is raised first: an
+   * answer that goes only to a hidden overlay is an answer nobody sees. When
+   * it is on, the paired device is the display and this machine stays silent
+   * (shouldRaiseLocalExamWindow).
    */
   let screenShotAsk: (() => Promise<{ ok: boolean; ms: number; seq: number }>) | null = null;
   /** renderer capture lifecycle; the tray menu and the diagnostics report read it */
@@ -1847,7 +1849,8 @@ function bootstrap(): void {
         return { ok: false, ms: Date.now() - t0, seq: 0 };
       }
       const c = settings.data.companion;
-      if (!(c?.enabled && c.hotkeyToPhone)) openExamWindow();
+      // dual-screen on → the paired device is the display; nothing pops here
+      if (shouldRaiseLocalExamWindow(c)) openExamWindow();
       void runExamAsk({
         requestId: `c${Date.now().toString(36)}`,
         subMode: settings.getPublic().exam.subMode,
