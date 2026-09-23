@@ -8,7 +8,9 @@
 
 Real-time meeting/interview assistant for Windows and macOS: streaming ASR captions of the other
 party plus first-person AI answers you can read aloud. Local-first, bring-your-own-key, no bot joins
-your meeting — it just listens to your system audio. 中文文档为主，English summary at the bottom.
+your meeting — it just listens to your system audio. 中文文档为主，English summary at the bottom。
+
+> 📄 本文档有可离线分发的 PDF 版本：[README.pdf](README.pdf)（排版同上，适合打印或投屏阅读）。
 
 ---
 
@@ -40,6 +42,83 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 - **为普通用户设计**：首次启动 5 步配置向导（含方案卡片、图文 Key 教程、声音检测、**真实连接测试**，14 个统一错误代码）；状态栏芯片一眼看清转写 / AI / 声音是否可用；诊断报告不含 Key、转写与简历内容，可直接贴进 issue。
 - **中英双语界面**：向导里选择语言，应用启动即用该语言；系统托盘提供「开始 / 停止转写 / 新建会话 / 设置 / 服务状态 / 帮助与教程 / 检查更新 / 退出」。
 
+## 🖥️ 界面与操作详解
+
+主界面就三块：**标题栏**（开关与模式）、左侧**转录导轨**（对方说了什么）、右侧**提词卡**（你可以怎么答）。
+下面是每个功能从点击到出结果的完整操作路径。
+
+### 1. 实时转写：开始 / 停止 / 调宽 / 展开
+
+1. 让电脑播放有人说话的内容（会议、视频、播客都行）——采集的是**系统回环音频**，不需要麦克风、不需要会议软件配合。
+2. 点标题栏 **▶ 开始**，转录导轨开始逐句出字（每句一行，说话人分色，实时识别中的半句钉在底部显示 `_partial`）。
+3. 点标题栏 **⏸ 停止**（或托盘菜单「停止转写」）结束采集。
+4. 导轨右缘有一根细条，**按住拖拽**即可调宽（10%–50%，默认 16%，重启后保留）。
+5. 点导轨任意处，**完整转录面板**以覆盖层弹出——逐句 ⚡答、翻译、清屏都在面板里，点空白处收起，整体布局不动。
+6. 想把自己的发言也单独转写：打开标题栏 **🎤麦克风**（建议戴耳机，避免扬声器回声被二次采集）。
+
+### 2. AI 回答：⚡答 / 持续答 / 回答语言 / 双通道
+
+- **手动答**：在导轨或转录面板里对方那句话上点 **⚡答**，提词卡流式生成一段第一人称、可直接照着念的回答。
+- **持续答**：打开标题栏 **持续答**，AI 自动接话。门控是三层：明显的寒暄与流程安排（「把这个链接发我一下」）由本地启发式免费挡掉；拿不准的一句才花一次极小的分类调用判断；**判定超时或失败一律回退成「照答」**，宁可多答不漏答。
+- **回答语言**：标题栏 **答:中 / 答:EN** 切换。此外，在任意一句上选择「翻译」可把该句转录内联翻译成另一语言。
+- **文本 / 视觉双通道**：标题栏 **纯文本 / 多模态** 切换回答用的模型。多模态下可以**截图提问**（把屏幕上的内容作为图片发给视觉模型）。
+- **删除会话**：提词卡 **🗑** 一次删掉整场对话（对话、转录、该会话已索引的简历/JD 与准备答案全部清除），有二次确认。不同面试建不同会话（托盘「新建会话」），资料与答案库按会话隔离。
+
+### 3. 简历 / JD 知识库：导入 → 准备答案 → 命中
+
+1. 提词卡上点 **📄简历** 或 **📋JD**，选本地文件（`.md/.txt/.docx/.pdf`）。解析与索引**全部在本机**完成，资料本身不出电脑，只有在提问时才作为上下文发给你配置的大模型。
+2. **准备答案优先亮出**：资料或笔记里写成 `问：… 答：…` / `Q: … A: …` / `【问题】…【回答】…` 的段落会被自动识别成问答对、按「问题」建索引。面试官的问题命中时，提词卡**先原样显示你准备的答案**（本地检索，几十毫秒），再由 AI 在其基础上充实成可以直接念的完整回答——这条路径完全离线、不花一次网络请求。
+3. **联网兜底**：只有本地知识库毫无命中时，才会把问题发给你配置的搜索引擎（设置 → 视觉与搜索 → 网络检索兜底：Tavily / Brave / SerpAPI，各自带免费额度，默认关闭）。一次检索最多等 **2.5 秒**，超时即放弃、绝不影响出词；检索结果作为回答依据并附上来源。
+4. 想先看看某个目录能被识别出多少条准备答案：`npm run qa:inventory -- <目录>`（干跑，不调模型）。
+
+### 4. 做题模式（在线测评 / 笔试）
+
+1. 点标题栏 **做题**，打开一个**小窗悬浮面板**——它对录屏 / 共享 / 截图强制不可见，没有开关可关。
+2. 四个题型各绑定一个本地目录（设置内指定），先选对题型再开始：
+
+| 题型 | 绑定内容 | 答法 |
+|---|---|---|
+| 行测 / 申论 | `.md/.txt/.json/.csv/.pdf` 题库目录 | 原题命中直接给库里的答案与字母（≈1ms、离线）；真题包「学生版 + 答案版」成对 PDF 按 (节, 题号) 自动配对，节名对不上宁可不配 |
+| 代码 / 技术 | 同上 | 同上；屏幕把选项打乱时，答案按选项文字重新锚定回字母 |
+| 性格 / 心理测评 | 一份**固定人设**（可联网生成也可手填） | 整场照人设作答；显式规避「全部非常符合」这类触发装好/测谎校验的答法；反向表述自动调转方向 |
+| 其他 | 任意目录 | 同行测链路 |
+
+3. **框选答题**：在小窗里拖框选中屏幕上的题目区域 → 读题（装了 `tesseract.js` 先本机 OCR，读不到再交视觉模型；两者都没有会直接说明缺什么）→ **先查本机题库**，命中即答；没命中才交 AI，AI 不确定时再按需联网。
+4. 快捷键：`Ctrl+Shift+S` 整屏截屏答题 · `Ctrl+Alt+A` 答最新一句 · `Ctrl+Alt+S` 框选截屏答题。
+5. 精度底线：只有「原题级命中 + 客观题 + 能锚定到屏幕选项」才免模型直答；相近题只列出来让你确认；题库里答案互相矛盾的题会标成「答案不一致」而不是猜一个；纯图形题（题干只是「选择最合适的一项」）不直答。
+6. 没有视觉模型也没有 OCR 时：用小窗里 **作答这题**——把题干粘进去，同样走 题库 → AI → 网络 的完整链路。
+7. 干跑验证题库：`npm run exam:selftest -- <题库目录> [题目…]`。
+
+### 5. 手机显示（双屏提词）
+
+完整 7 步配对流程见下文 **「📱 单屏 / 双屏」**；这里补充操作细节：
+
+- **入口**：标题栏 **双屏** 分段控件，或 设置 → 通用 → 手机显示 → 打开连接窗口。进入双屏时**自动打开持续答**，主窗自动隐藏并强制隐身。
+- **手机上看到什么**：左边实时转写流，上方大字显示当前答案（流式逐字、公式照常排版）。每次 ping/pong 校准两机时钟差，所以手机上打印的毫秒数是真实端到端延迟；设置面板另有线路延迟与「因手机跟不上而丢弃」计数。
+- **免看电脑截屏答题**：连接窗口勾选 **「截屏热键只送手机」** 后按 `Ctrl+Shift+S` 或 `Ctrl+Alt+S`——拍屏、读题、查题库、答案直出手机，电脑这边不弹任何窗。不勾选时 `Ctrl+Alt+S` 恢复常规行为（弹做题小窗等你拖框）。
+- **常亮**：手机上必须点一次 **「常亮」**（浏览器规定须用户点击才允许保持亮屏），且只在 https 下可用——这就是默认自签 HTTPS 的第二个理由。
+- **证书**：想彻底消除警告，可从 `/server.crt` 下载证书装进手机信任列表。自签证书挡得住被动嗅探，挡不住主动中间人，**仅限可信局域网**。
+- **隐私边界**：只有你主动开启后才监听端口；数据只在电脑与手机间直连，不经任何第三方；关开关即停。默认端口 **18765**。
+
+### 6. 隐身、快捷键与托盘找回
+
+- **隐身开/关**（标题栏）：窗口对录屏 / 屏幕共享 / 截图不可见（Windows 有效，macOS 尽力而为）。
+- 主窗默认**不出现在任务栏**。点 **—** 隐藏后，找回窗口两条路：
+  1. 按呼出快捷键（默认 `Control+B`，设置 → 通用 可改）；
+  2. 点系统托盘 MeetingAssistant 图标（或右键菜单「显示窗口」）。第一次隐藏时有一次气泡提示。
+- 托盘菜单全集：**开始 / 停止转写、新建会话、设置、服务状态、帮助与教程、检查更新、退出**。
+
+### 7. 延迟 HUD：慢在哪一步，一眼看出
+
+状态栏右侧常驻显示：**「话落→出字」端到端延迟**（末条 / p50 / p95）、**首字延迟**（LLM 第一个字）、**推理耗时**。鼠标悬停每一项都有解释。用途：判断慢在防抖门控、检索还是模型本身——p50 高是普遍慢，末条飙高是偶发卡顿。
+
+### 8. 状态芯片、诊断报告与向导重开
+
+- 状态栏芯片一眼看清**转写 / AI / 声音**是否可用，无需打开设置。
+- 出问题先查应用内 **帮助与教程**（托盘或 设置 → 帮助与教程，离线可读），再查 [TROUBLESHOOTING.zh-CN.md](docs/user/TROUBLESHOOTING.zh-CN.md) 的 14 个错误代码表。
+- 要提 issue：设置 → 通用 → **诊断信息**（或标题栏 `⋯` 菜单）生成报告——不含 Key、转写与简历内容，仅复制到剪贴板、不落盘。
+- 配置向导随时重开：**⚙ 设置 → 重新运行配置向导**（主窗口保持运行，不会退出应用）。
+
 ## 📸 界面预览
 
 | 浅色 | 深色 |
@@ -61,6 +140,56 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 
 语音识别与 AI 回答通常各需要一个 Key，同一服务商可复用；
 「极简配置」方案只需注册一个平台（MiMo，语音识别与回答共用 1 个 Key）。Key 领取教程见 [API_KEYS.zh-CN.md](docs/user/API_KEYS.zh-CN.md)。
+
+## 🔑 获取并填写 API Key（LLM / 语音识别）
+
+### 先弄清楚要几个 Key
+
+| 你要用的功能 | 需要的 Key | 填在哪里 |
+|---|---|---|
+| 云端实时转写（推荐） | 阿里云百炼 Key | 向导第 3 步「语音识别」卡片；或 设置 → **语音识别** |
+| AI 回答（推荐） | DeepSeek Key | 向导第 3 步「AI 回答」卡片；或 设置 → **模型** |
+| 只要一个平台搞定两者 | MiMo Key（Beta） | 向导「极简配置」方案，勾选共用 |
+| 截图问答 / 做题读题 | 任一**支持图片**的模型 Key（Gemini / 智谱 / Groq / MiMo / 百炼…） | 设置 → **视觉与搜索**（国内连 Google 需填「视觉代理」，如 `127.0.0.1:7897`） |
+| 联网检索兜底（可选） | Tavily / Brave / SerpAPI Key | 设置 → **视觉与搜索** → 网络检索兜底（默认关闭；开了没填 Key 会静默跳过联网） |
+| 本地转写（FunASR/MOSS/Whisper）/ 本地回答（Ollama） | 不需要云端 Key | 见下文「本地语音识别」；Ollama 在 设置 → 模型 选本地方案，API Key 留空 |
+
+> 语音识别与 AI 回答是**两个独立的服务商**，通常各需一个 Key；同一服务商（如 MiMo）可以复用同一个。
+
+### 通用填写步骤（每个服务商都一样）
+
+1. 到服务商控制台注册并**实名认证**（国内平台不实名建不了可用的 Key）。
+2. 在「API Keys / API-KEY / API 密钥」页面**新建**一个 Key，起个好认的名字（例如 `MeetingAssistant`）。
+3. **立刻复制**——绝大多数平台的 Key 只完整显示这一次，关窗后就再也看不到了（丢了就删掉重建，不影响账号）。
+4. 回到 MeetingAssistant 粘贴：优先走**首次启动的 5 步配置向导第 3 步**（每张卡片带图文教程和「打开官方密钥页面」按钮）；错过向导则在 **设置** 对应 Tab 的输入框粘贴。也可以点「从剪贴板粘贴」。
+5. 点 **「保存并测试连接」**。保存时自动去掉首尾空格、包裹的引号和 `Bearer ` 前缀——多粘了这些也没关系。
+6. 测试失败时卡片给出**归一化错误代码**与下一步建议（Key 错 / 余额不足 / 网络不通一眼分清），也可选「暂时保存并稍后重试」。完整代码表见 [TROUBLESHOOTING.zh-CN.md](docs/user/TROUBLESHOOTING.zh-CN.md)。
+
+### 各服务商要点
+
+**DeepSeek（推荐用于 AI 回答）** — [platform.deepseek.com](https://platform.deepseek.com/)：登录后进左侧「API keys」→「创建 API key」→ 复制。默认模型 `deepseek-flash`（首字最快、能读图），强推理档 `deepseek-v4-pro`（适合复盘不适合抢答）；**只接受这两个模型名**，旧名会报 400（应用会把你存过的旧名自动改成 `deepseek-flash`）。提示 `Insufficient Balance` 说明 Key 有效、只需充值。
+
+**阿里云百炼 · 中国大陆站（推荐用于实时转写）** — [bailian.console.aliyun.com](https://bailian.console.aliyun.com/?tab=model)：注册阿里云账号 → 开通「百炼」→ **实名认证** → 停留在**主账号默认业务空间**（子账号/自建空间可能没有实时语音识别权限）→ 右上角头像菜单「API-KEY」→「创建我的 API-KEY」→ 复制。默认模型 `fun-asr-realtime`。报 `Access denied` 多为未开通/未实名；报 `Model not found` 多半是账号属于国际站（国际站接入地址不同，本版本未提供预设，求稳定实时字幕请用大陆站账号）。
+
+**MiMo · 小米（一个 Key 兼顾转写与回答，Beta）** — [platform.xiaomimimo.com](https://platform.xiaomimimo.com/)：小米账号登录 → 控制台「API Keys」→ 新建 → 复制以 `sk-` 开头的 Key。同一 Key 同时填给语音识别与 AI 回答（极简配置方案）。注意它是**分段识别**，按整句返回、字幕跟随性弱于流式方案——这是方案特性，不是故障。
+
+**智谱 GLM（国内直连，有免费档）** — [open.bigmodel.cn](https://open.bigmodel.cn/)：手机号登录（首次需注册+实名）→ 头像菜单「API 密钥」→「新建 API Key」→ 复制。`GLM-4-Flash` 免费额度充足、首字极快，适合低延迟兜底；`GLM-4.6` 是中文质量档，适合行为面与复杂问答；同一账号同一 Key。
+
+**Groq（英文编码题极速档）** — [console.groq.com](https://console.groq.com/)：注册登录 →「API Keys」创建并复制（以 `gsk_` 开头）。服务器在海外，中国大陆网络通常需要本机代理。免费档有速率限制。
+
+**Google Gemini（可选，截图问答）** — [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)：Google 账号登录 →「Create API key」→ 选/建一个 Cloud 项目 → 复制，粘贴到 设置 → 视觉与搜索 的视觉 Key。国内通常无法直连：在「视觉代理」填本机代理地址（如 `127.0.0.1:7897`）。不想折腾代理可改用 MiMo 的 `mimo-v2.5` 做视觉，代理留空。截图问答是可选功能，跳过不影响转写和文字回答。
+
+**Ollama（完全本地，零 Key 零费用）** — 本机安装并启动 [ollama.com](https://ollama.com/) 客户端（默认监听 `127.0.0.1:11434`）→ 命令行 `ollama pull qwen2.5:7b` → 设置里 Base URL 填 `http://127.0.0.1:11434/v1`、模型名与拉取的一致、**API Key 留空**。速度取决于本机硬件，优势是回答完全不经过网络。测试失败先确认 Ollama 在跑（它默认只监听本机回环）。
+
+**自定义 OpenAI 兼容服务** — 准备一个以 `/v1` 结尾的 Base URL、模型名与 Key，填在 **设置 → 模型 → 高级设置**。出于安全考虑，应用只会用系统浏览器打开内置允许列表里的官方页面，自定义服务商的页面请自行访问。
+
+### Key 存在哪里、安全边界
+
+- Key 用**系统凭据服务加密**后写入本机配置：Windows 用 DPAPI，macOS 用钥匙串。系统凭据服务不可用时，应用会在保存**前**弹警告（此时只能弱保护/混淆）。
+- 解密后的 Key **只存在于主进程**，界面层永远拿不到，只能看到「已配置」与后 4 位。
+- 删除 Key：设置里对应输入框旁「删除 Key」→「确认删除」→「保存」。
+- **费用**：BYOK——Key 在服务商处创建、服务商直接向你计费；本应用没有账号、没有服务器、不代收、不分成、不加价。「测试连接」每次只发一个极小真实请求（1 个 token / 约 1.4 秒音频 / 一张 64×64 图），只在你点击时发生。
+- Key 泄露 = 别人花你的额度：别贴进聊天记录、截图或公开仓库；泄露了去服务商控制台删掉重建即可，账号不受影响。
 
 ## ⚡ 快速开始（普通用户）
 
@@ -231,6 +360,7 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 |---|---|
 | [QUICK_START.zh-CN.md](docs/user/QUICK_START.zh-CN.md) / [EN](docs/user/QUICK_START.en.md) | 面向普通用户的五步快速开始 |
 | [API_KEYS.zh-CN.md](docs/user/API_KEYS.zh-CN.md) / [EN](docs/user/API_KEYS.en.md) | 各服务商 Key 领取教程 |
+| [README.pdf](README.pdf) | 本文档的 PDF 版（离线分发 / 打印） |
 | [TROUBLESHOOTING.zh-CN.md](docs/user/TROUBLESHOOTING.zh-CN.md) / [EN](docs/user/TROUBLESHOOTING.en.md) | 错误代码表与排查指南 |
 | [INSTALL_WINDOWS.zh-CN.md](docs/user/INSTALL_WINDOWS.zh-CN.md) / [EN](docs/user/INSTALL_WINDOWS.en.md) | Windows 安装说明（含 SHA256 校验） |
 | [INSTALL_MACOS.en.md](docs/user/INSTALL_MACOS.en.md) | macOS 从源码安装与 BlackHole 音频路由 |
@@ -251,6 +381,7 @@ the other party through **system loopback audio** (no bot, no integration—work
 transcribes it with streaming ASR, and generates **first-person answers you can read aloud**, powered
 by your own BYOK (bring-your-own-key) LLM provider. It is local-first: the default ASR backend
 (FunASR) runs on your machine and audio never leaves it unless you configure a cloud provider.
+A printable/offline copy of this document is available as [README.pdf](README.pdf).
 
 **Highlights**
 
@@ -268,6 +399,44 @@ by your own BYOK (bring-your-own-key) LLM provider. It is local-first: the defau
 - BYOK: keys encrypted on-device; no account system, no servers, no reseller fees
 - Stealth mode hides the window from screen share/screenshots (effective on Windows); global hotkey `Ctrl+B` + system tray to bring it back
 - 5-step first-run wizard, real connection tests (14 normalized error codes), status chips, local diagnostics, in-app help — bilingual UI (中文 / English)
+
+**Operating guide (short version)** — the full click-level walkthrough is in the Chinese sections
+「界面与操作详解」/「单屏 / 双屏」above; the same docs exist in English under `docs/user/`:
+
+- **Transcribe**: play any audio on the PC → title bar **▶ Start**; the rail shows one line per
+  sentence. Drag the thin strip on the rail's right edge to resize (10–50%); click the rail to open
+  the full-transcript overlay. Optional **🎤 Mic** transcribes your own speech on a separate channel.
+- **Answer**: click **⚡Ans** on any line; toggle **Auto-answer** for continuous mode (gated),
+  **答:中/答:EN** for answer language, **plain-text/multimodal** to switch to the vision model
+  (screenshot Q&A). **🗑** deletes the whole session (transcript, indexed resume/JD, prepared answers).
+- **Resume/JD**: **📄Resume / 📋JD** on the prompt card import `.md/.txt/.docx/.pdf`, parsed and
+  indexed locally. `Q:/A:` blocks surface your prepared answer verbatim before the AI enriches it;
+  web search (Tavily/Brave/SerpAPI, off by default, 2.5 s cap) only fires when the local KB misses.
+- **Exam mode**: title bar **做题** opens a capture-invisible panel bound to per-mode bank folders;
+  drag-select a question (or `Ctrl+Shift+S` full-screen / `Ctrl+Alt+A` last line / `Ctrl+Alt+S`
+  region) → local bank first (~1 ms, offline) → LLM → optional web. See the Chinese section for the
+  four sub-modes and the accuracy rules.
+- **Phone display**: title bar **dual-screen** (or Settings → General → Phone display) opens the
+  pairing window — scan the QR, enter the 6-digit code **shown only on the PC**, tap **Keep awake**
+  on the phone. Hotkeys can be set to deliver answers phone-only without raising any window.
+- **Hidden window**: default summon hotkey `Ctrl+B`, or the tray menu (start/stop, new session,
+  settings, service status, help, update check, quit).
+- **Latency HUD** (bottom-right): end-to-end speech→caption (last / p50 / p95), first-token and
+  reasoning time — each entry has a hover explanation.
+
+**Getting and filling API keys** — a key is a credential you create in a provider's console; it is
+not your password, it spends your money, and it can be revoked any time. You normally need two:
+one for speech recognition (Alibaba Cloud Bailian, mainland account) and one for AI answers
+(DeepSeek recommended); MiMo covers both with a single key (Beta); Zhipu GLM-4-Flash offers a
+generous free tier; Groq is a fast overseas lane; Ollama needs no key at all (local, leave the key
+field empty, base URL `http://127.0.0.1:11434/v1`). Fill them in **step 3 of the first-run wizard**
+(each card has a tutorial and an "open key page" button) or under the matching Settings tab
+(**Speech recognition / Model / Vision & search** — the latter also holds the optional vision-model
+key, its proxy field, and the web-search fallback keys). Always press **"Save and test
+connection"**: it strips stray quotes/`Bearer ` prefixes, then sends one tiny real request and
+reports a normalized error code on failure. Keys are encrypted via DPAPI (Windows) / Keychain
+(macOS), live only in the main process, and the UI only ever shows the last 4 characters. Step-by-step
+per-provider instructions: [API_KEYS.en.md](docs/user/API_KEYS.en.md).
 
 **Install (Windows)**: download the NSIS installer or portable `.exe` from the
 [Releases page](https://github.com/lakaka2970/MeetingAssistant-main/releases/latest) and verify the
