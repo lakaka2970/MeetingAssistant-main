@@ -23,7 +23,7 @@ MeetingAssistant is **bring-your-own-key**: no accounts, no server, no fee colle
 
 1. Open the [Releases page](https://github.com/lakaka2970/MeetingAssistant-main/releases/latest).
 2. Download `MeetingAssistant-<version>-win-x64.exe` (installer) or `...-win-x64-portable.exe` (portable). The difference and the install locations are in [INSTALL_WINDOWS.en.md](INSTALL_WINDOWS.en.md).
-3. This beta is not code-signed, so Windows SmartScreen shows "Windows protected your PC". Once you have confirmed the file came from the official release page above, click **More info → Run anyway**.
+3. The installers are not code-signed (functionality is unaffected), so Windows SmartScreen shows "Windows protected your PC". Once you have confirmed the file came from the official release page above, click **More info → Run anyway**.
 4. Verify the download first if you can: every `.exe` ships with a matching `.exe.sha256` file containing the hash CI computed at build time.
 
 ---

@@ -43,7 +43,7 @@ Compare the output with the value inside the `.sha256` file.
 ## Installing (installer build)
 
 1. Double-click `MeetingAssistant-<version>-win-x64.exe`.
-2. This beta is **unsigned**, so SmartScreen shows "Windows protected your PC". Once you have confirmed the source, click "More info" → "Run anyway".
+2. The installers are **unsigned** (functionality is unaffected), so SmartScreen shows "Windows protected your PC". Once you have confirmed the source, click "More info" → "Run anyway".
 3. The installer is one-click: it does not ask for a path and installs into your **user** profile (under `%LOCALAPPDATA%\Programs\`). It never touches `Program Files` and needs no administrator rights.
 4. Start-menu and desktop shortcuts are created automatically.
 5. The app launches when installation finishes, and the first launch opens the setup wizard — see [QUICK_START.en.md](QUICK_START.en.md).

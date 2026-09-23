@@ -33,7 +33,7 @@ jobs:
       - name: Build installers
         run: npm run dist:win
 
-      # unsigned beta: publish checksums so users can at least verify the
+      # unsigned build: publish checksums so users can at least verify the
       # download matches what CI produced
       - name: Compute SHA256 checksums
         shell: pwsh

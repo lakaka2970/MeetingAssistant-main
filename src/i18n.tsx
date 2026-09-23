@@ -380,7 +380,7 @@ const zh = {
       windowsSecurity: {
         title: '9. Windows 提示「不安全」怎么办',
         lines: [
-          '当前是未做代码签名的 Beta 版本，Windows SmartScreen 会提示「已保护你的电脑」，这是未签名应用的通用提醒。',
+          '安装包未做代码签名（不影响功能），Windows SmartScreen 会提示「已保护你的电脑」，这是未签名应用的通用提醒。',
           '确认文件来自本项目的 GitHub Releases 页面后，点「更多信息」→「仍要运行」即可。',
           '建议核对下载文件的 SHA256 与 Release 说明中公布的值是否一致，再运行。',
           '代码签名会在后续版本中处理；在那之前请只从官方发布页下载安装包。',
@@ -1013,7 +1013,7 @@ const en: Dict = {
       windowsSecurity: {
         title: '9. Windows says the app is unsafe',
         lines: [
-          'This beta is not code-signed yet, so Windows SmartScreen shows "Windows protected your PC" — the standard warning for unsigned apps.',
+          'The installers are not code-signed (functionality is unaffected), so Windows SmartScreen shows "Windows protected your PC" — the standard warning for unsigned apps.',
           'Once you have confirmed the file came from this project\'s GitHub Releases page, click "More info" → "Run anyway".',
           'Check the SHA256 of the downloaded file against the value published in the release notes before running it.',
           'Code signing is planned for a later release. Until then, only download installers from the official release page.',

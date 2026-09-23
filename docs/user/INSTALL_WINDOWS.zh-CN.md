@@ -43,7 +43,7 @@ Get-FileHash .\MeetingAssistant-<版本>-win-x64.exe -Algorithm SHA256
 ## 安装（安装版）
 
 1. 双击 `MeetingAssistant-<版本>-win-x64.exe`。
-2. 当前是**未签名**的 Beta 版本，SmartScreen 会提示「已保护你的电脑」。确认来源后点「更多信息」→「仍要运行」。
+2. 安装包**未做代码签名**（不影响功能），SmartScreen 会提示「已保护你的电脑」。确认来源后点「更多信息」→「仍要运行」。
 3. 安装器是一键式的：不会问你安装路径，直接装到**当前用户**目录（`%LOCALAPPDATA%\Programs\` 下），不写 `Program Files`，也不需要管理员权限。
 4. 自动创建开始菜单和桌面快捷方式。
 5. 安装完成后应用会自动启动，首次启动进入配置向导（见 [QUICK_START.zh-CN.md](QUICK_START.zh-CN.md)）。

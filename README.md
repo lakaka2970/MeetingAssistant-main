@@ -202,7 +202,7 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 3. 播放会议 / 视频，点标题栏 **▶ 开始**，转录导轨开始出字（点导轨展开全部转录）。
 4. 在对方那句上点 **⚡答** 生成回答；打开 **持续答** 自动接话；在提词卡导入 **📄简历 / 📋JD** 让回答贴合你的经历。
 
-> Windows SmartScreen 会提示「已保护你的电脑」——当前为未签名 Beta，确认来源后点「更多信息 → 仍要运行」即可。
+> Windows SmartScreen 会提示「已保护你的电脑」——安装包**未做代码签名**（不影响功能），确认来源后点「更多信息 → 仍要运行」即可。
 
 详细走查：[QUICK_START.zh-CN.md](docs/user/QUICK_START.zh-CN.md) · 安装说明：[INSTALL_WINDOWS.zh-CN.md](docs/user/INSTALL_WINDOWS.zh-CN.md) · 故障排查：[TROUBLESHOOTING.zh-CN.md](docs/user/TROUBLESHOOTING.zh-CN.md)
 
@@ -366,7 +366,7 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 | [INSTALL_MACOS.en.md](docs/user/INSTALL_MACOS.en.md) | macOS 从源码安装与 BlackHole 音频路由 |
 | [docs/windows/SETUP.md](docs/windows/SETUP.md) / [zh-CN](docs/windows/SETUP.zh-CN.md) | Windows 平台完整配置（Python / 本地 ASR） |
 | [docs/macos/SETUP.md](docs/macos/SETUP.md) | macOS 平台完整配置 |
-| [RELEASE_NOTES_v0.2.0-beta.1.md](docs/user/RELEASE_NOTES_v0.2.0-beta.1.md) | 版本说明与已知问题 |
+| [RELEASE_NOTES_v1.0.0.md](docs/user/RELEASE_NOTES_v1.0.0.md) | 版本说明与已知问题 |
 
 ## 📄 开源许可
 
@@ -451,5 +451,5 @@ walkthrough: [QUICK_START.en.md](docs/user/QUICK_START.en.md). Key guides:
 **Supported providers**: DeepSeek, Alibaba Cloud DashScope (CN/INTL), MiMo, Zhipu, Groq, Gemini,
 Ollama, plus any OpenAI-compatible endpoint — see `shared/providerCatalog.ts` (single source of truth).
 
-**License**: [Apache-2.0](LICENSE). This is an unsigned beta (`v0.2.0-beta.1`) — download only from
+**License**: [Apache-2.0](LICENSE). The installers are not code-signed (`v1.0.0`) — download only from
 this project's Releases page.

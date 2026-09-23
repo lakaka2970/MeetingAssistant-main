@@ -1,9 +1,9 @@
-# MeetingAssistant v0.2.0-beta.1
+# MeetingAssistant v1.0.0
 
-首个提供 Windows 安装包的版本 · The first release with a Windows installer
+首个正式版本 · The first stable release
 
-> ⚠️ Beta：安装包**未做代码签名**，Windows 会弹安全提醒；请只从本项目的 Releases 页面下载。
-> ⚠️ Beta: the installers are **not code-signed**, so Windows will warn you. Download only from this project's Releases page.
+> ⚠️ 安装包**未做代码签名**，Windows 会弹安全提醒；请只从本项目的 Releases 页面下载。
+> ⚠️ The installers are **not code-signed**, so Windows will warn you. Download only from this project's Releases page.
 
 ---
 
@@ -13,8 +13,8 @@
 
 | 文件 | 类型 | 适合 |
 |---|---|---|
-| `MeetingAssistant-0.2.0-beta.1-win-x64.exe` | 安装版（NSIS，当前用户，无需管理员） | 常规使用。带开始菜单与桌面快捷方式，升级时原地覆盖 |
-| `MeetingAssistant-0.2.0-beta.1-win-x64-portable.exe` | 免安装版 | 不想安装、临时使用。首次启动需解压，比安装版慢几秒 |
+| `MeetingAssistant-1.0.0-win-x64.exe` | 安装版（NSIS，当前用户，无需管理员） | 常规使用。带开始菜单与桌面快捷方式，升级时原地覆盖 |
+| `MeetingAssistant-1.0.0-win-x64-portable.exe` | 免安装版 | 不想安装、临时使用。首次启动需解压，比安装版慢几秒 |
 
 两者功能完全一致。免安装版**不是完全绿色**：设置和会话仍写在 `%APPDATA%\MeetingAssistant\`，与安装版共用。需要数据也随身携带时，启动前设置环境变量 `MC_USERDATA` 指向自己的目录。
 
@@ -25,15 +25,10 @@ macOS 本次**没有**提供安装包，可以从源码运行，见 [INSTALL_MAC
 每个 `.exe` 旁边都有同名的 `.exe.sha256` 文件，内容是 CI 构建时算出的哈希。下载后在 PowerShell 里执行：
 
 ```powershell
-Get-FileHash .\MeetingAssistant-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
+Get-FileHash .\MeetingAssistant-1.0.0-win-x64.exe -Algorithm SHA256
 ```
 
 把输出与 `.sha256` 文件里的值比对，一致再运行。
-
-```text
-94bc35b9cfade1ef8ada3280f3be25db5a4fb84bb5cf5c3ea9a478bca2b4e8e2  MeetingAssistant-0.2.0-beta.1-win-x64.exe
-05b78dd6aa8ecf485110d0ea55794096f463daeb61578e9ede19477cb94add17  MeetingAssistant-0.2.0-beta.1-win-x64-portable.exe
-```
 
 ### 首次使用四步
 
@@ -43,6 +38,15 @@ Get-FileHash .\MeetingAssistant-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 4. **开始转写**。回到主界面，播放会议或视频，点标题栏 **▶ 开始**；在对方那句上点 **⚡答** 生成可照着念的回答，或打开「持续答」自动接话。
 
 完整走查见 [QUICK_START.zh-CN.md](QUICK_START.zh-CN.md)。
+
+### 相比 v0.2.0-beta.1
+
+- **`start.bat` 一键启动（从源码运行时）**：首次运行自动自检 Node.js ≥ 20、装 npm 依赖（默认源失败时写入国内镜像并重试一次）、校验 transformers.js 补丁、补下载 Electron 二进制、构建再启动；本地 ASR / OCR / 原生音频等可选能力只提示、不阻塞启动。
+- **README 升级为完整操作手册**：每个功能给出从点击到出结果的路径，并新增「获取并填写 API Key」一节（含九家服务商与 Key 的安全边界）；同时提供排版好的 `README.pdf` 供离线与打印。
+- **转录导轨可拖拽调宽**（10%–50%，默认 16%，重启保留）。
+- **整屏截屏问答修好并双端呈现**：主窗发起的作答事件不再被小窗漏掉，本地题库/资料优先、联网兜底，答案同时出现在提词卡与手机上。
+- **设置中心收敛**：七个 Tab、补齐此前缺失的开关入口、删掉没有消费者的死字段；热键格式非法在保存时挡下。
+- **安装包只带编译产物**：主进程/preload/渲染包全部压缩混淆，包内不含 TypeScript 源码与任何 sourcemap（连第三方依赖的 69 MB `.map` 也一并剔除），诊断报告亦不含 Key、转写与简历内容。
 
 ### 这个版本新增了什么
 
@@ -84,8 +88,8 @@ Get-FileHash .\MeetingAssistant-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 
 | File | Type | Best for |
 |---|---|---|
-| `MeetingAssistant-0.2.0-beta.1-win-x64.exe` | Installer (NSIS, per-user, no admin) | Normal use. Start-menu and desktop shortcuts, upgrades in place |
-| `MeetingAssistant-0.2.0-beta.1-win-x64-portable.exe` | Portable | Not installing anything. Unpacks itself at launch, so the first start is a few seconds slower |
+| `MeetingAssistant-1.0.0-win-x64.exe` | Installer (NSIS, per-user, no admin) | Normal use. Start-menu and desktop shortcuts, upgrades in place |
+| `MeetingAssistant-1.0.0-win-x64-portable.exe` | Portable | Not installing anything. Unpacks itself at launch, so the first start is a few seconds slower |
 
 Both are functionally identical. Portable is *not* fully self-contained: settings and sessions still live in `%APPDATA%\MeetingAssistant\`, shared with an installed copy. For a travelling profile, set `MC_USERDATA` to your own folder before launching.
 
@@ -96,15 +100,10 @@ There is **no macOS build** in this release; macOS can be run from source — se
 Every `.exe` ships with a matching `.exe.sha256` containing the hash CI computed at build time. After downloading, run in PowerShell:
 
 ```powershell
-Get-FileHash .\MeetingAssistant-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
+Get-FileHash .\MeetingAssistant-1.0.0-win-x64.exe -Algorithm SHA256
 ```
 
 Compare it with the value in the `.sha256` file before running the installer.
-
-```text
-94bc35b9cfade1ef8ada3280f3be25db5a4fb84bb5cf5c3ea9a478bca2b4e8e2  MeetingAssistant-0.2.0-beta.1-win-x64.exe
-05b78dd6aa8ecf485110d0ea55794096f463daeb61578e9ede19477cb94add17  MeetingAssistant-0.2.0-beta.1-win-x64-portable.exe
-```
 
 ### First run, in four steps
 
@@ -114,6 +113,15 @@ Compare it with the value in the `.sha256` file before running the installer.
 4. **Start transcribing.** Back in the main window, play a meeting or video and click **▶ Start**; click **⚡Ans** on one of their lines for an answer you can read aloud, or turn on **Auto**.
 
 Full walkthrough: [QUICK_START.en.md](QUICK_START.en.md).
+
+### What changed since v0.2.0-beta.1
+
+- **`start.bat` one-click launch when running from source**: the first run self-checks Node.js ≥ 20, installs dependencies (writing a mainland mirror into `.npmrc` and retrying once if the default registry fails), verifies the transformers.js patch, fetches the Electron binary if missing, builds and launches. Optional capabilities (local ASR, OCR, native audio) only print advice and never block the launch.
+- **The README became a full operations manual**: every feature now has its click-to-result path, plus a new "get and fill an API key" section covering nine providers and the key-handling boundaries — also shipped as a typeset `README.pdf` for offline and print use.
+- **Drag-resizable transcript rail** (10–50%, 16% by default, persisted across restarts).
+- **Whole-screen screenshot Q&A fixed and shown in both places**: main-window-initiated answers are no longer dropped, local bank and material are tried before the web, and the answer appears on the prompt card and the phone together.
+- **Settings consolidated**: seven tabs, previously unreachable switches surfaced, dead fields with no consumers removed, and invalid hotkey formats refused on save.
+- **Installers carry compiled output only**: main, preload and renderer bundles are minified and mangled, the package contains no TypeScript and no sourcemaps (even the 69 MB of third-party `.map` files are stripped), and diagnostics never include keys, transcripts or resume text.
 
 ### What is new in this release
 

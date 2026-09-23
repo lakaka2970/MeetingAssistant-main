@@ -23,7 +23,7 @@ MeetingAssistant 采用 **BYOK（自带 Key）**：没有账号系统、没有�
 
 1. 打开 [Releases 页面](https://github.com/lakaka2970/MeetingAssistant-main/releases/latest)。
 2. 下载 `MeetingAssistant-<版本>-win-x64.exe`（安装版）或 `...-win-x64-portable.exe`（免安装版）。两者的区别与安装位置见 [INSTALL_WINDOWS.zh-CN.md](INSTALL_WINDOWS.zh-CN.md)。
-3. 当前为未签名的 Beta 版本，Windows SmartScreen 会提示「已保护你的电脑」。确认文件来自上面的官方发布页后，点「更多信息」→「仍要运行」。
+3. 安装包**未做代码签名**（不影响功能），Windows SmartScreen 会提示「已保护你的电脑」。确认文件来自上面的官方发布页后，点「更多信息」→「仍要运行」。
 4. 建议先核对下载文件的 SHA256：每个 `.exe` 旁边都有同名的 `.exe.sha256` 文件，里面是 CI 构建时算出的哈希值。
 
 ---

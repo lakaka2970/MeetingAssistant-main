@@ -1,6 +1,6 @@
 # Installing on macOS
 
-> **Status: no packaged macOS build yet.** The `v0.2.0-beta.1` release ships Windows installers only. macOS is supported when run from source, and a signed/notarised `.dmg` is planned for a later release. Until then, follow the "Run from source" section below.
+> **Status: no packaged macOS build yet.** The `v1.0.0` release ships Windows installers only. macOS is supported when run from source, and a signed/notarised `.dmg` is planned for a later release. Until then, follow the "Run from source" section below.
 
 The app itself is macOS-aware: the wizard, the tray, cloud transcription, AI answers and the vision path all work. What is missing is packaging, not functionality.
 
