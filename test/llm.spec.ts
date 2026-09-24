@@ -19,7 +19,6 @@ import {
   clampMemo,
   clampTranscript,
   classifyQuestion,
-  DEFAULT_PERSONA_TEMPLATE,
   formatQaBlock,
   formatRagContext,
   formatWebBlock,
@@ -37,6 +36,7 @@ import {
 } from '../electron/llm/prompts';
 import { buildStyleDirectives } from '../shared/answerStyle';
 import { PERSONA_TEXT_MAX, PROMPT_OVERRIDE_MAX_CHARS } from '../shared/personas';
+import { DEFAULT_PERSONA_TEMPLATE } from '../shared/promptLayers';
 
 describe('SseParser', () => {
   it('parses complete events', () => {
@@ -424,7 +424,6 @@ describe('buildStablePrefix layers (v1.0.1 prompt engineering)', () => {
     ].join('\n');
     expect(withLayers()).toContain(rebuilt);
   });
-
   it('buildAnswerMessages routes layers through: prewarm bytes == real bytes', () => {
     const layers: PromptLayers = {
       answerPersona: '十年后端架构师',
