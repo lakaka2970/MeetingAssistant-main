@@ -9,6 +9,23 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import type { KnowledgeFile, KnowledgeFilesState } from '../shared/protocol';
 
+/**
+ * Manifests written before v1.0.1 have no freshness fields. An empty hash
+ * means "never verified", so the first import after upgrading re-checks the
+ * file once instead of trusting a stamp that was never recorded.
+ */
+function withFreshness(entry: KnowledgeFile): KnowledgeFile {
+  return {
+    ...entry,
+    hash: entry.hash || '',
+    mtimeMs: entry.mtimeMs || 0,
+    size: entry.size || 0,
+    status: entry.status || 'imported',
+    chunks: entry.chunks || 0,
+    qaCount: entry.qaCount || 0,
+  };
+}
+
 export class KnowledgeFileStore {
   private entries: KnowledgeFile[] = [];
 
@@ -22,7 +39,7 @@ export class KnowledgeFileStore {
       const parsed = JSON.parse(readFileSync(this.filePath, 'utf8')) as {
         files?: KnowledgeFile[];
       };
-      this.entries = Array.isArray(parsed?.files) ? parsed.files : [];
+      this.entries = Array.isArray(parsed?.files) ? parsed.files.map(withFreshness) : [];
     } catch (e) {
       console.warn('[knowledge-files] manifest load failed, starting empty:', (e as Error).message);
       this.entries = [];

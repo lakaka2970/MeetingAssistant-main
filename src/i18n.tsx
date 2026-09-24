@@ -285,8 +285,14 @@ const zh = {
     removeFile: '移除',
     clearLibrary: '清空文档库',
     clearLibraryConfirm: '确定清空整个文档库吗？该操作不可撤销（可重新导入）。',
-    importResult: (r: { imported: number; skipped: number; failed: number; chunks: number }) =>
-      `已导入 ${r.imported} 个、跳过 ${r.skipped} 个、失败 ${r.failed} 个，新增 ${r.chunks} 个语块。`,
+    importResult: (r: {
+      imported: number;
+      skipped: number;
+      failed: number;
+      unchanged: number;
+      chunks: number;
+    }) =>
+      `已导入 ${r.imported} 个、跳过 ${r.skipped} 个、失败 ${r.failed} 个、未变化 ${r.unchanged} 个，新增 ${r.chunks} 个语块。`,
     modelLabel: '嵌入模型',
     modelLocal: '已缓存（离线可用）',
     modelDownload: '首次使用需下载',
@@ -995,8 +1001,14 @@ const en: Dict = {
     removeFile: 'Remove',
     clearLibrary: 'Clear library',
     clearLibraryConfirm: 'Clear the whole document library? This cannot be undone (you can re-import).',
-    importResult: (r: { imported: number; skipped: number; failed: number; chunks: number }) =>
-      `Imported ${r.imported}, skipped ${r.skipped}, failed ${r.failed} — ${r.chunks} new chunks.`,
+    importResult: (r: {
+      imported: number;
+      skipped: number;
+      failed: number;
+      unchanged: number;
+      chunks: number;
+    }) =>
+      `Imported ${r.imported}, skipped ${r.skipped}, failed ${r.failed}, unchanged ${r.unchanged} — ${r.chunks} new chunks.`,
     modelLabel: 'Embedding model',
     modelLocal: 'cached (works offline)',
     modelDownload: 'downloads on first use',

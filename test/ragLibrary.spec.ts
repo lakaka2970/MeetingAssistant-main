@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { KnowledgeFile, KnowledgeImportResult } from '../shared/protocol';
+import { textHash } from '../electron/rag/vector-store';
 import {
   LIBRARY_WALK_MAX_DEPTH,
   createLibraryImporter,
@@ -37,18 +38,54 @@ class FakeManifest {
   }
 }
 
-/** an importer whose extract / ingest / clock are recorded, never real */
-function harness(opts: { texts?: Record<string, string>; throws?: Record<string, string>; ingestNull?: boolean } = {}) {
+/** what `stat` reports for a file; tests move `mtimeMs` to simulate a touch */
+interface FakeStamp {
+  mtimeMs: number;
+  size: number;
+}
+
+/** a manifest entry as a previous import would have written it */
+function knownFile(over: { ref: string; path: string; text: string; mtimeMs: number }): KnowledgeFile {
+  return {
+    ref: over.ref,
+    name: over.ref,
+    path: over.path,
+    chars: over.text.length,
+    addedAt: '2026-09-23T09:00:00.000Z',
+    hash: textHash(over.text),
+    mtimeMs: over.mtimeMs,
+    size: over.text.length,
+    status: 'imported',
+    chunks: 3,
+    qaCount: 0,
+  };
+}
+
+
+/** an importer whose extract / ingest / clock / file stats are recorded, never real */
+function harness(
+  opts: {
+    texts?: Record<string, string>;
+    throws?: Record<string, string>;
+    ingestNull?: boolean;
+    files?: KnowledgeFile[];
+  } = {},
+) {
   const manifest = new FakeManifest();
+  manifest.files = [...(opts.files ?? [])];
   const texts = { ...(opts.texts ?? {}) };
   const throws = { ...(opts.throws ?? {}) };
+  const stamps = new Map<string, FakeStamp>();
   const ingested: { text: string; ref: string }[] = [];
+  const extracted: string[] = [];
   const logs: string[] = [];
   const lib = createLibraryImporter({
     manifest,
     now: () => new Date('2026-09-24T10:00:00Z'),
     log: (m) => logs.push(m),
+    stat: (path) => stamps.get(path) ?? { mtimeMs: 1_000, size: (texts[path] ?? '').length },
     extract: async (path) => {
+      extracted.push(path);
       if (throws[path]) throw new Error(throws[path]);
       return texts[path] ?? '';
     },
@@ -57,12 +94,30 @@ function harness(opts: { texts?: Record<string, string>; throws?: Record<string,
       return opts.ingestNull ? null : { added: 3, total: 3 };
     },
   });
-  return { lib, manifest, ingested, logs, texts, throws };
+  /** pretend the file was rewritten with identical bytes: newer mtime, same size */
+  const touch = (path: string) => stamps.set(path, { mtimeMs: 2_000, size: (texts[path] ?? '').length });
+  /** pretend the file was rewritten with new content (size follows the text) */
+  const rewrite = (path: string, body: string) => {
+    texts[path] = body;
+    stamps.set(path, { mtimeMs: (stamps.get(path)?.mtimeMs ?? 1_000) + 1_000, size: body.length });
+  };
+  return { lib, manifest, ingested, logs, texts, throws, extracted, touch, rewrite };
 }
 
 let root: string;
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'mc-lib-'));
+});
+
+/** an import tally with every counter at zero except the ones under test */
+const result = (over: Partial<KnowledgeImportResult> = {}): KnowledgeImportResult => ({
+  imported: 0,
+  skipped: 0,
+  failed: 0,
+  unchanged: 0,
+  chars: 0,
+  chunks: 0,
+  ...over,
 });
 
 /** create `rel` (parent dirs included) under the temp root and return its path */
@@ -115,13 +170,8 @@ describe('walkLibraryDir', () => {
 });
 
 describe('libraryRefFor', () => {
-  const entry = (ref: string, path: string): KnowledgeFile => ({
-    ref,
-    name: ref,
-    path,
-    chars: 1,
-    addedAt: 'x',
-  });
+  const entry = (ref: string, path: string): KnowledgeFile =>
+    knownFile({ ref, path, text: 'x', mtimeMs: 1 });
 
   it('keeps the ref of a path that is already in the manifest', () => {
     const manifest = new FakeManifest();
@@ -156,7 +206,7 @@ describe('ingestLibraryFiles', () => {
   it('counts an empty-text file as skipped and never ingests it', async () => {
     const { lib, ingested } = harness({ texts: { '/a.md': '   \n  ' } });
     const out: KnowledgeImportResult = await lib.ingestFiles(['/a.md']);
-    expect(out).toEqual({ imported: 0, skipped: 1, failed: 0, chars: 0, chunks: 0 });
+    expect(out).toEqual(result({ skipped: 1 }));
     expect(ingested).toEqual([]);
   });
 
@@ -166,19 +216,13 @@ describe('ingestLibraryFiles', () => {
       throws: { '/bad.md': 'boom' },
     });
     const out = await lib.ingestFiles(['/bad.md', '/good.md']);
-    expect(out).toEqual({ imported: 1, skipped: 0, failed: 1, chars: 5, chunks: 3 });
+    expect(out).toEqual(result({ imported: 1, failed: 1, chars: 5, chunks: 3 }));
     expect(ingested.map((i) => i.ref)).toEqual(['good.md']);
   });
 
   it('counts a silent partial ingest (null result) as imported with 0 chunks', async () => {
     const { lib } = harness({ texts: { '/a.md': 'abc' }, ingestNull: true });
-    expect(await lib.ingestFiles(['/a.md'])).toEqual({
-      imported: 1,
-      skipped: 0,
-      failed: 0,
-      chars: 3,
-      chunks: 0,
-    });
+    expect(await lib.ingestFiles(['/a.md'])).toEqual(result({ imported: 1, chars: 3 }));
   });
 
   it('writes the manifest entry with ref, basename and the injected clock', async () => {
@@ -191,14 +235,20 @@ describe('ingestLibraryFiles', () => {
         path: '/notes/a.md',
         chars: 6,
         addedAt: '2026-09-24T10:00:00.000Z',
+        hash: textHash('abcdef'),
+        mtimeMs: 1_000,
+        size: 6,
+        status: 'imported',
+        chunks: 3,
+        qaCount: 0,
       },
     ]);
   });
 
   it('re-imports a changed path under the same ref so the index replaces it', async () => {
-    const { lib, ingested, texts } = harness({ texts: { '/a.md': 'v1' } });
+    const { lib, ingested, rewrite } = harness({ texts: { '/a.md': 'v1' } });
     await lib.ingestFiles(['/a.md']);
-    texts['/a.md'] = 'v2';
+    rewrite('/a.md', 'v2');
     await lib.ingestFiles(['/a.md']);
     expect(ingested).toEqual([
       { text: 'v1', ref: 'a.md' },
@@ -208,13 +258,82 @@ describe('ingestLibraryFiles', () => {
 
   it('sums chars and chunks across files', async () => {
     const { lib, logs } = harness({ texts: { '/a.md': 'aa', '/b.md': 'bbbb' } });
-    expect(await lib.ingestFiles(['/a.md', '/b.md'])).toEqual({
-      imported: 2,
-      skipped: 0,
-      failed: 0,
-      chars: 6,
-      chunks: 6,
+    expect(await lib.ingestFiles(['/a.md', '/b.md'])).toEqual(
+      result({ imported: 2, chars: 6, chunks: 6 }),
+    );
+    expect(logs.join('\n')).toContain('2 imported, 0 skipped, 0 failed, 0 unchanged, 6 chunks');
+  });
+});
+
+describe('incremental import (unchanged files are skipped)', () => {
+  it('skips a file whose mtime and size already match the manifest, without parsing it', async () => {
+    const { lib, ingested, extracted } = harness({
+      texts: { '/a.md': 'v1 content' },
+      files: [knownFile({ ref: 'a.md', path: '/a.md', text: 'v1 content', mtimeMs: 1_000 })],
     });
-    expect(logs.join('\n')).toContain('2 imported, 0 skipped, 0 failed, 6 chunks');
+    const out = await lib.ingestFiles(['/a.md']);
+    expect(out).toEqual(result({ unchanged: 1 }));
+    expect(extracted).toEqual([]); // the whole point: no PDF/docx decode
+    expect(ingested).toEqual([]); // and no re-embedding
+  });
+
+  it('re-imports when mtime moved and the text really changed', async () => {
+    const { lib, ingested, touch, texts } = harness({
+      texts: { '/a.md': 'v1 content' },
+      files: [knownFile({ ref: 'a.md', path: '/a.md', text: 'v1 content', mtimeMs: 1_000 })],
+    });
+    touch('/a.md'); // same size, so the fast path cannot decide
+    texts['/a.md'] = 'v2 content';
+    expect(await lib.ingestFiles(['/a.md'])).toEqual(
+      result({ imported: 1, chars: 10, chunks: 3 }),
+    );
+    expect(ingested.map((i) => i.text)).toEqual(['v2 content']);
+  });
+
+  it('counts a touched-but-identical file as unchanged and leaves the index alone', async () => {
+    const { lib, ingested, manifest, touch } = harness({
+      texts: { '/a.md': 'v1 content' },
+      files: [knownFile({ ref: 'a.md', path: '/a.md', text: 'v1 content', mtimeMs: 1_000 })],
+    });
+    touch('/a.md');
+    expect(await lib.ingestFiles(['/a.md'])).toEqual(result({ unchanged: 1 }));
+    expect(ingested).toEqual([]);
+    // the stored stamp advances, so the next import takes the fast path again
+    expect(manifest.files[0]).toMatchObject({ mtimeMs: 2_000, status: 'unchanged' });
+  });
+
+  it('records reimported status when content changed, and imported only the first time', async () => {
+    const { lib, manifest, rewrite } = harness({ texts: { '/a.md': 'v1' } });
+    await lib.ingestFiles(['/a.md']);
+    expect(manifest.files[0].status).toBe('imported');
+    rewrite('/a.md', 'a much longer v2');
+    await lib.ingestFiles(['/a.md']);
+    expect(manifest.files[0].status).toBe('reimported');
+    expect(manifest.files[0].hash).toBe(textHash('a much longer v2'));
+  });
+
+  it('re-imports a legacy manifest entry that has no hash yet', async () => {
+    const legacy: KnowledgeFile = {
+      ref: 'old.md',
+      name: 'old.md',
+      path: '/old.md',
+      chars: 2,
+      addedAt: '2026-01-01T00:00:00.000Z',
+    } as KnowledgeFile;
+    const { lib, ingested, manifest } = harness({ texts: { '/old.md': 'v1' }, files: [legacy] });
+    await lib.ingestFiles(['/old.md']);
+    expect(ingested).toEqual([{ text: 'v1', ref: 'old.md' }]);
+    expect(manifest.files[0].hash).toBe(textHash('v1'));
+  });
+
+  it('mixes unchanged and imported files in one directory import', async () => {
+    const { lib, rewrite } = harness({
+      texts: { '/a.md': 'aaa', '/b.md': 'bbb' },
+      files: [knownFile({ ref: 'a.md', path: '/a.md', text: 'aaa', mtimeMs: 1_000 })],
+    });
+    rewrite('/b.md', 'a newer body');
+    expect(await lib.ingestFiles(['/a.md', '/b.md'])).toEqual(
+      result({ imported: 1, unchanged: 1, chars: 12, chunks: 3 }),
+    );
   });
 });

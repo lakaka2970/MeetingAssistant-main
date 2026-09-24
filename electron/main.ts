@@ -15,7 +15,7 @@ import {
   session,
   shell,
 } from 'electron';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { release } from 'os';
 import { join } from 'path';
 import {
@@ -1370,6 +1370,14 @@ function bootstrap(): void {
       manifest: knowledgeFiles,
       extract: extractDocText,
       ingest: (req) => rag.ingest(req),
+      stat: (path) => {
+        try {
+          const s = statSync(path);
+          return { mtimeMs: s.mtimeMs, size: s.size };
+        } catch {
+          return null;
+        }
+      },
       now: () => new Date(),
       log: (m) => console.log(m),
     });

@@ -1021,7 +1021,25 @@ export interface KnowledgeFile {
   chars: number;
   /** ISO-8601 */
   addedAt: string;
+  /** textHash() of the parsed text — what decides "nothing changed" */
+  hash: string;
+  /** source-file stat used for the cheap freshness short-circuit */
+  mtimeMs: number;
+  size: number;
+  /** outcome of the import that produced this entry */
+  status: KnowledgeImportStatus;
+  /** RAG chunks the document produced */
+  chunks: number;
+  /** prepared Q&A pairs extracted from the document */
+  qaCount: number;
 }
+
+/**
+ * How a file got into the library. Entries written before v1.0.1 have no
+ * status at all — treat `undefined` as an old first import that must be
+ * re-checked by content hash.
+ */
+export type KnowledgeImportStatus = 'imported' | 'reimported' | 'unchanged';
 
 /** the imported-document manifest, for the knowledge panel file list */
 export interface KnowledgeFilesState {
@@ -1050,6 +1068,8 @@ export interface KnowledgeImportResult {
   skipped: number;
   /** parse threw (corrupt file, bad encoding, …) */
   failed: number;
+  /** files already in the library whose content had not changed — not re-parsed, not re-embedded */
+  unchanged: number;
   /** total chars ingested */
   chars: number;
   /** total RAG chunks added */
