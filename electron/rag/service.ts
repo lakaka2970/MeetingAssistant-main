@@ -15,6 +15,7 @@ import { EmbedClient } from './embedClient';
 import { getEmbeddingModel } from './embedding';
 import { RagIngestor, type IngestResult } from './ingest';
 import {
+  DeferredWriter,
   VectorStore,
   type RagHit,
   type RagIndexFile,
@@ -106,6 +107,8 @@ export function rrfMerge<T>(
 const INDEX_DIR = 'rag';
 const INDEX_FILE = 'index.json';
 const NOTES_FILE = 'notes.md';
+/** index writes are coalesced across a burst of ingest calls */
+const INDEX_SAVE_DEBOUNCE_MS = 400;
 /** minimum question length worth a retrieval round-trip */
 export const MIN_QUERY_CHARS = 6;
 
@@ -115,7 +118,8 @@ export class RagService {
   private ingestor: RagIngestor | null = null;
   private notesManager: CustomNotesManager;
   private storeLoaded = false;
-  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** coalesces index mutations into one serialize+write per quiet window */
+  private readonly writer: DeferredWriter;
   private lastDownloadPct: number | null = null;
   /** pre-chunked knowledge base, retrieved lexically (no model needed) */
   private readonly kb = new KbRetrieval();
@@ -142,6 +146,14 @@ export class RagService {
         console.warn('[rag] notes persist failed:', (e as Error).message);
       }
     });
+    // the store is created lazily (and replaced by reindex), so the writer
+    // reads through `this.store` at flush time — a request only ever arrives
+    // from a store that exists
+    this.writer = new DeferredWriter(
+      (f) => this.writeIndexFile(f),
+      () => this.store!.serialize(),
+      INDEX_SAVE_DEBOUNCE_MS,
+    );
   }
 
   // ---- notes (L2) ----
@@ -176,24 +188,24 @@ export class RagService {
       file = null;
     }
     this.storeLoaded = true;
-    this.store = file
-      ? VectorStore.fromFile(file, (f) => this.scheduleSave(f))
-      : new VectorStore(modelKey, (f) => this.scheduleSave(f));
+    const onDirty = (): void => this.writer.request();
+    this.store = file ? VectorStore.fromFile(file, onDirty) : new VectorStore(modelKey, onDirty);
     this.ingestor = new RagIngestor(this.store, this.embedder);
     return this.store;
   }
 
-  private scheduleSave(file: RagIndexFile): void {
-    if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => {
-      this.saveTimer = null;
-      try {
-        mkdirSync(join(this.deps.userDataDir, INDEX_DIR), { recursive: true });
-        writeFileSync(this.indexPath, JSON.stringify(file), 'utf8');
-      } catch (e) {
-        console.warn('[rag] index persist failed:', (e as Error).message);
-      }
-    }, 400);
+  private writeIndexFile(file: RagIndexFile): void {
+    mkdirSync(join(this.deps.userDataDir, INDEX_DIR), { recursive: true });
+    writeFileSync(this.indexPath, JSON.stringify(file), 'utf8');
+  }
+
+  /**
+   * Get the index onto disk now. Called after a bulk operation (a directory
+   * import, a reindex, shutdown) so the last write of a batch is not left
+   * sitting in the debounce window.
+   */
+  flushPersist(): void {
+    this.writer.flush();
   }
 
   /** spawn the embed worker (no-op when ready); false = RAG unusable right now */
@@ -510,7 +522,7 @@ export class RagService {
     if (!records.length) return { records: 0, failed: false };
 
     const modelKey = getEmbeddingModel(this.deps.getSettings().model).key;
-    const fresh = new VectorStore(modelKey, (f) => this.scheduleSave(f));
+    const fresh = new VectorStore(modelKey, () => this.writer.request());
     const oldStore = this.store;
     this.store = fresh;
     this.ingestor = new RagIngestor(fresh, this.embedder);
@@ -545,7 +557,7 @@ export class RagService {
         done += slice.length;
         console.log(`[rag] reindex ${done}/${records.length}`);
       }
-      fresh.persistNow();
+      this.writer.flush();
       return { records: records.length, failed: false };
     } catch (e) {
       console.error('[rag] reindex failed, restoring previous vectors:', (e as Error).message);
@@ -639,15 +651,7 @@ export class RagService {
   }
 
   async dispose(): Promise<void> {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-      try {
-        this.store?.persistNow();
-      } catch {
-        /* best effort */
-      }
-    }
+    this.writer.flush();
     await this.embedder.dispose();
   }
 }

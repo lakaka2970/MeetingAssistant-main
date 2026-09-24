@@ -148,14 +148,71 @@ export function parseIndex(file: RagIndexFile): {
 
 // ---------- the store ----------
 
+/** a clock the tests can drive; defaults to the real timers */
+export type WriterClock = {
+  setTimeout: (fn: () => void, ms: number) => number;
+  clearTimeout: (id: number) => void;
+};
+
+const REAL_CLOCK: WriterClock = {
+  setTimeout: (fn, ms) => setTimeout(fn, ms) as unknown as number,
+  clearTimeout: (id) => clearTimeout(id as unknown as NodeJS.Timeout),
+};
+
+/**
+ * Coalesces "the index changed" into ONE serialize+write per quiet window.
+ * Without this, a directory import is O(n²): every added chunk used to
+ * re-serialize every vector in the store before it even reached the debounce.
+ */
+export class DeferredWriter {
+  private pending = false;
+  private timer: number | null = null;
+
+  constructor(
+    private readonly write: (file: RagIndexFile) => void,
+    private readonly build: () => RagIndexFile,
+    private readonly delayMs: number,
+    private readonly clock: WriterClock = REAL_CLOCK,
+  ) {}
+
+  /** something changed; the snapshot is taken when the window settles */
+  request(): void {
+    this.pending = true;
+    if (this.timer !== null) this.clock.clearTimeout(this.timer);
+    this.timer = this.clock.setTimeout(() => {
+      this.timer = null;
+      this.flush();
+    }, this.delayMs);
+  }
+
+  /** write now if anything is outstanding; a clean writer never touches disk */
+  flush(): void {
+    if (this.timer !== null) {
+      this.clock.clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (!this.pending) return;
+    this.pending = false;
+    try {
+      this.write(this.build());
+    } catch (e) {
+      console.warn('[rag] index persist failed:', (e as Error).message);
+    }
+  }
+}
+
 export class VectorStore {
   private records: RagRecord[] = [];
   private vectors = new Map<number, Float32Array>();
   private nextId = 1;
 
+  /**
+   * `onDirty` is a notice, not a write: the owner decides when the (expensive)
+   * snapshot happens. See {@link DeferredWriter}.
+   */
   constructor(
     public modelKey = '',
-    private readonly persist: (file: RagIndexFile) => void = () => {},
+    private readonly onDirty: () => void = () => {},
   ) {}
 
   /** number of live records */
@@ -198,7 +255,7 @@ export class VectorStore {
     };
     this.records.push(record);
     this.vectors.set(record.id, chunk.embedding);
-    this.persistNow();
+    this.onDirty();
     return record;
   }
 
@@ -216,7 +273,7 @@ export class VectorStore {
       }
       return true;
     });
-    if (removed > 0) this.persistNow();
+    if (removed > 0) this.onDirty();
     return removed;
   }
 
@@ -253,15 +310,14 @@ export class VectorStore {
     return [...this.records];
   }
 
-  persistNow(): void {
-    this.persist(serializeIndex(this.records, this.vectors, this.modelKey));
+  /** the on-disk shape of the whole index — the expensive part, so callers
+   * decide WHEN it happens (see {@link DeferredWriter}) */
+  serialize(): RagIndexFile {
+    return serializeIndex(this.records, this.vectors, this.modelKey);
   }
 
-  static fromFile(
-    file: RagIndexFile,
-    persist: (file: RagIndexFile) => void = () => {},
-  ): VectorStore {
-    const store = new VectorStore(file.modelKey, persist);
+  static fromFile(file: RagIndexFile, onDirty: () => void = () => {}): VectorStore {
+    const store = new VectorStore(file.modelKey, onDirty);
     const { records, vectors } = parseIndex(file);
     store.records = records;
     store.vectors = vectors;

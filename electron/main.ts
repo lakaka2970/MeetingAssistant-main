@@ -1383,7 +1383,10 @@ function bootstrap(): void {
       if (r.canceled || !r.filePaths.length) {
         return emptyImportResult();
       }
-      return library.ingestFiles(r.filePaths);
+      const out = await library.ingestFiles(r.filePaths);
+      // one write for the whole batch: ingest only queued a save per chunk
+      rag.flushPersist();
+      return out;
     });
 
     ipcMain.handle(IPC.knowledgeImportDir, async (): Promise<KnowledgeImportResult> => {
@@ -1399,7 +1402,9 @@ function bootstrap(): void {
       if (!files.length) {
         return emptyImportResult();
       }
-      return library.ingestFiles(files, r.filePaths[0]);
+      const out = await library.ingestFiles(files, r.filePaths[0]);
+      rag.flushPersist();
+      return out;
     });
 
     ipcMain.handle(IPC.knowledgeFilesList, (): KnowledgeFilesState => knowledgeFiles.state());

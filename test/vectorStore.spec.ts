@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DeferredWriter,
   VectorStore,
   serializeIndex,
   parseIndex,
@@ -32,14 +33,40 @@ function chunk(over: Partial<RagUpsert> = {}): RagUpsert {
   };
 }
 
-let persistCalls = 0;
-function makeStore(modelKey = 'test-model'): { store: VectorStore; files: RagIndexFile[] } {
-  const files: RagIndexFile[] = [];
-  const store = new VectorStore(modelKey, (f) => {
-    persistCalls++;
-    files.push(f);
+/** a store that only reports "dirty" — snapshots are taken by hand */
+function makeStore(modelKey = 'test-model'): { store: VectorStore; dirty: () => number } {
+  let notices = 0;
+  const store = new VectorStore(modelKey, () => {
+    notices++;
   });
-  return { store, files };
+  return { store, dirty: () => notices };
+}
+
+/** a clock the test drives, so nothing sleeps and nothing races */
+function fakeClock() {
+  let now = 0;
+  let next = 1;
+  const timers = new Map<number, { at: number; fn: () => void }>();
+  return {
+    setTimeout: (fn: () => void, ms: number) => {
+      const id = next++;
+      timers.set(id, { at: now + ms, fn });
+      return id;
+    },
+    clearTimeout: (id: number) => {
+      timers.delete(id);
+    },
+    advance: (ms: number) => {
+      now += ms;
+      for (const [id, t] of [...timers]) {
+        if (t.at <= now) {
+          timers.delete(id);
+          t.fn();
+        }
+      }
+    },
+    pendingTimers: () => timers.size,
+  };
 }
 
 describe('textHash', () => {
@@ -50,9 +77,93 @@ describe('textHash', () => {
   });
 });
 
+describe('DeferredWriter', () => {
+  it('serializes once per burst, not once per request', () => {
+    const clock = fakeClock();
+    let serializations = 0;
+    const written: RagIndexFile[] = [];
+    const w = new DeferredWriter(
+      (f) => written.push(f),
+      () => {
+        serializations++;
+        return emptyFile(serializations);
+      },
+      400,
+      clock,
+    );
+    for (let i = 0; i < 20; i++) w.request();
+    expect(serializations).toBe(0); // the expensive part is deferred
+    clock.advance(400);
+    expect(serializations).toBe(1);
+    expect(written).toHaveLength(1);
+  });
+
+  it('re-arms the window on a later request and writes the current state', () => {
+    const clock = fakeClock();
+    let state = 0;
+    const seen: number[] = [];
+    const w = new DeferredWriter(
+      (f) => seen.push(f.nextId),
+      () => emptyFile(state),
+      400,
+      clock,
+    );
+    state++;
+    w.request();
+    clock.advance(200);
+    state++;
+    w.request(); // still unsettled: the window moves
+    clock.advance(200);
+    expect(seen).toEqual([]);
+    clock.advance(200);
+    expect(seen).toEqual([2]);
+  });
+
+  it('flush() writes immediately, disarms the timer, and no-ops when clean', () => {
+    const clock = fakeClock();
+    let writes = 0;
+    let serializations = 0;
+    const w = new DeferredWriter(
+      () => writes++,
+      () => {
+        serializations++;
+        return emptyFile(1);
+      },
+      400,
+      clock,
+    );
+    w.flush();
+    expect(writes).toBe(0); // nothing pending: no empty file lands on disk
+    w.request();
+    w.flush();
+    expect(writes).toBe(1);
+    expect(serializations).toBe(1);
+    expect(clock.pendingTimers()).toBe(0);
+    w.flush();
+    expect(writes).toBe(1);
+  });
+
+  it('carries an import of N chunks to disk as one file containing all N', () => {
+    const clock = fakeClock();
+    const written: RagIndexFile[] = [];
+    let writer: DeferredWriter | undefined;
+    const store = new VectorStore('m', () => writer?.request());
+    writer = new DeferredWriter((f) => written.push(f), () => store.serialize(), 400, clock);
+    for (let i = 0; i < 5; i++) store.add(chunk({ text: `line ${i}` }));
+    expect(written).toHaveLength(0); // five adds, zero disk hits so far
+    writer.flush();
+    expect(written).toHaveLength(1);
+    expect(written[0].records).toHaveLength(5);
+  });
+});
+
+function emptyFile(nextId = 0): RagIndexFile {
+  return { version: 1, nextId, modelKey: 'test', records: [], vectors: {} };
+}
+
 describe('VectorStore', () => {
   it('adds records with monotonic ids and dedupes identical text', () => {
-    const { store } = makeStore();
+    const { store, dirty } = makeStore();
     const a = store.add(chunk({ text: '简历项目：实时转录系统' }))!;
     const dup = store.add(chunk({ text: '简历项目：实时转录系统' }));
     const b = store.add(chunk({ text: 'JD：负责高并发服务' }))!;
@@ -60,7 +171,17 @@ describe('VectorStore', () => {
     expect(b.id).toBe(2);
     expect(dup).toBeNull();
     expect(store.size).toBe(2);
-    expect(persistCalls).toBe(2); // dup add must not persist
+    expect(dirty()).toBe(2); // the dup add must not dirty the store
+  });
+
+  it('handing a mutation over is a notice, not a serialization', () => {
+    const { store, dirty } = makeStore();
+    store.add(chunk({ text: 'x' }));
+    expect(dirty()).toBe(1);
+    // the owner may snapshot whenever it likes and always sees current state
+    expect(store.serialize().records).toHaveLength(1);
+    store.add(chunk({ text: 'y' }));
+    expect(store.serialize().records).toHaveLength(2);
   });
 
   it('dedupe is scoped per source/ref/session, not global', () => {
@@ -115,12 +236,22 @@ describe('VectorStore', () => {
     expect(hits.map((h) => h.record.text).sort()).toEqual(['keep', 'keep-global']);
   });
 
+  it('removeWhere dirties the store only when something actually went', () => {
+    const { store, dirty } = makeStore();
+    store.add(chunk({ text: 'keep' }));
+    expect(dirty()).toBe(1);
+    expect(store.removeWhere((r) => r.text === 'gone')).toBe(0);
+    expect(dirty()).toBe(1);
+    expect(store.removeWhere((r) => r.text === 'keep')).toBe(1);
+    expect(dirty()).toBe(2);
+  });
+
   it('round-trips through serialize/parse with base64 float32 vectors', () => {
-    const { store, files } = makeStore('bge-m3');
+    const { store } = makeStore('bge-m3');
     store.add(chunk({ text: 'one', embedding: unit(1, 0), source: 'resume' }));
     store.add(chunk({ text: 'two', embedding: unit(0, 1), source: 'jd' }));
 
-    const file = files.at(-1)!;
+    const file = store.serialize();
     expect(file.modelKey).toBe('bge-m3');
     expect(file.nextId).toBe(3);
 
