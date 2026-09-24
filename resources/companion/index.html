@@ -8,7 +8,10 @@
      回答是要照着念的，基准字号刻意比 MyTool 的调试页大。 */
   :root{ --fg:#e8e8e8; --bg:#0d0d0d; --panel:#181818; --line:#282828;
          --dim:#8a8a8a; --them:#7dd3fc; --me:#86efac; --warn:#fbbf24;
-         --bad:#f87171; --ok:#4ade80; --accent:#60a5fa; }
+         --bad:#f87171; --ok:#4ade80; --accent:#60a5fa;
+         /* 桌面端 styles.css 深色组的语义色，逐值抄过来（R10） */
+         --live:#d33a3a; --on-bg:rgba(46, 160, 92, 0.28);
+         --on-border:rgba(46, 160, 92, 0.65); --on-text:#86dda9; }
   html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg)}
 
   /* 用「视觉视口」而非布局视口：双指缩放只改视觉视口，仍用 100vh 的话滚动区
@@ -102,6 +105,52 @@
   button{border:0;border-radius:.35rem;background:#2563eb;color:#fff;font-size:.95rem}
   button:active{opacity:.8}
   #empty{color:#555;font-size:.82rem;text-align:center;padding:1.5rem .5rem;line-height:1.7}
+
+  /* ⑦ 远程控制条。状态色一律抄 PC 的语义色：转录=.btn-live 的红、连续回答=
+     .btn-on 的绿（--on-* 三值取深色组）、三档段选=「只看答案」那族蓝。
+     待确认/未确认是 PC 没有的中间态，只借已有的 --warn，不引入新色值。 */
+  #ctl{background:var(--panel);border-bottom:1px solid var(--line)}
+  #ctl[hidden]{display:none}
+  #ctlBar{display:flex;gap:.35rem;align-items:center;padding:.35rem .7rem;flex-wrap:wrap}
+  #ctlToggle{background:#222;color:var(--dim);border:1px solid var(--line);
+             border-radius:1rem;font-size:.72rem;padding:.2rem .55rem}
+  /* 折叠态那一行就是状态条：与展开区的按钮同一套语义色 */
+  .chip.live{color:#fff;background:var(--live);border-color:var(--live)}
+  .chip.on{color:var(--on-text);background:var(--on-bg);border-color:var(--on-border)}
+  #ctlBody{padding:0 .7rem .5rem;display:flex;flex-direction:column;gap:.45rem}
+  #ctlBody[hidden]{display:none}
+  .ctlRow{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+  .ctlRow .k{color:var(--dim);min-width:4em;font-size:.75rem}
+  .seg{display:flex;gap:.2rem}
+  .seg button{background:#222;color:var(--dim);border:1px solid var(--line);
+              border-radius:.35rem;font-size:.75rem;padding:.28rem .5rem}
+  .seg button.on{background:#2563eb;color:#fff;border-color:#2563eb}
+  .tg{background:#222;color:var(--dim);border:1px solid var(--line);
+      border-radius:.35rem;font-size:.75rem;padding:.28rem .7rem}
+  .tg.on{color:var(--on-text);background:var(--on-bg);border-color:var(--on-border)}
+  .tg.live{color:#fff;background:var(--live);border-color:var(--live)}
+  /* 当前状态但没在跑：中性描边，不借任何语义色 */
+  .tg.cur{color:var(--fg);border-color:#5a5a5a}
+  .tg[disabled]{opacity:.45}
+  /* 点了但 st 还没回来：细描边 + 省略号，颜色不变——生效与否只看 st */
+  .pend{box-shadow:0 0 0 1px var(--warn)}
+  .pend::after{content:'…'}
+  .unconf{border-color:var(--warn)!important;color:var(--warn)!important}
+  #askRow{display:flex;gap:.35rem}
+  #askInput{flex:1;min-width:0;background:#111;color:var(--fg);border:1px solid #444;
+            border-radius:.35rem;padding:.35rem .45rem;font-size:1rem}
+  #askSend{padding:.35rem .8rem}
+  #hist{display:flex;flex-direction:column;gap:.3rem;max-height:40vh;overflow-y:auto;
+        -webkit-overflow-scrolling:touch}
+  #hist[hidden]{display:none}
+  #histBar{display:flex;gap:.4rem;align-items:center;color:var(--dim);font-size:.72rem}
+  #histReload{margin-left:auto;background:#222;color:var(--dim);border:1px solid var(--line);
+              border-radius:.35rem;font-size:.72rem;padding:.2rem .5rem}
+  .hitem{background:#101418;border:1px solid #1f2a35;border-radius:.4rem;padding:.35rem .5rem}
+  .hitem .q{color:var(--accent);font-size:.78rem;overflow-wrap:anywhere}
+  .hitem .a{font-size:.8rem;color:#c8c8c8;line-height:1.35;max-height:2.8em;
+            overflow:hidden;overflow-wrap:anywhere}
+  .hitem .a.err{color:var(--bad)}
 </style>
 <div id="app">
   <header>
@@ -110,6 +159,49 @@
     <span id="lag" class="chip">延迟 —</span>
     <button id="wakeBtn">常亮</button>
   </header>
+  <!-- ⑦ 远程控制。折叠态 = 一行状态（这一行的颜色只由 st 决定）；展开 = 控件。
+       caps.control 为假时整块不渲染，不是置灰。 -->
+  <div id="ctl" hidden>
+    <div id="ctlBar">
+      <button id="ctlToggle">控制 ▾</button>
+      <span id="chipCap" class="chip">转录</span>
+      <span id="chipCont" class="chip">连续</span>
+      <span id="chipStyle" class="chip">—</span>
+      <span id="chipSession" class="chip" hidden></span>
+      <span id="ctlNote" class="chip warn" hidden></span>
+    </div>
+    <div id="ctlBody" hidden>
+      <div class="ctlRow" id="rowCapture"><span class="k">转录</span>
+        <button class="tg" id="capOn" data-op="capture" data-arg="true">开始</button>
+        <button class="tg" id="capOff" data-op="capture" data-arg="false">停止</button>
+      </div>
+      <div class="ctlRow" id="rowContinuous"><span class="k">连续回答</span>
+        <button class="tg" id="contOn" data-op="continuous" data-arg="true">开</button>
+        <button class="tg" id="contOff" data-op="continuous" data-arg="false">关</button>
+      </div>
+      <div class="ctlRow" id="rowRichness"><span class="k">内容量</span>
+        <div class="seg" data-op="richness">
+          <button data-v="concise">精简</button><button data-v="standard">标准</button><button data-v="detailed">详尽</button>
+        </div>
+      </div>
+      <div class="ctlRow" id="rowExpertise"><span class="k">专业度</span>
+        <div class="seg" data-op="expertise">
+          <button data-v="casual">口语</button><button data-v="professional">职场</button><button data-v="technical">技术</button>
+        </div>
+      </div>
+      <div class="ctlRow" id="rowHistory"><span class="k">本次会话</span>
+        <button class="tg" id="histBtn">历史回答</button>
+      </div>
+      <div id="hist" hidden>
+        <div id="histBar"><span id="histCount"></span><button id="histReload">重新载入</button></div>
+        <div id="histList"></div>
+      </div>
+      <div id="askRow">
+        <input id="askInput" maxlength="500" placeholder="自己输入一个问题" autocomplete="off">
+        <button id="askSend">发送</button>
+      </div>
+    </div>
+  </div>
   <div class="filter">
     <button data-f="all" class="on">全部</button>
     <button data-f="ans">只看答案</button>

@@ -356,6 +356,253 @@ function handleFrame(buf) {
   prepend(el);
 }
 
+/* ---- ⑦ 远程控制 ----
+ * 三条纪律，都是这个面板的全部难点：
+ *  1. **颜色只由 st 决定**。`ack` 只代表命令已入队，点下去不等于生效——所以按下
+ *     后是 --warn 描边的「待确认」，1.5s 内 st 里出现目标值才算生效，否则标未确认。
+ *     转录失败（Windows 网页通道需要真实点击、原生产物缺失）就表现为一直接不到 st。
+ *  2. caps.control 为假整块不渲染；逐项授权关掉的控件从布局里摘掉，不是置灰。
+ *  3. 提问和历史复用既有渲染：回答走 `a` 流（同一个 request id、同一套 hero/feed
+ *     焦点规则），历史点某条交给 hero。不新增第三种呈现路径。 */
+const ctlBox = document.getElementById('ctl');
+const ctlBody = document.getElementById('ctlBody');
+const ctlToggle = document.getElementById('ctlToggle');
+const ctlNote = document.getElementById('ctlNote');
+const chipCap = document.getElementById('chipCap');
+const chipCont = document.getElementById('chipCont');
+const chipStyle = document.getElementById('chipStyle');
+const chipSession = document.getElementById('chipSession');
+const ROWS = {
+  capture: document.getElementById('rowCapture'),
+  continuous: document.getElementById('rowContinuous'),
+  richness: document.getElementById('rowRichness'),
+  expertise: document.getElementById('rowExpertise'),
+  history: document.getElementById('rowHistory'),
+};
+const PAIRS = {
+  capture: [document.getElementById('capOn'), document.getElementById('capOff')],
+  continuous: [document.getElementById('contOn'), document.getElementById('contOff')],
+};
+const SEGS = {
+  richness: [...document.querySelectorAll('#rowRichness .seg button')],
+  expertise: [...document.querySelectorAll('#rowExpertise .seg button')],
+};
+const askRow = document.getElementById('askRow');
+const askInput = document.getElementById('askInput');
+const histBox = document.getElementById('hist');
+const histList = document.getElementById('histList');
+const histCount = document.getElementById('histCount');
+/** 与桌面 answerStyle.labels 同词，避免同一档位在两端叫两个名字 */
+const STEP_LABEL = {
+  concise: '精简', standard: '标准', detailed: '详尽',
+  casual: '口语', professional: '职场', technical: '技术',
+};
+const REFUSAL = {
+  control_disabled: '电脑已关闭远程控制',
+  item_disabled: '电脑未授权这一项',
+  unknown_op: '该操作不支持',
+  bad_arg: '参数无效',
+  rate_limited: '操作太快，请稍候',
+  not_wired: '电脑端未启用',
+};
+
+let caps = null;
+let st = null;
+/** op -> { id, arg, el, timer }：只有这四个 op 有 st 可等 */
+const pending = new Map();
+let noteTimer = null;
+let histTimer = null;
+let cmdSeq = 0;
+
+function ctlGranted(op) {
+  return !!(caps && caps.control && caps.controlItems && caps.controlItems[op] !== false);
+}
+
+function ctlState(op) {
+  if (!st) return undefined;
+  if (op === 'capture') return st.capturing;
+  if (op === 'continuous') return st.continuous;
+  return st[op];
+}
+
+function ctlEl(op, arg) {
+  if (PAIRS[op]) return arg ? PAIRS[op][0] : PAIRS[op][1];
+  return (SEGS[op] || []).find((b) => b.dataset.v === arg) || null;
+}
+
+function dropPending(op) {
+  const p = pending.get(op);
+  if (!p) return;
+  clearTimeout(p.timer);
+  pending.delete(op);
+}
+
+function dropAllPending() {
+  for (const op of [...pending.keys()]) dropPending(op);
+  paintCtl();
+}
+
+function note(text) {
+  if (noteTimer !== null) { clearTimeout(noteTimer); noteTimer = null; }
+  ctlNote.hidden = !text;
+  if (!text) return;
+  ctlNote.textContent = text;
+  noteTimer = setTimeout(() => { ctlNote.hidden = true; noteTimer = null; }, 3000);
+}
+
+function sendCmd(op, arg) {
+  if (!ctlGranted(op) || !sock || sock.readyState !== WebSocket.OPEN) return;
+  const id = `p${++cmdSeq}`;
+  sock.send(JSON.stringify({ type: 'cmd', id, op, ...(arg === undefined ? {} : { arg }) }));
+  if (!PAIRS[op] && !SEGS[op]) return;   // ask / history：没有 st 可等，不进待确认态
+  dropPending(op);
+  pending.set(op, { id, arg, el: ctlEl(op, arg), timer: setTimeout(() => unconfirm(op), 1500) });
+  paintCtl();
+}
+
+/** st 在 1.5s 内没等到目标值：如实标出来，并把手势还给用户 */
+function unconfirm(op) {
+  const p = pending.get(op);
+  if (!p) return;
+  pending.delete(op);
+  const el = p.el;
+  if (!el) return;
+  paintCtl();   // 先重绘（它会重写 className），再补这一笔未确认
+  el.classList.add('unconf');
+  setTimeout(() => el.classList.remove('unconf'), 1400);
+}
+
+/** 目标值出现在 st 里才算生效（R9：确认只发生在手机上） */
+function settlePending() {
+  for (const [op, p] of [...pending]) {
+    if (ctlState(op) === p.arg) dropPending(op);
+  }
+}
+
+function paintCtl() {
+  const open = !!(caps && caps.control);
+  ctlBox.hidden = !open;
+  if (!open) return;
+  for (const op of Object.keys(ROWS)) ROWS[op].hidden = !ctlGranted(op);
+  askRow.hidden = !ctlGranted('ask');
+  // 断线之后上一次的状态不可信：chip 回落到无状态文案，而不是留着红色骗人
+  if (!st) { resetCtl(); return; }
+
+  chipCap.textContent = st.capturing ? '● 转录' : '○ 转录';
+  chipCap.className = 'chip' + (st.capturing ? ' live' : '');
+  chipCont.textContent = st.continuous ? '⚡ 连续' : '连续 关';
+  chipCont.className = 'chip' + (st.continuous ? ' on' : '');
+  chipStyle.textContent = `${STEP_LABEL[st.richness] || st.richness} · ${STEP_LABEL[st.expertise] || st.expertise}`;
+  chipSession.hidden = !st.session;
+  if (st.session) chipSession.textContent = `${st.session.name} · ${st.session.answers} 答`;
+
+  for (const op of Object.keys(PAIRS)) {
+    const on = !!ctlState(op);
+    // 颜色只表示「正在跑」：转录红 = .btn-live，连续绿 = .btn-on。关掉时那一项
+    // 只是当前状态，用中性描边标出来——绿色的「关」按钮是骗人的。
+    const runCls = op === 'capture' ? ' live' : ' on';
+    PAIRS[op].forEach((b, i) => {
+      const cur = (i === 0) === on;
+      b.className = 'tg' + (cur ? (on ? runCls : ' cur') : '') + pendCls(op, b);
+    });
+  }
+  for (const op of Object.keys(SEGS)) {
+    SEGS[op].forEach((b) => {
+      b.className = b.dataset.v === st[op] ? 'on' + pendCls(op, b) : pendCls(op, b);
+    });
+  }
+}
+
+/** 没有 st（尚未连上/刚断开）时的中性外观：谁都没在跑，什么都别亮 */
+function resetCtl() {
+  chipCap.textContent = '转录';
+  chipCap.className = 'chip';
+  chipCont.textContent = '连续';
+  chipCont.className = 'chip';
+  chipStyle.textContent = '—';
+  chipSession.hidden = true;
+  for (const op of Object.keys(PAIRS)) PAIRS[op].forEach((b) => { b.className = 'tg'; });
+  for (const op of Object.keys(SEGS)) SEGS[op].forEach((b) => { b.className = ''; });
+}
+
+function pendCls(op, el) {
+  const p = pending.get(op);
+  return p && p.el === el ? ' pend' : '';
+}
+
+function renderHist(msg) {
+  clearTimeout(histTimer);
+  histCount.textContent = msg.truncated
+    ? `显示 ${msg.items.length} / 共 ${msg.total} 条（已裁剪）`
+    : `本次会话 ${msg.total} 条`;
+  histList.textContent = '';
+  for (const it of msg.items) {
+    const el = document.createElement('div');
+    el.className = 'hitem';
+    el.innerHTML = `<div class="q">${escapeHtml(it.label || '（无标题）')}</div>` +
+      `<div class="a${it.error ? ' err' : ''}">${escapeHtml(it.error || it.text || '（空）')}</div>`;
+    el.addEventListener('click', () => showHistoryItem(it));
+    histList.appendChild(el);
+  }
+  histBox.hidden = false;
+}
+
+/** 点某条历史 = 把它当成一次已完成的回答交给 hero，不另开一条渲染路径 */
+function showHistoryItem(it) {
+  const a = newAnswer(it.id, it.kind === 'x' ? 'x' : 'a');
+  a.text = it.text || '';
+  a.question = it.label || '';
+  if (it.error) { a.state = 'error'; a.error = it.error; } else a.state = 'done';
+  renderHero(a);
+  if (a.question) { heroQ.hidden = false; heroQ.textContent = `Q：${a.question.slice(0, 300)}`; }
+  // 历史条目没有时间戳（桌面 StoredTurn 也没有），所以这里只报出处
+  heroMeta.textContent = it.qaRef ? `历史回答 · 资料：${it.qaRef}` : '历史回答';
+}
+
+function controlReply(msg) {
+  if (!msg.id) return;
+  for (const [op, p] of [...pending]) {
+    if (p.id !== msg.id) continue;
+    pending.delete(op);
+    clearTimeout(p.timer);
+    paintCtl();
+  }
+  note(REFUSAL[msg.reason] || `电脑拒绝：${msg.reason}`);
+}
+
+ctlToggle.addEventListener('click', () => {
+  ctlBody.hidden = !ctlBody.hidden;
+  ctlToggle.textContent = ctlBody.hidden ? '控制 ▾' : '控制 ▴';
+});
+for (const op of Object.keys(PAIRS)) {
+  PAIRS[op].forEach((b, i) => b.addEventListener('click', () => sendCmd(op, i === 0)));
+}
+for (const op of Object.keys(SEGS)) {
+  SEGS[op].forEach((b) => b.addEventListener('click', () => sendCmd(op, b.dataset.v)));
+}
+document.getElementById('histBtn').addEventListener('click', openHist);
+document.getElementById('histReload').addEventListener('click', openHist);
+/** 点名的快照走可靠通道，但还是给个下文：没有 hx 到达就明说，而不是挂着「载入中」 */
+function openHist() {
+  histBox.hidden = false;
+  histList.textContent = '';
+  histCount.textContent = '载入中…';
+  sendCmd('history');
+  clearTimeout(histTimer);
+  histTimer = setTimeout(() => {
+    if (histCount.textContent === '载入中…') histCount.textContent = '电脑未响应，点「重新载入」';
+  }, 2500);
+}
+function sendAsk() {
+  const text = askInput.value.trim();
+  if (!text) return;
+  sendCmd('ask', text.slice(0, 500));
+  askInput.value = '';
+  askInput.blur();
+}
+document.getElementById('askSend').addEventListener('click', sendAsk);
+askInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendAsk(); });
+
 /* ---- 消息分发 ---- */
 let analysisEnabled = true;
 function handle(msg) {
@@ -363,7 +610,15 @@ function handle(msg) {
     case 'pong': handlePong(msg); break;
     case 'hello_ok':
       analysisEnabled = msg.caps ? msg.caps.transcript !== false : true;
+      caps = msg.caps || null;
+      dropAllPending();
+      paintCtl();
       break;
+    // ⑦ 远程控制：st 是唯一的真相来源，hx 是手机点名的快照
+    case 'st': st = msg; settlePending(); paintCtl(); break;
+    case 'hx': renderHist(msg); break;
+    case 'ack': break;   // 只代表已入队，生效看 st
+    case 'error': controlReply(msg); break;
     case 'asr':
       asrChip.textContent = `转写 ${msg.state === 'listening' ? '监听中'
         : msg.state === 'transcribing' ? '识别中' : msg.state === 'speech' ? '说话中'
@@ -492,6 +747,9 @@ function connect() {
     stopPing();
     sock = null;
     removeLive();
+    // ⑦ 断开后桌面上什么都可能已经变了：状态清空，面板回到中性外观
+    st = null;
+    dropAllPending();
     if (ev.code === 4001) {
       clearToken();
       pairMode = true;
