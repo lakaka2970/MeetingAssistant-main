@@ -24,6 +24,7 @@ import { LoopbackCapture } from './audio/loopbackCapture';
 import { MicCapture, listMics } from './audio/micCapture';
 import { TitleBar } from './components/TitleBar';
 import { SettingsPanel } from './components/SettingsPanel';
+import type { SettingsSection } from './components/SettingsPanel';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 import { HelpPanel } from './components/HelpPanel';
 import type { SettingsTab } from './components/settings/types';
@@ -36,7 +37,7 @@ import { I18nProvider, getDict, type Dict } from './i18n';
 
 /** the one in-window overlay that can be open at a time (knowledge/health are hub tabs) */
 type OverlayPanel =
-  | { view: 'settings'; tab: SettingsTab }
+  | { view: 'settings'; tab: SettingsTab; section?: SettingsSection }
   | { view: 'diagnostics' }
   | { view: 'help' };
 
@@ -1031,7 +1032,9 @@ export function App() {
           activePersonaId: settings?.llm.activePersonaId ?? '',
         }}
         onPickAnswerStyle={(p) => void pickAnswerStyle(p)}
-        onManagePersonas={() => setOpenPanel({ view: 'settings', tab: 'general' })}
+        onManagePersonas={() =>
+          setOpenPanel({ view: 'settings', tab: 'general', section: 'personas' })
+        }
         onStartStop={() => (capturing ? void stopCapture() : void startCapture())}
         onSelectThem={(id) => void selectThemInput(id)}
         onSelectMic={(id) => void selectMic(id)}
@@ -1089,9 +1092,10 @@ export function App() {
 
       {openPanel?.view === 'settings' && settings && (
         <SettingsPanel
-          key={openPanel.tab}
+          key={`${openPanel.tab}:${openPanel.section ?? ''}`}
           settings={settings}
           initialTab={openPanel.tab}
+          initialSection={openPanel.section}
           health={health ?? undefined}
           sessionId={currentId}
           onSettingsRefreshed={setSettings}

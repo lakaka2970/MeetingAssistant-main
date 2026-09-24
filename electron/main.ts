@@ -98,6 +98,7 @@ import {
   classifyQuestion,
   type PromptLayers,
 } from './llm/prompts';
+import { buildPersonaDraftMessages, finalizePersonaDraft } from './llm/personaPrompts';
 import { buildStyleDirectives, DEFAULT_EXPERTISE, DEFAULT_RICHNESS } from '../shared/answerStyle';
 import { resolveActivePersona } from '../shared/personas';
 import type { AppInfo, KnowledgeFilesState, KnowledgeImportResult, PublicSettings, UiLang } from '../shared/protocol';
@@ -1055,6 +1056,45 @@ function bootstrap(): void {
         }
       },
     );
+
+    // ---- v1.0.1 A5: answer-persona draft + stable-prefix preview ----
+    /** The renderer owns sessions.json, so main looks the material up by id —
+     * the same slot fallback llmAsk uses (resume slot, then legacy single slot). */
+    function materialFor(sessionId?: string): { resume?: string; jd?: string } {
+      const s = sessionId ? sessionStore.load().sessions.find((x) => x.id === sessionId) : undefined;
+      return { resume: s?.resumeText || s?.kbText, jd: s?.jdText };
+    }
+
+    // The editor's 只读预览 shows the bytes main would actually send next — never
+    // a second copy of the assembly logic.
+    ipcMain.handle(IPC.llmPromptPreview, (_e, p: { sessionId?: string } = {}) => {
+      const m = materialFor(p?.sessionId);
+      const prefix = stablePrefixFor(m.resume, m.jd);
+      return { prefix, chars: prefix.length };
+    });
+
+    ipcMain.handle(IPC.llmPersonaDraft, async (_e, p: { sessionId?: string } = {}) => {
+      const apiKey = settings.getLlmApiKey();
+      if (!apiKey) return { error: T().noApiKey };
+      const m = materialFor(p?.sessionId);
+      const resume = (m.resume ?? '').trim() || knowledge.text.trim();
+      const jd = (m.jd ?? '').trim();
+      if (!resume && !jd) return { error: T().personaNoMaterial };
+      try {
+        const r = await chatOnce(
+          { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey },
+          buildPersonaDraftMessages({ resume, jd, lang: settings.data.llm.answerLang }),
+          { maxTokens: 600, temperature: 0.3 },
+        );
+        const text = finalizePersonaDraft(r.text);
+        if (!text) return { error: T().personaDraftEmpty };
+        console.log(`[persona-draft] ${text.length} chars`);
+        return { text };
+      } catch (e) {
+        console.warn('[persona-draft] failed:', (e as Error).message);
+        return { error: (e as Error).message };
+      }
+    });
 
     // last-known capture lifecycle, for the diagnostics report only
     let lastCaptureStartedAt: string | undefined;

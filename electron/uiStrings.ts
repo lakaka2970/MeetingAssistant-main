@@ -18,6 +18,8 @@ const zh = {
   examBindTitle: '选择题库目录（题目卷/答案卷成对的 PDF、md、json、csv）',
   noApiKey: '未设置 API Key，请在设置里填入后重试',
   noApiKeyShort: '未设置 API Key',
+  personaNoMaterial: '还没有可分析的简历或岗位JD：先在提词卡导入资料，或直接在设置里手写一份人设',
+  personaDraftEmpty: '模型没有返回可用内容，请稍后重试或直接手写一份人设',
   noVision: '未配置视觉模型：请在设置里填 Vision Base URL / 模型 / Key（如 MiMo / Gemini）',
   sidecarFail: (msg: string) => `本地 ASR 引擎启动失败：${msg}`,
   /** wraps the ASR worker's own (English, log-friendly) engine diagnostics */
@@ -73,6 +75,9 @@ const en: MainDict = {
   examBindTitle: 'Choose the question-bank folder (paired question/answer PDFs, md, json, csv)',
   noApiKey: 'API Key not set — add one in Settings and retry',
   noApiKeyShort: 'API Key not set',
+  personaNoMaterial:
+    'Nothing to analyse yet: import a resume or job description in the prompt card, or write the persona by hand in Settings',
+  personaDraftEmpty: 'The model returned nothing usable — retry later, or write the persona by hand',
   noVision: 'Vision model not configured: set the Vision Base URL / model / key in Settings (e.g. MiMo / Gemini)',
   sidecarFail: (msg: string) => `Local ASR engine failed to start: ${msg}`,
   asrEngineFail: (msg: string) => `Speech recognition engine error: ${msg}`,

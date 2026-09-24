@@ -7,6 +7,8 @@ import { GeneralTab } from './settings/GeneralTab';
 import { HealthTab } from './settings/HealthTab';
 import { KnowledgeTab } from './settings/KnowledgeTab';
 import { ModelTab } from './settings/ModelTab';
+import { PersonaLibrary } from './settings/PersonaLibrary';
+import { PromptEditor } from './settings/PromptEditor';
 import { RoutingTab } from './settings/RoutingTab';
 import { useSettingsDraft } from './settings/useSettingsDraft';
 import { VisionTab } from './settings/VisionTab';
@@ -14,6 +16,9 @@ import type { SettingsTab } from './settings/types';
 
 /** draft tabs commit through the shared 保存 row; knowledge/health act per-row */
 const DRAFT_TABS: SettingsTab[] = ['model', 'routing', 'asr', 'vision', 'general'];
+
+/** the two full-panel views reached from 通用 · 高级设置 */
+export type SettingsSection = 'personas' | 'prompt';
 
 /**
  * The settings hub: one overlay for everything that used to be a separate
@@ -34,6 +39,7 @@ export function SettingsPanel({
   sessionId,
   onSettingsRefreshed,
   initialTab = 'model',
+  initialSection,
 }: {
   settings: PublicSettings;
   onSaved: (s: PublicSettings) => void;
@@ -46,16 +52,19 @@ export function SettingsPanel({
   onOpenHelp?: () => void;
   /** service health report, shown on the 服务状态 tab */
   health?: ServiceHealthReport;
-  /** current interview — scopes the 知识库 retrieval preview */
+  /** current interview — scopes the 知识库 retrieval preview and the prompt preview */
   sessionId?: string;
-  /** re-read public settings after a health-tab connection test */
+  /** re-read public settings without closing the hub (health-tab test, prompt-lab writes) */
   onSettingsRefreshed?: (s: PublicSettings) => void;
   /** which tab to land on (📚 → knowledge, status chip → health, ⚙ → model) */
   initialTab?: SettingsTab;
+  /** open straight into a 高级设置 view (🎚 管理人设… → personas) */
+  initialSection?: SettingsSection;
 }) {
   const d = useSettingsDraft(settings, onSaved);
   const [tab, setTab] = useState<SettingsTab>(initialTab);
-  const isDraftTab = DRAFT_TABS.includes(tab);
+  const [section, setSection] = useState<SettingsSection | undefined>(initialSection);
+  const isDraftTab = DRAFT_TABS.includes(tab) && !section;
   const noop = () => {};
 
   return (
@@ -65,21 +74,47 @@ export function SettingsPanel({
           <button
             key={tb.id}
             role="tab"
-            aria-selected={tab === tb.id}
-            className={`settings-tab${tab === tb.id ? ' settings-tab-active' : ''}`}
-            onClick={() => setTab(tb.id)}
+            aria-selected={tab === tb.id && !section}
+            className={`settings-tab${tab === tb.id && !section ? ' settings-tab-active' : ''}`}
+            onClick={() => {
+              setSection(undefined);
+              setTab(tb.id);
+            }}
           >
             {tb.label}
           </button>
         ))}
       </div>
 
-      {tab === 'model' && <ModelTab d={d} />}
-      {tab === 'routing' && <RoutingTab d={d} />}
-      {tab === 'asr' && <AsrTab d={d} />}
-      {tab === 'vision' && <VisionTab d={d} />}
-      {tab === 'knowledge' && <KnowledgeTab sessionId={sessionId} />}
-      {tab === 'health' && health && (
+      {section && (
+        <>
+          <div className="settings-actions">
+            <button className="btn btn-sm" onClick={() => setSection(undefined)}>
+              {d.t.promptLab.back}
+            </button>
+          </div>
+          {section === 'personas' ? (
+            <PersonaLibrary
+              settings={settings}
+              onSaved={onSettingsRefreshed ?? noop}
+              sessionId={sessionId}
+            />
+          ) : (
+            <PromptEditor
+              settings={settings}
+              onSaved={onSettingsRefreshed ?? noop}
+              sessionId={sessionId}
+            />
+          )}
+        </>
+      )}
+
+      {!section && tab === 'model' && <ModelTab d={d} />}
+      {!section && tab === 'routing' && <RoutingTab d={d} />}
+      {!section && tab === 'asr' && <AsrTab d={d} />}
+      {!section && tab === 'vision' && <VisionTab d={d} />}
+      {!section && tab === 'knowledge' && <KnowledgeTab sessionId={sessionId} />}
+      {!section && tab === 'health' && health && (
         <HealthTab
           settings={settings}
           health={health}
@@ -88,12 +123,14 @@ export function SettingsPanel({
           onSettingsRefreshed={onSettingsRefreshed ?? noop}
         />
       )}
-      {tab === 'general' && (
+      {!section && tab === 'general' && (
         <GeneralTab
           d={d}
           onRerunWizard={onRerunWizard}
           onOpenDiagnostics={onOpenDiagnostics}
           onOpenHelp={onOpenHelp}
+          onOpenPersonas={() => setSection('personas')}
+          onOpenPrompt={() => setSection('prompt')}
         />
       )}
 

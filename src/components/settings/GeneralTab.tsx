@@ -7,11 +7,16 @@ export function GeneralTab({
   onRerunWizard,
   onOpenDiagnostics,
   onOpenHelp,
+  onOpenPersonas,
+  onOpenPrompt,
 }: {
   d: SettingsDraft;
   onRerunWizard?: () => void;
   onOpenDiagnostics?: () => void;
   onOpenHelp?: () => void;
+  /** v1.0.1 A5 entries into the prompt lab, rendered by SettingsPanel */
+  onOpenPersonas?: () => void;
+  onOpenPrompt?: () => void;
 }) {
   const t = d.t;
   const deviceOptions = (
@@ -253,6 +258,22 @@ export function GeneralTab({
 
       <div className="settings-section">{t.settings.advancedSection}</div>
       <div className="settings-hint">{t.settings.advancedHint}</div>
+      {onOpenPersonas && (
+        <div className="settings-row">
+          <button className="btn" onClick={onOpenPersonas}>
+            {t.promptLab.personaEntry}
+          </button>
+          <span className="settings-inline-hint">{t.promptLab.personaEntryHint}</span>
+        </div>
+      )}
+      {onOpenPrompt && (
+        <div className="settings-row">
+          <button className="btn" onClick={onOpenPrompt}>
+            {t.promptLab.promptEntry}
+          </button>
+          <span className="settings-inline-hint">{t.promptLab.promptEntryHint}</span>
+        </div>
+      )}
       {onOpenDiagnostics && (
         <div className="settings-row">
           <button className="btn" onClick={onOpenDiagnostics}>

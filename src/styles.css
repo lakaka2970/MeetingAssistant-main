@@ -1263,6 +1263,101 @@ body {
   line-height: 1.5;
 }
 
+/* ---------- v1.0.1 prompt lab (应答人设库 + 提示词进阶) ----------
+ * Both views live inside the settings hub, so they reuse the hub's row/hint
+ * classes and only add the two repeating structures of their own. */
+.persona-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.persona-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.persona-row-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-body);
+}
+
+.persona-row-text {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.persona-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.persona-text,
+.prompt-layer-text {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-body);
+  background: var(--input-bg);
+  border: 1px solid var(--border-1);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.persona-text::placeholder,
+.prompt-layer-text::placeholder {
+  color: var(--text-dim);
+}
+
+.prompt-layer {
+  margin-bottom: 12px;
+}
+
+.prompt-layer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.prompt-layer-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* main's real stablePrefixFor() output — read-only, scrolls, never wraps away
+ * a line the user needs to compare byte for byte */
+.prompt-preview {
+  max-height: 260px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
 /* ---------- connection-test verdict (shared component) ----------
  * src/components/providers/ConnectionResult.tsx renders in BOTH renderer
  * entries, so these class names exist here and in src/onboarding/setup.css,

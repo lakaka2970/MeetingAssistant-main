@@ -971,6 +971,23 @@ export interface NotesSaveResult {
   error?: 'too-long';
 }
 
+// ---------- v1.0.1 A5: answer-persona library + advanced prompt editor ----------
+
+/** `llm:persona-draft` — an LLM-written 应答人设初稿. main never stores it: the
+ * user edits/keeps it in the library UI, which is the only writer. */
+export interface PersonaDraftResult {
+  text?: string;
+  /** why there is no draft — the UI shows this verbatim */
+  error?: string;
+}
+
+/** `llm:prompt-preview` — the real stable prefix main would send for the current
+ * settings and session material, so the editor previews bytes, not intent. */
+export interface PromptPreviewResult {
+  prefix: string;
+  chars: number;
+}
+
 /** renderer view of one retrieval hit (no ids, no vectors) */
 export interface RagHitView {
   text: string;
@@ -1193,6 +1210,12 @@ export const IPC = {
    * one max_tokens=1 request whose system prompt is byte-identical to real
    * answer requests, so the first real question prefills from cache */
   llmPrewarm: 'llm:prewarm',
+  /** invoke: ({sessionId?}) => PersonaDraftResult — draft an 应答人设 from the
+   * session's resume/JD (v1.0.1 A5). Draft only: nothing is written to settings */
+  llmPersonaDraft: 'llm:persona-draft',
+  /** invoke: ({sessionId?}) => PromptPreviewResult — the exact stable prefix main
+   * would send next, for the read-only preview in 高级设置 (v1.0.1 A5) */
+  llmPromptPreview: 'llm:prompt-preview',
   /** invoke: ({memo, question, answer}) => string — async rolling interview
    * memo update (P1-5); cheap off-critical-path deepseek-flash call, '' = keep old */
   memoUpdate: 'llm:memo',

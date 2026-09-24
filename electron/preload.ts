@@ -14,7 +14,9 @@ import {
   type NotesSaveResult,
   type OnboardingProgressPatch,
   type OnboardingState,
+  type PersonaDraftResult,
   type PreparedQaView,
+  type PromptPreviewResult,
   type ProviderTestRequest,
   type ProviderTestResult,
   type PublicSettings,
@@ -124,6 +126,12 @@ export interface McApi {
   /** L2 personal notes (userData/notes.md); strict 8000-char cap */
   notesGet(): Promise<{ text: string; chars: number; maxChars: number }>;
   notesSet(text: string): Promise<NotesSaveResult>;
+  /** v1.0.1 A5: draft an 应答人设 from this session's resume/JD. main returns a
+   * draft only — the persona library UI stays the single writer of settings */
+  personaDraft(sessionId?: string): Promise<PersonaDraftResult>;
+  /** v1.0.1 A5: the exact stable prefix main would send next for this session,
+   * so 高级设置 can preview the real bytes instead of a hand-waved summary */
+  promptPreview(sessionId?: string): Promise<PromptPreviewResult>;
   /** loaded /trigger skills (upgrade P3) */
   skillsList(): Promise<SkillView[]>;
   // ---- upgrade P1.5: optional native loopback capture ----
@@ -236,6 +244,8 @@ const api: McApi = {
   },
   notesGet: () => ipcRenderer.invoke(IPC.notesGet),
   notesSet: (text) => ipcRenderer.invoke(IPC.notesSet, { text }),
+  personaDraft: (sessionId) => ipcRenderer.invoke(IPC.llmPersonaDraft, { sessionId }),
+  promptPreview: (sessionId) => ipcRenderer.invoke(IPC.llmPromptPreview, { sessionId }),
   skillsList: () => ipcRenderer.invoke(IPC.skillsList),
   nativeCaptureStart: (deviceId) => ipcRenderer.send(IPC.nativeCaptureStart, deviceId),
   nativeCaptureStop: () => ipcRenderer.send(IPC.nativeCaptureStop),
