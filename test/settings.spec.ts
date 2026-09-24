@@ -314,6 +314,20 @@ describe('SettingsStore', () => {
     });
   });
 
+  describe('ui.answerHistoryOpen (collapsible answer history)', () => {
+    it('ships collapsed so the answer card keeps the vertical space', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      expect(s.getPublic().ui.answerHistoryOpen).toBe(false);
+    });
+
+    it('is whitelisted on getPublic() and survives a reload from disk', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ ui: { answerHistoryOpen: true } });
+      expect(s.getPublic().ui.answerHistoryOpen).toBe(true);
+      expect(new SettingsStore(file, fakeCipher).getPublic().ui.answerHistoryOpen).toBe(true);
+    });
+  });
+
   it('defaults asr backend to local streaming Fun-ASR-Nano', () => {
     const s = new SettingsStore(file, fakeCipher);
     expect(s.data.asr.backend).toBe('local-realtime');
@@ -478,10 +492,17 @@ describe('migrateSettingsV1ToV2 (pure)', () => {
     expect(v2.vision.proxyUrl).toBe('127.0.0.1:7897');
     expect(v2.asr.backend).toBe('cloud-realtime');
     expect(v2.asr.realtime?.baseUrl).toBe(V1_FILE.asr.realtime.baseUrl);
-    // Phase 4 added two ui fields. Everything the user had configured survives
-    // untouched; the new ones arrive with their OFF defaults, so upgrading can
-    // never silently register an existing profile for auto-start.
-    expect(v2.ui).toEqual({ ...V1_FILE.ui, autoLaunch: false, trayNoticeShown: false, railSplit: RAIL_SPLIT_DEFAULT });
+    // Phase 4 added two ui fields and v1.0.1 the history switch. Everything the
+    // user had configured survives untouched; the new ones arrive with their OFF
+    // defaults, so upgrading can never silently register an existing profile
+    // for auto-start or unfold the history list.
+    expect(v2.ui).toEqual({
+      ...V1_FILE.ui,
+      autoLaunch: false,
+      trayNoticeShown: false,
+      railSplit: RAIL_SPLIT_DEFAULT,
+      answerHistoryOpen: false,
+    });
     expect(v2.audio).toEqual({ ...V1_FILE.audio, captureBackend: 'webaudio' });
   });
 

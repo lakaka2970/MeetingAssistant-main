@@ -60,6 +60,7 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
       hotkeyShot: 'Control+Shift+S',
       hotkeyAnswer: 'Control+Alt+A',
       railSplit: 0.16,
+      answerHistoryOpen: false,
       fontScale: 'medium',
       theme: 'dark',
       lang: 'zh',

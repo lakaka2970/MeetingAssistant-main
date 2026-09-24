@@ -295,6 +295,8 @@ export interface SettingsFile {
      * launches; the rail's click-to-expand overlay is unaffected.
      */
     railSplit?: number;
+    /** answer-history list: absent/false = collapsed (v1.0.1 default) */
+    answerHistoryOpen?: boolean;
     /** answer-body font size (small=13px / medium=16px / large=19px) */
     fontScale: FontScale;
     theme: ThemeMode;
@@ -497,6 +499,8 @@ export interface PublicSettings {
     hotkeyAnswer: string;
     /** glance-rail fraction, already clamped by getPublic() */
     railSplit: number;
+    /** v1.0.1 ②: is the answer-history list unfolded under the focus card? */
+    answerHistoryOpen: boolean;
     fontScale: FontScale;
     theme: ThemeMode;
     lang: UiLang;
@@ -625,6 +629,7 @@ export interface SettingsPatch {
     hotkeyShot?: string;
     hotkeyAnswer?: string;
     railSplit?: number;
+    answerHistoryOpen?: boolean;
     fontScale?: FontScale;
     theme?: ThemeMode;
     lang?: UiLang;

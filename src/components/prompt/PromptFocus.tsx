@@ -11,7 +11,9 @@ export type { AnswerTurn, TurnKind } from './focusTurn';
  * card, everything else demoted. Answers still accumulate in the session, but
  * only the FOCUS turn is rendered large — by default the newest one; clicking
  * a summary row pins an older answer so you can keep reading it while the next
- * answer streams (a fresh streaming turn always releases the pin).
+ * answer streams (a fresh streaming turn always releases the pin). Those rows
+ * sit behind a 「历史回答 · N」 toggle that is folded by default — the focus card
+ * is what the user reads mid-meeting, so it gets the height.
  *
  * A turn can carry a knowledge-base hit: the prepared answer is printed
  * verbatim first, in the largest type on screen (it is what the user came here
@@ -36,6 +38,8 @@ export function PromptFocus({
   onRename,
   onPickKb,
   onClearKb,
+  historyOpen,
+  onToggleHistory,
   onCancel,
   onClear,
   onFreeAsk,
@@ -60,6 +64,10 @@ export function PromptFocus({
   onRename: (id: string, name: string) => void;
   onPickKb: (slot: KbSlot) => void;
   onClearKb: (slot: KbSlot) => void;
+  /** v1.0.1 ②: the history list is folded by default — settings-owned, so the
+      choice survives a restart */
+  historyOpen: boolean;
+  onToggleHistory: (open: boolean) => void;
   onCancel: (id: string) => void;
   onClear: () => void;
   onFreeAsk: (question: string) => void;
@@ -281,23 +289,35 @@ export function PromptFocus({
 
           {turns.length > 1 && (
             <div className="prompt-history">
-              {turns
-                .filter((x) => x.id !== focus.id)
-                .slice()
-                .reverse()
-                .map((x) => (
-                  <button
-                    key={x.id}
-                    className="prompt-hx"
-                    title={x.label}
-                    onClick={() => setPinnedId(x.id)}
-                  >
-                    <span className="turn-tag">{t.answer.kindTag[x.kind]}</span>
-                    <span className="prompt-hx-text">{x.label}</span>
-                    {x.status === 'error' && <span className="tag tag-err">!</span>}
-                    {x.status === 'streaming' && <span className="tag tag-wait">…</span>}
-                  </button>
-                ))}
+              <button
+                className="prompt-hx-toggle"
+                onClick={() => onToggleHistory(!historyOpen)}
+                title={historyOpen ? t.answer.historyCollapseTitle : t.answer.historyExpandTitle}
+              >
+                <span className="prompt-hx-caret">{historyOpen ? '▾' : '▸'}</span>
+                <span>{t.answer.historyTitle(turns.length - 1)}</span>
+              </button>
+              {historyOpen && (
+                <div className="prompt-hx-list">
+                  {turns
+                    .filter((x) => x.id !== focus.id)
+                    .slice()
+                    .reverse()
+                    .map((x) => (
+                      <button
+                        key={x.id}
+                        className="prompt-hx"
+                        title={x.label}
+                        onClick={() => setPinnedId(x.id)}
+                      >
+                        <span className="turn-tag">{t.answer.kindTag[x.kind]}</span>
+                        <span className="prompt-hx-text">{x.label}</span>
+                        {x.status === 'error' && <span className="tag tag-err">!</span>}
+                        {x.status === 'streaming' && <span className="tag tag-wait">…</span>}
+                      </button>
+                    ))}
+                </div>
+              )}
             </div>
           )}
         </>

@@ -924,12 +924,43 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 108px;
-  overflow-y: auto;
   margin-top: 8px;
   padding-top: 6px;
   border-top: 1px solid var(--border-soft);
   flex-shrink: 0;
+}
+
+/* the single row that folds/unfolds the list — folded, it is all you see */
+.prompt-hx-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-faint);
+  font-size: 11px;
+  padding: 2px 4px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.prompt-hx-toggle:hover {
+  color: var(--text-muted);
+}
+
+.prompt-hx-caret {
+  width: 9px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.prompt-hx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 108px;
+  overflow-y: auto;
 }
 
 .prompt-hx {

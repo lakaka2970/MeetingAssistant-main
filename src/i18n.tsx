@@ -210,6 +210,9 @@ const zh = {
     shotTitle: '截图框选问视觉模型（拉框选区域，输入框内容作为问题）',
     pinnedNote: '正在回看旧回答',
     unpin: '回到最新',
+    historyTitle: (n: number) => `历史回答 · ${n}`,
+    historyExpandTitle: '展开历史回答',
+    historyCollapseTitle: '折叠历史回答，把空间留给当前回答',
   },
   status: {
     state: {
@@ -917,6 +920,9 @@ const en: Dict = {
     shotTitle: 'Screenshot a region and ask the vision model (input text becomes the question)',
     pinnedNote: 'Reviewing an older answer',
     unpin: 'Back to latest',
+    historyTitle: (n: number) => `Answer history · ${n}`,
+    historyExpandTitle: 'Show the answer history',
+    historyCollapseTitle: 'Hide the answer history and give the space back to this answer',
   },
   status: {
     state: {

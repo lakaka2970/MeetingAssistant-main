@@ -113,6 +113,9 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       hotkeyShot: hotkeys.shot,
       hotkeyAnswer: hotkeys.answer,
       railSplit: RAIL_SPLIT_DEFAULT,
+      // v1.0.1 ②: the focus card is the point of the main view, so the history
+      // list starts folded and the user opens it when they want to browse
+      answerHistoryOpen: false,
       // medium = 16px answer body (was 13px) — readable at a glance mid-interview
       fontScale: 'medium',
       theme: 'dark',
@@ -723,6 +726,9 @@ export class SettingsStore {
         // clamped here so a hand-edited settings.json cannot produce a rail
         // that swallows the answer column
         railSplit: clampRailSplit(d.ui.railSplit),
+        // optional on disk but always a boolean on the wire, so the renderer
+        // needs no ?? dance before toggling the history list
+        answerHistoryOpen: !!d.ui.answerHistoryOpen,
         fontScale: d.ui.fontScale,
         theme: d.ui.theme,
         lang: d.ui.lang ?? this.fallbackUiLang,

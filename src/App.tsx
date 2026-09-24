@@ -760,6 +760,11 @@ export function App() {
     const updated = await window.mc.setSettings({ ui: { railSplit: ratio } });
     setSettings(updated);
   }, []);
+  /** ②: the answer-history fold is a preference, not per-session state */
+  const persistHistoryOpen = useCallback(async (open: boolean) => {
+    const updated = await window.mc.setSettings({ ui: { answerHistoryOpen: open } });
+    setSettings(updated);
+  }, []);
   /** how many phones are receiving right now — polled only while 双屏 is on */
   const [cOnline, setCOnline] = useState(0);
   useEffect(() => {
@@ -1147,6 +1152,8 @@ export function App() {
           onRename={renameSession}
           onPickKb={(slot) => void pickKb(slot)}
           onClearKb={clearKb}
+          historyOpen={settings?.ui.answerHistoryOpen ?? false}
+          onToggleHistory={(open) => void persistHistoryOpen(open)}
           onCancel={cancelTurn}
           onClear={() => patchSession(currentIdRef.current, (s) => ({ ...s, turns: [] }))}
           onFreeAsk={(q) => askLlm('free', q)}
