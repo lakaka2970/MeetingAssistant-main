@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
+import { AnswerStylePopover, type AnswerStylePick } from './prompt/AnswerStylePopover';
+import type { AnswerExpertise, AnswerRichness } from '../../shared/answerStyle';
+import type { AnswerPersona } from '../../shared/personas';
 
 /**
  * The window bar, grouped by what the user actually does mid-session:
@@ -24,6 +27,7 @@ export function TitleBar({
   showHud,
   dual,
   phonesOnline,
+  answerStyle,
   onStartStop,
   onSelectThem,
   onSelectMic,
@@ -42,6 +46,8 @@ export function TitleBar({
   onRerunWizard,
   onHide,
   onQuit,
+  onPickAnswerStyle,
+  onManagePersonas,
 }: {
   capturing: boolean;
   asrReady: boolean;
@@ -75,6 +81,15 @@ export function TitleBar({
   onRerunWizard: () => void;
   onHide: () => void;
   onQuit: () => void;
+  /** 🎚 popover: the current 回答风格 layers + the persona library to pick from */
+  answerStyle: {
+    richness: AnswerRichness;
+    expertise: AnswerExpertise;
+    personas: AnswerPersona[];
+    activePersonaId: string;
+  };
+  onPickAnswerStyle: (pick: AnswerStylePick) => void;
+  onManagePersonas: () => void;
 }) {
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -195,6 +210,15 @@ export function TitleBar({
           stealth,
         )}
 
+        {/* 🎚 回答风格 — mid-meeting knobs for length / register / persona */}
+        <AnswerStylePopover
+          richness={answerStyle.richness}
+          expertise={answerStyle.expertise}
+          personas={answerStyle.personas}
+          activePersonaId={answerStyle.activePersonaId}
+          onPick={onPickAnswerStyle}
+          onManagePersonas={onManagePersonas}
+        />
         {icon('📚', t.knowledge.title, onOpenKnowledge)}
         {icon('⚙', t.titlebar.settingsTitle, onOpenSettings)}
         <div className="tb-menu-wrap" ref={menuRef}>

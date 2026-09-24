@@ -30,6 +30,8 @@ import type { SettingsTab } from './components/settings/types';
 import { StatusBar } from './components/StatusBar';
 import { PromptFocus, type AnswerTurn } from './components/prompt/PromptFocus';
 import { TranscriptRail } from './components/prompt/TranscriptRail';
+import type { AnswerStylePick } from './components/prompt/AnswerStylePopover';
+import { DEFAULT_EXPERTISE, DEFAULT_RICHNESS } from '../shared/answerStyle';
 import { I18nProvider, getDict, type Dict } from './i18n';
 
 /** the one in-window overlay that can be open at a time (knowledge/health are hub tabs) */
@@ -791,6 +793,17 @@ export function App() {
     prewarm(false); // lang is part of the stable prefix → mark dirty / reheat
   }, [settings, prewarm]);
 
+  /** 🎚 回答风格 popover: one narrow patch per pick. These layers ride the stable
+   * prompt prefix, so main re-warms the provider cache on the same write. */
+  const pickAnswerStyle = useCallback(
+    async (pick: AnswerStylePick) => {
+      const updated = await window.mc.setSettings({ llm: pick });
+      setSettings(updated);
+      prewarm(false);
+    },
+    [prewarm],
+  );
+
   const toggleAnswerModel = useCallback(async () => {
     if (!settings) return;
     const updated = await window.mc.setSettings({ llm: { answerWithVision: !settings.llm.answerWithVision } });
@@ -1011,6 +1024,14 @@ export function App() {
         showHud={showHud}
         dual={dual}
         phonesOnline={cOnline}
+        answerStyle={{
+          richness: settings?.llm.answerRichness ?? DEFAULT_RICHNESS,
+          expertise: settings?.llm.answerExpertise ?? DEFAULT_EXPERTISE,
+          personas: settings?.llm.personas ?? [],
+          activePersonaId: settings?.llm.activePersonaId ?? '',
+        }}
+        onPickAnswerStyle={(p) => void pickAnswerStyle(p)}
+        onManagePersonas={() => setOpenPanel({ view: 'settings', tab: 'general' })}
         onStartStop={() => (capturing ? void stopCapture() : void startCapture())}
         onSelectThem={(id) => void selectThemInput(id)}
         onSelectMic={(id) => void selectMic(id)}
