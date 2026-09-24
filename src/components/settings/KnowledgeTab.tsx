@@ -344,6 +344,7 @@ export function KnowledgeTab({
                 {it.status === 'imported'
                   ? ` · ${t.knowledge.importItemChunks(it.chunks ?? 0)}`
                   : ''}
+                {it.summaries ? ` · ${t.knowledge.importItemSummaries(it.summaries)}` : ''}
               </div>
             </div>
           ))}

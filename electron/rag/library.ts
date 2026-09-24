@@ -47,6 +47,11 @@ export interface LibraryDeps {
   }) => Promise<{ added: number; qa?: number } | null>;
   /** source-file freshness; null when the file cannot be stat'd (gone, locked) */
   stat: (path: string) => FileStamp | null;
+  /**
+   * Local section analysis of a document that just went in; returns how many
+   * summary records it stored. Best-effort: rejecting must not fail the import.
+   */
+  summarize?: (req: { ref: string; text: string; name: string }) => Promise<number>;
   /** one call per settled file, so a large import can show a live progress bar */
   onProgress?: (p: KnowledgeImportProgress) => void;
   now: () => Date;
@@ -162,9 +167,19 @@ export function createLibraryImporter(deps: LibraryDeps) {
         };
         deps.manifest.upsert(entry);
         known.set(filePath, entry);
+        // Section analysis only makes sense for a document that actually went
+        // into the index: a declined ingest means no embedder, so no summaries.
+        let summaries = 0;
+        if (res && deps.summarize) {
+          try {
+            summaries = (await deps.summarize({ ref, text, name })) ?? 0;
+          } catch (e) {
+            log(`[knowledge-files] section analysis failed ${filePath}: ${(e as Error).message}`);
+          }
+        }
         // null = the index declined the text (model not ready): a row with 0
         // chunks that would otherwise look like a successful import
-        settle({ name, ref, status: 'imported', chunks, reason: res ? undefined : 'index-declined' });
+        settle({ name, ref, status: 'imported', chunks, summaries, reason: res ? undefined : 'index-declined' });
       } catch (e) {
         const detail = (e as Error).message;
         log(`[knowledge-files] import failed ${filePath}: ${detail}`);

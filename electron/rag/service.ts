@@ -26,6 +26,7 @@ import { CustomNotesManager, MAX_NOTES_CHARS } from '../knowledge/customNotes';
 import { parseQaRecord } from '../../shared/qaPairs';
 import { QA_DIRECT_MIN_COSINE, selectQaHits, type QaHitView } from './qaSelect';
 import { KbRetrieval } from './kbRetrieval';
+import { SUMMARIES_PER_RETRIEVAL, belongsToDoc, isSummaryRecord } from './summaries';
 
 export { QA_DIRECT_MIN_COSINE, QA_DIRECT_MIN_LEXICAL } from './qaSelect';
 
@@ -74,8 +75,48 @@ export interface RetrieveResult {
 /**
  * One retrieved block, from either channel. `ref` is optional because vector
  * records carry it optionally; the knowledge-base channel always has one.
+ *
+ * `kind` is internal on purpose: it exists so {@link applySummaryQuota} can cap
+ * section summaries before the result leaves the service, without the renderer
+ * having to learn about a record type it must not treat differently.
  */
-type MergedHitView = { text: string; source: string; ref?: string; score: number };
+export interface MergedHitView {
+  text: string;
+  source: string;
+  ref?: string;
+  score: number;
+  kind?: 'summary';
+}
+
+/** vector-store hit → view, rounding the score the way the wire format expects */
+export function toHitView(h: RagHit): MergedHitView {
+  const view: MergedHitView = {
+    text: h.record.text,
+    source: h.record.source,
+    ref: h.record.ref,
+    score: Number(h.score.toFixed(4)),
+  };
+  if (isSummaryRecord(h.record)) view.kind = 'summary';
+  return view;
+}
+
+/**
+ * Keep at most `max` section-summary hits, best-ranked first. A summary scores
+ * well on a broad question and there are up to 40 of them per document, so
+ * uncapped they would fill the context block with one line per section and push
+ * out the actual passages.
+ */
+export function applySummaryQuota<T extends { kind?: string }>(
+  hits: T[],
+  max = SUMMARIES_PER_RETRIEVAL,
+): T[] {
+  let seen = 0;
+  return hits.filter((h) => {
+    if (h.kind !== 'summary') return true;
+    seen += 1;
+    return seen <= max;
+  });
+}
 
 /**
  * Reciprocal-rank fusion. Lexical coverage scores (0..1) and cosine
@@ -244,6 +285,27 @@ export class RagService {
     }
   }
 
+  /**
+   * Local section analysis of one imported document (v1.0.1 ③): summaries go
+   * through the already-selected embedding model, so importing a library costs
+   * no API calls and works offline. Best-effort by design — a machine whose
+   * embedder is not ready keeps the document chunks it already has.
+   */
+  async summarizeDocument(docRef: string, text: string, name: string): Promise<number> {
+    if (!this.deps.getSettings().enabled) return 0;
+    if (!(await this.ensureReady())) return 0;
+    try {
+      return await this.ingestor!.ingestDocSummaries({
+        docRef,
+        text,
+        metadata: { doc_name: name },
+      });
+    } catch (e) {
+      console.warn(`[rag] section analysis failed for ${docRef}:`, (e as Error).message);
+      return 0;
+    }
+  }
+
   ingestSessionMaterial(
     kind: 'resume' | 'jd',
     sessionId: string | undefined,
@@ -263,12 +325,10 @@ export class RagService {
     );
   }
 
-  /** drop one imported document's chunks (source 'doc', exact ref) */
+  /** drop one imported document: its chunks plus the section summaries derived from them */
   removeDocument(ref: string): number {
     if (!this.storeLoaded) return 0;
-    return this.ensureStore().removeWhere(
-      (r) => r.source === 'doc' && (r.ref ?? undefined) === ref,
-    );
+    return this.ensureStore().removeWhere((r) => r.source === 'doc' && belongsToDoc(r.ref, ref));
   }
 
   /** drop a session's material (session deleted) */
@@ -364,12 +424,6 @@ export class RagService {
     try {
       const qvec = await this.embedder.embedOne(q, 15_000);
       const store = this.ensureStore();
-      const toView = (h: RagHit): MergedHitView => ({
-        text: h.record.text,
-        source: h.record.source,
-        ref: h.record.ref,
-        score: Number(h.score.toFixed(4)),
-      });
       // prepared answers first: they are served to the user directly, so they
       // must not also ride in as RAG context (the block would appear twice)
       const qa = selectQaHits(
@@ -388,18 +442,20 @@ export class RagService {
           sessionId,
           excludeSources: ['fact', 'qa'],
         })
-        .map(toView);
+        .map(toHitView);
       const limit = topK ?? s.topK;
-      const hits = rrfMerge<MergedHitView>(
-        [
-          { items: kbAsView, key: (h) => `kb:${h.ref}:${h.text.slice(0, 40)}` },
-          { items: dense, key: (h) => `d:${h.source}:${h.ref}:${h.text.slice(0, 40)}` },
-        ],
-        limit,
+      const hits = applySummaryQuota(
+        rrfMerge<MergedHitView>(
+          [
+            { items: kbAsView, key: (h) => `kb:${h.ref}:${h.text.slice(0, 40)}` },
+            { items: dense, key: (h) => `d:${h.source}:${h.ref}:${h.text.slice(0, 40)}` },
+          ],
+          limit,
+        ),
       );
       const facts = store
         .search(qvec, { topK: 4, minScore: Math.max(0.35, s.minScore), sessionId, sources: ['fact'] })
-        .map(toView);
+        .map(toHitView);
       return {
         hits,
         facts,
@@ -442,19 +498,16 @@ export class RagService {
     const store = this.ensureStore();
     const dense: MergedHitView[] = store
       .search(qvec, { topK: Math.max(5, s.topK * 2), minScore: 0, sessionId })
-      .map((h) => ({
-        text: h.record.text,
-        source: h.record.source,
-        ref: h.record.ref,
-        score: Number(h.score.toFixed(4)),
-      }));
+      .map(toHitView);
     return {
-      hits: rrfMerge<MergedHitView>(
-        [
-          { items: kbAsView, key: (h) => `kb:${h.ref}:${h.text.slice(0, 40)}` },
-          { items: dense, key: (h) => `d:${h.source}:${h.ref}:${h.text.slice(0, 40)}` },
-        ],
-        Math.max(5, s.topK * 2),
+      hits: applySummaryQuota(
+        rrfMerge<MergedHitView>(
+          [
+            { items: kbAsView, key: (h) => `kb:${h.ref}:${h.text.slice(0, 40)}` },
+            { items: dense, key: (h) => `d:${h.source}:${h.ref}:${h.text.slice(0, 40)}` },
+          ],
+          Math.max(5, s.topK * 2),
+        ),
       ),
       facts: [],
       qa: [],

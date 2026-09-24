@@ -74,6 +74,7 @@ function harness(
     ingestNull?: boolean;
     files?: KnowledgeFile[];
     onProgress?: (p: KnowledgeImportProgress) => void;
+    summarize?: (req: { ref: string; text: string; name: string }) => Promise<number>;
   } = {},
 ) {
   const manifest = new FakeManifest();
@@ -83,12 +84,17 @@ function harness(
   const stamps = new Map<string, FakeStamp>();
   const ingested: { text: string; ref: string }[] = [];
   const extracted: string[] = [];
+  const summarized: { ref: string; text: string; name: string }[] = [];
   const logs: string[] = [];
   const lib = createLibraryImporter({
     manifest,
     now: () => new Date('2026-09-24T10:00:00Z'),
     log: (m) => logs.push(m),
     onProgress: opts.onProgress,
+    summarize: async (req) => {
+      summarized.push(req);
+      return opts.summarize ? opts.summarize(req) : 2;
+    },
     stat: (path) => stamps.get(path) ?? { mtimeMs: 1_000, size: (texts[path] ?? '').length },
     extract: async (path) => {
       extracted.push(path);
@@ -107,7 +113,7 @@ function harness(
     texts[path] = body;
     stamps.set(path, { mtimeMs: (stamps.get(path)?.mtimeMs ?? 1_000) + 1_000, size: body.length });
   };
-  return { lib, manifest, ingested, logs, texts, throws, extracted, touch, rewrite };
+  return { lib, manifest, ingested, logs, texts, throws, extracted, summarized, touch, rewrite };
 }
 
 let root: string;
@@ -434,5 +440,54 @@ describe('import progress reporting', () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({ done: 1, total: 1 });
     expect(seen[0].item?.status).toBe('failed');
+  });
+});
+
+describe('automatic section analysis after import', () => {
+  it('analyses a document it imported, with the ref and the parsed text', async () => {
+    const { lib, summarized } = harness({ texts: { '/deck.md': '# A\n正文A\n# B\n正文B' } });
+    const out = await lib.ingestFiles(['/deck.md']);
+    expect(summarized).toEqual([{ ref: 'deck.md', text: '# A\n正文A\n# B\n正文B', name: 'deck.md' }]);
+    expect(out.items[0]).toMatchObject({ status: 'imported', summaries: 2 });
+  });
+
+  it('analyses a re-imported document again so the summaries follow the content', async () => {
+    const { lib, summarized, rewrite } = harness({ texts: { '/a.md': 'first' } });
+    await lib.ingestFiles(['/a.md']);
+    rewrite('/a.md', 'second, longer body');
+    await lib.ingestFiles(['/a.md']);
+    expect(summarized.map((s) => s.text)).toEqual(['first', 'second, longer body']);
+    expect(summarized).toHaveLength(2);
+  });
+
+  it('never analyses a file it did not ingest', async () => {
+    const { lib, summarized } = harness({
+      texts: { '/same.md': 'abc', '/empty.pdf': '  ', '/x.zip': 'zzz' },
+      files: [knownFile({ ref: 'same.md', path: '/same.md', text: 'abc', mtimeMs: 1_000 })],
+    });
+    await lib.ingestFiles(['/same.md', '/empty.pdf', '/x.zip']);
+    expect(summarized).toEqual([]);
+  });
+
+  it('keeps the import successful when the analysis fails', async () => {
+    const { lib, logs } = harness({
+      texts: { '/a.md': 'abc' },
+      summarize: async () => {
+        throw new Error('embed worker gone');
+      },
+    });
+    const out = await lib.ingestFiles(['/a.md']);
+    expect(out.items[0]).toMatchObject({ status: 'imported', chunks: 3, summaries: 0 });
+    expect(counts(out)).toEqual(result({ imported: 1, chars: 3, chunks: 3 }));
+    expect(logs.join('\n')).toContain('embed worker gone');
+  });
+});
+
+describe('analysis scope', () => {
+  it('does not analyse a document the index declined', async () => {
+    const { lib, summarized } = harness({ texts: { '/a.md': 'abc' }, ingestNull: true });
+    const out = await lib.ingestFiles(['/a.md']);
+    expect(summarized).toEqual([]);
+    expect(out.items[0]).toMatchObject({ status: 'imported', reason: 'index-declined', summaries: 0 });
   });
 });

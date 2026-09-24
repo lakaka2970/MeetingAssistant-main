@@ -1379,6 +1379,7 @@ function bootstrap(): void {
         }
       },
       now: () => new Date(),
+      summarize: ({ ref, text, name }) => rag.summarizeDocument(ref, text, name),
       log: (m) => console.log(m),
       onProgress: (p) => {
         if (win && !win.isDestroyed()) win.webContents.send(IPC.knowledgeImportProgress, p);

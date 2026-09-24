@@ -11,6 +11,7 @@
  * answer pane shows verbatim on a direct hit.
  */
 import { chunkText } from './chunker';
+import { buildDocSummaries, belongsToDoc, isSectionRefOf, sectionRefOf } from './summaries';
 import { extractQaPairs, formatQaRecord, type QaPair } from '../../shared/qaPairs';
 import type { RagSource, VectorStore } from './vector-store';
 import type { EmbedClient } from './embedClient';
@@ -51,11 +52,16 @@ export class RagIngestor {
     if (!chunks.length && !pairs.length) return { total: 0, added: 0, skipped: 0, qa: 0 };
 
     if (opts.replace) {
+      // `#s` refs belong to the same document: re-importing the body invalidates
+      // its section summaries, and re-importing one section must not touch the
+      // body or its siblings.
+      const inScope = (ref: string | undefined): boolean =>
+        opts.ref ? belongsToDoc(ref, opts.ref) : !ref;
       this.store.removeWhere(
         (r) =>
           r.source === opts.source &&
           (r.sessionId ?? undefined) === (opts.sessionId ?? undefined) &&
-          (r.ref ?? undefined) === (opts.ref ?? undefined),
+          inScope(r.ref),
       );
       // the pairs live under source 'qa' in the same scope — replace them too
       this.store.removeWhere(
@@ -84,6 +90,44 @@ export class RagIngestor {
     }
     const qa = await this.ingestQaPairs(pairs, opts);
     return { total: chunks.length, added, skipped: chunks.length - added, qa };
+  }
+
+  /**
+   * Section summaries of one imported document (v1.0.1 ③): extractive, local,
+   * one record per section under `docRef#sN`. The purge covers the whole
+   * `docRef` family, so a document that lost a section cannot leave a stale
+   * summary behind. No Q&A scan — a summary is a locator, not a prepared answer.
+   */
+  async ingestDocSummaries(req: {
+    docRef: string;
+    text: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<number> {
+    this.store.removeWhere((r) => r.source === 'doc' && isSectionRefOf(r.ref, req.docRef));
+    const summaries = buildDocSummaries(req.text);
+    let added = 0;
+    for (let i = 0; i < summaries.length; i += EMBED_BATCH) {
+      const batch = summaries.slice(i, i + EMBED_BATCH);
+      const vectors = await this.embedder.embed(batch.map((s) => s.text));
+      for (let j = 0; j < batch.length; j++) {
+        const s = batch[j];
+        const record = this.store.add({
+          source: 'doc',
+          ref: sectionRefOf(req.docRef, s.index),
+          text: s.text,
+          metadata: {
+            ...req.metadata,
+            kind: 'summary',
+            doc_ref: req.docRef,
+            section: s.index,
+            section_title: s.title,
+          },
+          embedding: vectors[j],
+        });
+        if (record) added++;
+      }
+    }
+    return added;
   }
 
   /** one record per pair: text = the whole pair, embedding = the question */

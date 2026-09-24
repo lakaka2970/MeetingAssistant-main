@@ -1095,6 +1095,8 @@ export interface KnowledgeImportItem {
   detail?: string;
   /** RAG chunks this file contributed */
   chunks?: number;
+  /** section summaries the local analysis produced for this file */
+  summaries?: number;
 }
 
 /** machine-readable cause, so the copy lives in the renderer's dictionary */
