@@ -83,16 +83,18 @@ Review the summary and click "Enter MeetingAssistant". The wizard writes the who
 ## Step 3 — your first meeting
 
 1. Play something with speech in it (a meeting, a video, a podcast).
-2. Click **▶ Start** in the title bar; the **transcript rail** starts filling (one line per sentence — click it to open the full transcript, drag its right edge to resize).
+2. Click **▶ Start** in the title bar; the **transcript rail** starts filling — one chat bubble per sentence. Hover (or Tab to) a line and **⧉ / translate / ⚡Ans** appear; **⤢** in the rail header opens the full transcript, and dragging the rail's right edge resizes it.
 3. Click **⚡Ans** on one of their lines and the prompt card streams an answer written to be read aloud.
 4. Turn on **Auto** in the title bar to let the AI answer by itself — only question-like sentences trigger it.
-5. For answers grounded in your experience, import material with **📄Resume** / **📋JD** (`.md/.txt/.docx/.pdf/.pptx`). Parsing is local; the text is only sent to the LLM you configured, and only as context for a question you asked.
+5. If the answers are too long or too written-down, click **🎚 Answer style**: length (brief / standard / detailed), register (plain / work / tech) and the answer persona all live there, and **the next answer uses them** — no restart. The old answer list above the prompt card also collapses to one "Answer history · N" row.
+6. For answers grounded in your experience, import material with **📄Resume** / **📋JD** (`.md/.txt/.docx/.pdf/.pptx`). Parsing is local; the text is only sent to the LLM you configured, and only as context for a question you asked. For batches of documents use Settings → Knowledge → **Import files…** / **Import folder…** — each file reports progress and, when it did not go in, why.
 
 Other title-bar controls:
 
 | Button | What it does |
 |---|---|
 | `A:ZH` / `A:EN` | Language the AI answers in |
+| `🎚` | Answer length / register / persona — the next answer uses it |
 | `Text` / `Vision` | Answer with the text LLM, or with the vision model (screenshot Q&A) |
 | `🎤Mic` | Transcribe your own voice separately |
 | `Stealth:On/Off` | Hides the window from recording / sharing / screenshots (Windows; best-effort on macOS) |

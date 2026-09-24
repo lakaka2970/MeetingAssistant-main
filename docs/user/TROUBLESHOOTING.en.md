@@ -112,6 +112,17 @@ Work through this in order:
 3. **"Too many taps, wait a moment"**: each connection is limited to 5 commands per second; pause and tap again.
 4. **Nothing pops up on the PC**: by design. Remote control deliberately does not interrupt the screen you are sharing, so confirmation lives only on the phone — read the colour of the control you just tapped.
 
+## 11. Answer style, prompts and knowledge import
+
+1. **The model stopped showing its reasoning / answers got shorter**: as of v1.0.1 **thinking effort defaults to off**, and an upgraded machine loads its old settings as off too. That is intentional — hidden reasoning is paid for in first-token latency and tokens. To bring it back: Settings → Model → **Thinking effort** → low / medium / high (the control only appears for models that expose a thinking mode); **Follow default** sends no thinking parameter at all.
+2. **Answers feel too long or too written-down**: change length and register in the title-bar **🎚 Answer style** — the next answer uses it. The default pair is standard + work, i.e. the length the previous version produced; if it feels short, that is the rung, not a lost setting.
+3. **An enabled persona seems to do nothing**: a persona only rides the prompt when it is **selected** in 🎚. And "Draft from resume/JD" merely fills the editor — until you press Save the library has no such persona. A persona changes tone, stance and verbosity; it never invents experience your resume does not contain.
+4. **You edited a prompt layer and want it back**: Settings → General → Advanced → **Advanced prompt editor**, where each layer has its own *restore default*. **An empty box means "use the built-in wording"** — the grey text in it *is* that wording. Check the **assembled preview** underneath afterwards; that is literally the prefix being sent.
+5. **Import says "skipped · no extractable text (scanned/image-only)"**: that PDF has no text layer, and this release ships **no OCR**, so nothing can be indexed. Re-export it as a text PDF (or convert to `.docx`) and import again.
+6. **Importing again reports every file as "unchanged"**: that is the skip logic working — mtime and size first, then a content hash, so an unchanged file is neither parsed nor re-embedded. To force a rebuild, change the file or delete that entry and re-import.
+7. **`.doc / .ppt` reports "unsupported format"**: legacy 97-2003 OLE binaries have no reliable pure-JS parser; save them as `.docx` / `.pptx` first.
+8. **The ⚡Ans button is gone**: the transcript became **chat bubbles**, so ⧉ / translate / ⚡Ans appear when you **hover** (or Tab to) a line. **Clicking a bubble no longer expands it** — the full-transcript panel is behind **⤢** in the rail header, and the old answers collapsed into one "Answer history · N" row that expands with ▸.
+
 ## Still stuck
 
 1. Settings → General → "Diagnostics" (also in the title-bar `⋯` menu) → "Copy diagnostics". The report is built locally and copied to the clipboard only (nothing is written to disk); it contains **no API keys, resume/JD text or transcripts**, so it is safe to paste into a public issue.

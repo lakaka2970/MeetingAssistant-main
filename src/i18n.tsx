@@ -407,8 +407,9 @@ const zh = {
         title: '1. 快速开始（三步）',
         lines: [
           '第一步：在设置或配置向导里填入 API Key —— 转写和 AI 回答各需要一个，同一个服务商的 Key 可以复用。',
-          '第二步：让电脑放一段有人说话的声音（视频、会议、播客都行），点标题栏的「▶ 开始」，转录导轨应当出现文字（点导轨可展开全部转录）。',
+          '第二步：让电脑放一段有人说话的声音（视频、会议、播客都行），点标题栏的「▶ 开始」，左侧的转录气泡应当逐句出现（鼠标悬停到某一句上才浮出「⧉ 复制」「译」「⚡答」；点导轨右上角的「⤢」才展开全部转录）。',
           '第三步：在导轨里对方任意一句上点「⚡答」，提词卡就会生成可以直接照着念的回答；打开「持续答」则由 AI 自动接话。',
+          '嫌回答太长或太书面：点标题栏的「🎚 回答风格」换内容量（精简/标准/详尽）、专业度（口语/职场/技术）或应答人设，下一条回答就生效，不用重启。',
           '想让回答贴合你的经历，先在提词卡上点「📄简历」「📋JD」导入资料（支持 .md/.txt/.docx/.pdf/.pptx，全部本地解析）。',
         ],
       },
@@ -464,6 +465,7 @@ const zh = {
           '手机首次访问若报 ERR_CERT_AUTHORITY_INVALID，点「高级 → 继续前往」；若报 ERR_CERT_INVALID 则没有绕过入口，点连接窗口里的「改用 HTTP」（代价是手机不能保持常亮）。',
           'Windows 第一次监听会弹防火墙提示，请点「允许」并勾选「专用网络」；点错拒绝后的表现是手机永远连不上而电脑侧毫无异常。',
           '手机与电脑须连同一 Wi-Fi；默认端口 18765，关闭开关即停止监听；数据只在电脑与手机之间直连，不经过任何第三方服务器。',
+          '连上之后手机页面顶部会多出一条「控制」栏：远程开关转录与持续答、切换回答内容量 / 专业度、输入文本问题、回看本场历史回答。颜色就是电脑上的真实状态，点了不等于生效（1.5 秒内没等到回状态会标「未确认」），且电脑上不会弹提示。权限在 设置 → 通用 → 手机显示 → 允许手机远程控制（默认开启，含六项逐个授权）。',
         ],
       },
       examHelp: {
@@ -1150,8 +1152,9 @@ const en: Dict = {
         title: '1. Quick start (three steps)',
         lines: [
           'Step 1: add your API keys in Settings or the setup wizard — one for transcription, one for AI answers; a key from the same provider can serve both.',
-          'Step 2: play something with speech in it (a video, a meeting, a podcast), click "▶ Start" in the title bar, and text should appear in the transcript rail (click the rail to open the full transcript).',
+          'Step 2: play something with speech in it (a video, a meeting, a podcast), click "▶ Start" in the title bar, and the transcript bubbles should fill in on the left — hover a line to reveal "⧉ copy", "translate" and "⚡Ans", and click "⤢" in the rail header for the full transcript.',
           'Step 3: click "⚡Ans" on any of their lines and the prompt card shows an answer you can read aloud, or turn on "Auto" and let the AI reply to questions by itself.',
+          'Answers too long or too written-down? The title-bar "🎚 Answer style" switches length (brief/standard/detailed), register (plain/work/tech) and the answer persona — the next answer uses it, no restart.',
           'For answers grounded in your own experience, import your resume and the job description with "📄Resume" / "📋JD" on the prompt card (.md/.txt/.docx/.pdf/.pptx, parsed locally).',
         ],
       },
@@ -1205,6 +1208,7 @@ const en: Dict = {
           'On the first visit a phone reporting ERR_CERT_AUTHORITY_INVALID can tap "Advanced → Continue"; ERR_CERT_INVALID has no bypass — press "Switch to HTTP" in the connect window (the phone then cannot keep the screen awake).',
           'The first time Windows starts listening it asks about the firewall: click Allow and tick Private networks. If you cancelled, the phone can never connect while the PC looks perfectly healthy.',
           'Phone and PC must share one Wi-Fi; the default port is 18765; switching the feature off stops the listener, and data goes PC-to-phone directly through no third-party server.',
+          'Once connected the phone page grows a "control" bar on top: start/stop the transcript and continuous answering remotely, switch answer length and register, type a text question, and review this meeting\'s answer history. The colours are the desktop\'s real state, a tap is not a confirmation (1.5 s without a report back marks it "not confirmed"), and nothing pops up on the PC. Grants: Settings → General → Phone display → Allow remote control (on by default, with six per-item switches).',
         ],
       },
       examHelp: {

@@ -1,6 +1,6 @@
 {
   "name": "meeting-assistant",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Real-time meeting/interview assistant for Windows and macOS: streaming ASR (local FunASR / cloud) and first-person answers via BYOK LLM",
   "main": "./out/main/index.js",
   "author": "lakaka2970",

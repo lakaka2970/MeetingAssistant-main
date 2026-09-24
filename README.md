@@ -24,15 +24,21 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
   - **精度优先的取舍**：只有「原题级命中 + 客观题 + 能锚定到屏幕选项」才会免模型直答；相近题会同时列出来让你确认；库里没有的题一律走 AI（并按需联网），不会硬凑一个答案。成堆下载来的题库必然互相重复：同一道题自动合并（保留解析最全的那份），**不同文件答案互相矛盾的题会被标成“答案不一致”而不是猜一个**；题干只是一句通用指令（如图形推理的「选择最合适的一项填入问号处」）时也不直答——真正的题在图里，文字认不出来。
   - **可以只绑一个总目录**：四个题型都指向同一个 `题库` 根目录也可以（本机是纯字面索引，多出的内容只会让候选变多，不影响命中速度）。代价是别的题型里的长篇资料可能作为「相近题」被列出来让你确认——它们永远不会被当成原题直接作答。
   - **读屏有两条路**：装 `npm i tesseract.js`（约 2MB 语言包，全离线）则截图先在本机识别文字，读不到题再交给视觉模型；没装就需要一个**支持图片的 API Key**（Gemini / 智谱 / Groq / 百炼 / MiMo / Ollama 等）。两者都没有时框选会直接说明缺什么，此时可用「题库自检」右侧的 **作答这题**：把题干粘贴进去，同样走 题库 → AI → 网络 的完整链路。
-- **提词主视图 + 转录导轨**：左栏是一条**转录导轨**——每句一行、说话人分色、实时_partial_ 钉在底部；导轨右缘的细条可**拖拽调宽**（10%–50%，默认 16%，重启保留）。点导轨任意处，完整转录面板以**覆盖层**弹出（逐句 ⚡答、翻译、清屏都在里面），看完收起，布局不动。
+- **提词主视图 + 转录气泡**：左栏是一条**转录导轨**——每句一个**聊天气泡**、说话人分色、整句在泡内换行，实时_partial_ 钉在底部；**⧉ 复制 / 译 / ⚡答** 在悬停（或键盘 Tab 聚焦）到那句时才出现。导轨右缘的细条可**拖拽调宽**（10%–50%，默认 16%，重启保留）；点右上角 **⤢** 才展开完整转录面板（框选提问、清屏在那里），**点泡泡本身不会放大**。提词卡的历史回答收成一行「历史回答 · N」，▸ 展开 / ▾ 收起，**默认收起**并把空间留给当前回答（状态重启保留）。
+- **🎚 回答风格（会议中随时改）**：标题栏 🎚 一次弹出**内容量**（精简 15-25 秒 / 标准 30-60 秒 / 详尽 90-150 秒）、**专业度**（口语 / 职场 / 技术）与**应答人设**三组选择，改完**下一条回答就生效**。默认「标准 + 职场」，输出长度与上一版一致。
+- **应答人设库与提示词进阶**：设置 → 通用 → 高级设置 → **应答人设库** 里预先写好最多 12 套「我是谁、我怎么说话」（可点**从简历/JD 生成初稿**，草稿要你确认保存），会前用 🎚 选一套；同处的 **提示词进阶** 直接编辑系统提示词的三层（基础人设模板 / 回答风格指令 / 自定义追加指令），灰字即内置原文、留空即用，并给出**最终拼接预览**的字数。这些层都落在**可缓存的稳定前缀**上：什么都不设置时，发给模型的提示词与上一版**逐字节相同**。
 - **右下角延迟 HUD**：状态栏右侧显示「话落→出字」端到端延迟（末条 / p50 / p95）、首字延迟与推理耗时；悬停每项都有解释，用于判断慢在防抖门控、检索还是模型本身。
 - **手机显示（局域网）**：设置里打开 **手机显示** 后，本机变成一个只在局域网里说话的网页服务，**手机浏览器扫码即看**——左边实时转写、上面大字显示当前答案（流式逐字、公式照常排版）。它挂在主进程的事件源上，**不经过界面窗口**，所以电脑这边可以彻底隐身、不开任何窗口，屏幕上没有任何东西会被共享或拍到。同时它也接管「**后台截屏答题**」：按下截屏热键 → 拍屏 → 读题 → **先查本机题库** → 答案直接出现在手机上，全程不用回头看电脑。延迟在这条链路上是显式量：手机上每次 ping/pong 校准两机时钟差后显示真实端到端毫秒数，设置面板显示线路延迟与「因手机跟不上而丢弃」的计数。
   - 配对走「**6 位配对码 → 长期令牌**」：配对码**只显示在这台电脑上**，绝不回传给发起请求的设备，所以同一局域网里别人无法自助连进来；令牌存在手机本地，之后免配对直连。
+  - **在手机上实时改设置**：连上后手机页面顶部多出一条 **控制** 栏——远程开关**转录**与**持续答**、切换**回答内容量 / 专业度**、**输入问题**（纯文本）、回看本次会议**历史回答**。**颜色即电脑真实状态，点了不等于生效**（1.5 秒没等到回状态标「未确认」），电脑侧不弹任何提示。默认开启，可在 设置 → 通用 → 手机显示 → **允许手机远程控制** 整体关掉或按六项逐个授权。
   - 默认 HTTPS（自签证书）：一是加密局域网这一段，二是手机浏览器的 **屏幕常亮 API 只在安全上下文存在**，明文 http 下手机亮到一半就息屏。手机首次访问会提示证书不受信任——**只有报 `ERR_CERT_AUTHORITY_INVALID` 时**才有「高级 → 继续前往」可点；连接窗里备了一颗 **「改用 HTTP」** 按钮，专治那些不提供绕过入口的安卓浏览器（代价是手机不能保持常亮，按钮旁写明了）。也可以下载 `/server.crt` 装进信任列表彻底消除警告。自签证书**挡得住被动嗅探，挡不住主动中间人**，仅限可信局域网。
   - **Windows 防火墙**：第一次监听端口时系统会弹窗，请允许「专用网络」；拒绝后手机会一直连不上而电脑侧毫无异常。
 - **回答可控**：`答:中 / 答:EN` 切换回答语言；`纯文本 / 多模态` 在文本大模型与视觉模型（可**截图提问**）之间切换。
 - **公式与排版正常显示**：回答里的 `$…$` / `$$…$$` / `\(…\)` / `\[…\]` 由 KaTeX 排版（含 `$ … $` 这种两端带空格的写法），`**加粗**`、`*斜体*`、`` `代码` ``、`### 小标题` 也直接渲染，不再把 markdown 原样吐在屏幕上。
 - **贴合你的阅历**：提词卡上 **📄简历 / 📋JD** 导入资料（`.md/.txt/.docx/.pdf/.pptx`），本地解析、本地建立索引，只在提问时作为上下文发给大模型——资料本身不离开你的电脑。不同面试是不同的会话，各自绑定自己的资料与答案库。
+- **导入看得见进度、失败有原因**：设置 → 知识库 有 **导入文件…**（可多选）与 **导入文件夹…** 两颗按钮，导入过程按文件实时上报（`导入中 12/37…`），每个文件一行结果：已入库 / 未变化 / 已跳过 / 失败，并写明原因（格式不支持、抽不出文字=扫描版或图片型 PDF、解析失败、索引未就绪未写入）。**重复导入内容没变的文件会被跳过**（先比 mtime+大小，再比正文哈希），不再是全量重建。
+- **导入后自动做「节摘要」**：每份入库文档按节切开（PPTX 按幻灯片、带标题的按标题、其余按长度），每节存一条**抽取式**短摘要进索引——用来回答"这套方案的评测方法是什么"这类跨节、文档级的问题（这类问题在 300 字的语块里永远匹配不到）。每篇最多 40 节、单次检索最多带 2 条，避免摘要挤掉原文；**全在本机、不调模型、零费用**。PPTX 的**演讲备注与表格**也会被抽取。
+- **回答默认不再请求「思考」**：`设置 → 模型 → 思考强度` 的默认值是**关闭**，即支持思考模式的模型不再在你没要求时偷偷推理（首字延迟与 token 都要付钱）。想要思考回答就在下拉框选 低 / 中 / 高；选「跟随默认」则完全不发送思考参数。
 - **提前准备的答案优先亮出来**：资料或笔记里写成 `问：… 答：…` / `Q: … A: …` / `【问题】…【回答】…` 的段落会被自动识别成问答对并按「问题」建索引。面试官的问题命中时，提词卡**先原样显示你准备的答案**（本地检索，几十毫秒内可见），再由 AI 在其基础上充实成可以直接念的完整回答——这条路径完全离线。
 - **知识库没有答案才联网**：只有本地知识库毫无命中时，才会把问题发给你自己配置的搜索引擎（Tavily / Brave / SerpAPI，BYOK，默认关闭），检索结果作为回答依据并附上来源；一次检索最多等 2.5 秒，超时即放弃、绝不影响出词。
 - **会话可删除**：提词卡上 🗑 删除整场对话（对话、转录、已索引的简历/JD 与其准备答案一并清除，有二次确认）。
@@ -50,16 +56,20 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 ### 1. 实时转写：开始 / 停止 / 调宽 / 展开
 
 1. 让电脑播放有人说话的内容（会议、视频、播客都行）——采集的是**系统回环音频**，不需要麦克风、不需要会议软件配合。
-2. 点标题栏 **▶ 开始**，转录导轨开始逐句出字（每句一行，说话人分色，实时识别中的半句钉在底部显示 `_partial`）。
+2. 点标题栏 **▶ 开始**，转录导轨开始逐句出字（每句一个**聊天气泡**，说话人分色、整句在泡内换行，实时识别中的半句钉在底部显示 `_partial`）。
 3. 点标题栏 **⏸ 停止**（或托盘菜单「停止转写」）结束采集。
 4. 导轨右缘有一根细条，**按住拖拽**即可调宽（10%–50%，默认 16%，重启后保留）。
-5. 点导轨任意处，**完整转录面板**以覆盖层弹出——逐句 ⚡答、翻译、清屏都在面板里，点空白处收起，整体布局不动。
-6. 想把自己的发言也单独转写：打开标题栏 **🎤麦克风**（建议戴耳机，避免扬声器回声被二次采集）。
+5. 鼠标**悬停**（或键盘 Tab 聚焦）到某个泡泡上，右下角浮出 **⧉ 复制 / 译 / ⚡答** 三个按钮——点 ⚡答 就地为这句生成回答，点 ⧉ 把原文送进剪贴板，点 译 在该句下面内联显示对照译文（译文不进对话上下文）。
+6. 想看整屏的完整转录面板（框选提问、清屏都在里面）：点导轨右上角的 **⤢**，面板以覆盖层弹出，点 **✕** 回到导轨。**点泡泡本身不会放大**，布局也不会被顶掉。
+7. 想把自己的发言也单独转写：打开标题栏 **🎤麦克风**（建议戴耳机，避免扬声器回声被二次采集）。
 
 ### 2. AI 回答：⚡答 / 持续答 / 回答语言 / 双通道
 
-- **手动答**：在导轨或转录面板里对方那句话上点 **⚡答**，提词卡流式生成一段第一人称、可直接照着念的回答。
+- **手动答**：把鼠标移到（或 Tab 聚焦到）导轨里对方那个泡泡上，点浮出的 **⚡答**，提词卡流式生成一段第一人称、可直接照着念的回答；整屏转录面板（⤢）里也照样能逐句作答。
 - **持续答**：打开标题栏 **持续答**，AI 自动接话。门控是三层：明显的寒暄与流程安排（「把这个链接发我一下」）由本地启发式免费挡掉；拿不准的一句才花一次极小的分类调用判断；**判定超时或失败一律回退成「照答」**，宁可多答不漏答。
+- **🎚 回答风格**：标题栏 **🎚** 一次弹出三组选择——**内容量**（精简 / 标准 / 详尽）、**专业度**（口语 / 职场 / 技术）、**应答人设**。改完**下一条回答就生效**，不用重启、不用回设置页。每档都标了念完要多久（约 15-25 / 30-60 / 90-150 秒），默认「标准 + 职场」。人设先在 设置 → 通用 → 高级设置 → **应答人设库** 写好（或点 **从简历/JD 生成初稿**，草稿填进输入框、你改完点保存才生效），再回这里启用。
+- **思考强度**：默认**关闭**——回答不该为你看不见的推理付首字延迟和 token。要开：设置 → 模型 → **思考强度** 选 低 / 中 / 高（只对支持思考模式的模型出现）；**跟随默认** 表示一个思考参数都不发。
+- **历史回答可折叠**：提词卡上方一行 **历史回答 · N**，▸ 展开回看、▾ 收起把纵向空间留给当前回答；默认收起，展开与否重启后保留。点任一旧回答即进入**回看模式**（顶部提示「正在回看旧回答」），点 **回到最新** 继续跟流。
 - **回答语言**：标题栏 **答:中 / 答:EN** 切换。此外，在任意一句上选择「翻译」可把该句转录内联翻译成另一语言。
 - **文本 / 视觉双通道**：标题栏 **纯文本 / 多模态** 切换回答用的模型。多模态下可以**截图提问**（把屏幕上的内容作为图片发给视觉模型）。
 - **删除会话**：提词卡 **🗑** 一次删掉整场对话（对话、转录、该会话已索引的简历/JD 与准备答案全部清除），有二次确认。不同面试建不同会话（托盘「新建会话」），资料与答案库按会话隔离。
@@ -67,9 +77,12 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 ### 3. 简历 / JD 知识库：导入 → 准备答案 → 命中
 
 1. 提词卡上点 **📄简历** 或 **📋JD**，选本地文件（`.md/.txt/.docx/.pdf/.pptx`）。解析与索引**全部在本机**完成，资料本身不出电脑，只有在提问时才作为上下文发给你配置的大模型。
-2. **准备答案优先亮出**：资料或笔记里写成 `问：… 答：…` / `Q: … A: …` / `【问题】…【回答】…` 的段落会被自动识别成问答对、按「问题」建索引。面试官的问题命中时，提词卡**先原样显示你准备的答案**（本地检索，几十毫秒），再由 AI 在其基础上充实成可以直接念的完整回答——这条路径完全离线、不花一次网络请求。
-3. **联网兜底**：只有本地知识库毫无命中时，才会把问题发给你配置的搜索引擎（设置 → 视觉与搜索 → 网络检索兜底：Tavily / Brave / SerpAPI，各自带免费额度，默认关闭）。一次检索最多等 **2.5 秒**，超时即放弃、绝不影响出词；检索结果作为回答依据并附上来源。
-4. 想先看看某个目录能被识别出多少条准备答案：`npm run qa:inventory -- <目录>`（干跑，不调模型）。
+2. **批量资料走 设置 → 知识库**：**导入文件…**（一次可多选，一份 PDF 不必为它建目录）与 **导入文件夹…**（递归，跳过隐藏文件与不支持的扩展名）。只接受 `.md/.markdown/.txt/.docx/.pdf/.pptx`；面板下方常驻提示「旧版 .doc / .ppt 请先转成 .docx / .pptx」——那类 97-2003 老格式没有可靠的纯 JS 解析器，选了也会被记成 `格式不支持` 跳过，而不是把乱码写进索引。
+3. **导入过程看得见**：按文件实时上报进度（`导入中 12/37…`），每个文件一行结果——**已入库 / 未变化 / 已跳过 / 失败**，原因写明白：`格式不支持`、`抽不出文字（扫描版/图片型）`、`解析失败`（悬停看原始错误）、`索引未就绪，未写入`。**重复导入内容没变的文件直接跳过**（先比 mtime+大小，再比正文哈希），不解析、不重新嵌入、不动索引。
+4. **导入后自动做本地节摘要**：每份入库文档切成节（PPTX 按幻灯片、带标题的按标题层级、其余按长度分组），每节存一条**抽取式**短摘要进索引——用来回答"这套方案的评测方法是什么"这类**跨节、文档级**问题（300 字的语块永远匹配不到它们）。每篇最多 40 节、单次检索最多带 2 条摘要，避免摘要挤掉原文；**全在本机完成、不调用模型、零费用**。PPTX 的**演讲备注与表格**同样会被抽取，写在备注里的答案能被检索到。
+5. **准备答案优先亮出**：资料或笔记里写成 `问：… 答：…` / `Q: … A: …` / `【问题】…【回答】…` 的段落会被自动识别成问答对、按「问题」建索引。面试官的问题命中时，提词卡**先原样显示你准备的答案**（本地检索，几十毫秒），再由 AI 在其基础上充实成可以直接念的完整回答——这条路径完全离线、不花一次网络请求。
+6. **联网兜底**：只有本地知识库毫无命中时，才会把问题发给你配置的搜索引擎（设置 → 视觉与搜索 → 网络检索兜底：Tavily / Brave / SerpAPI，各自带免费额度，默认关闭）。一次检索最多等 **2.5 秒**，超时即放弃、绝不影响出词；检索结果作为回答依据并附上来源。
+7. 想先看看某个目录能被识别出多少条准备答案：`npm run qa:inventory -- <目录>`（干跑，不调模型）。
 
 ### 4. 做题模式（在线测评 / 笔试）
 
@@ -120,11 +133,26 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 - 要提 issue：设置 → 通用 → **诊断信息**（或标题栏 `⋯` 菜单）生成报告——不含 Key、转写与简历内容，仅复制到剪贴板、不落盘。
 - 配置向导随时重开：**⚙ 设置 → 重新运行配置向导**（主窗口保持运行，不会退出应用）。
 
+### 9. 回答风格、应答人设与提示词进阶
+
+会议中要改的是"怎么说"，不是"重配一遍模型"。三条入口各有分工：
+
+- **标题栏 🎚 回答风格**（会中随手改）：三组选择——**内容量**（精简 / 标准 / 详尽）、**专业度**（口语 / 职场 / 技术）、**应答人设**。点一下即刻生效，**下一条回答就用新的**，不需要重启也不需要进设置页保存。每档标了念完要多久（约 15-25 / 30-60 / 90-150 秒）。默认「标准 + 职场」，与上一版的输出长度一致。
+- **设置 → 通用 → 高级设置 → 应答人设库**：最多 12 套第一人称人设（每套正文 ≤ 2000 字），写"我是谁、我怎么说话、答题习惯"。两种写法：
+  1. **手写**——自己填名称与正文，保存后用 🎚 启用；
+  2. **从简历/JD 生成初稿**——先在提词卡上导入简历或 JD，点这颗按钮，模型按你的真实经历起草（约 10-30 秒），**初稿只是填进输入框，你改完点保存才入库**。
+  人设只影响口吻、立场与详略，它不会替你编造简历里没有的经历；不启用任何人设即回到内置提词器口吻。
+- **设置 → 通用 → 高级设置 → 提示词进阶**（⑥ 的直跳入口）：直接编辑系统提示词的三层——**基础人设模板** / **回答风格指令** / **自定义追加指令**。规则很简单：**输入框留空 = 用内置原文**，框里的灰字就是内置内容本身；每层可单独「恢复默认」，也可「全部恢复默认」。下面的**最终拼接预览**（只读）显示这一次真正发给模型的前缀全文与字数——注意它取当前会话的简历/JD/笔记，所以换一场会话字数就会变。
+- **为什么这些改动不影响缓存**：以上所有层都拼在**稳定前缀**上（每次请求逐字节相同的部分），风格/人设变化只在该档位变化时改变字节；**装了新版本什么都不设置时，前缀与上一版逐字节相同**（有测试钉住），升级不会让既有回答风格漂移。
+- **思考强度**：在 设置 → 模型，默认 **关闭**。支持思考模式的模型不再在你没要求时偷偷推理（那会同时抬高首字延迟与 token 费用）；要开就选 低 / 中 / 高，选 **跟随默认** 则一个思考参数都不发。手机端目前**不能**远程切换思考强度，只能远程切内容量与专业度。
+
 ## 📸 界面预览
 
 | 浅色 | 深色 |
 |---|---|
 | ![浅色主界面](docs/main-light.png) | ![深色主界面](docs/main-dark.png) |
+
+> 下面两张截图仍是 v1.0.0 的界面：转录栏还不是气泡、历史回答未折叠、标题栏还没有 🎚。重拍待补，界面以应用实际显示为准。
 
 - 双语实时演示：![demo-bilingual.gif](docs/demo-bilingual.gif)
 - 完整演示视频：[MeetingAssistant-demo.mp4](docs/MeetingAssistant-demo.mp4)
@@ -395,7 +423,8 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 | [INSTALL_MACOS.en.md](docs/user/INSTALL_MACOS.en.md) | macOS 从源码安装与 BlackHole 音频路由 |
 | [docs/windows/SETUP.md](docs/windows/SETUP.md) / [zh-CN](docs/windows/SETUP.zh-CN.md) | Windows 平台完整配置（Python / 本地 ASR） |
 | [docs/macos/SETUP.md](docs/macos/SETUP.md) | macOS 平台完整配置 |
-| [RELEASE_NOTES_v1.0.0.md](docs/user/RELEASE_NOTES_v1.0.0.md) | 版本说明与已知问题 |
+| [RELEASE_NOTES_v1.0.1.md](docs/user/RELEASE_NOTES_v1.0.1.md) | **当前版本**说明：升级必读的三个默认行为变更、新增内容、已知问题 |
+| [RELEASE_NOTES_v1.0.0.md](docs/user/RELEASE_NOTES_v1.0.0.md) | 上一版（首个正式版）说明与已知问题 |
 
 ## 📄 开源许可
 
@@ -416,7 +445,11 @@ A printable/offline copy of this document is available as [README.pdf](README.pd
 
 - Streaming ASR: local FunASR (default), Alibaba Cloud Bailian realtime (recommended cloud), MiMo, experimental MOSS-Transcribe-Diarize, offline Whisper fallback
 - Per-line ⚡Ans answers + 🎤 optional mic channel; text (`纯文本`) or multimodal/vision mode with screenshot Q&A
+- Transcript as chat bubbles: one bubble per sentence, coloured by speaker, wrapping inside the bubble; **copy / translate / ⚡Ans** appear on hover or keyboard focus instead of sitting there permanently. **⤢** opens the full-transcript panel (clicking a bubble no longer does), the rail's edge drags to resize, and the answer history above the prompt card collapses to a single "Answer history · N" row.
+- 🎚 **Answer style, switchable mid-meeting**: length (brief / standard / detailed) × register (plain / work / tech) × persona, all from the title bar, applied to the next answer with no restart. Up to 12 saved personas (Settings → General → Advanced → Persona library, one tap drafts a persona from your resume/JD), and an **advanced prompt editor** for the three prompt layers (base persona / style directives / custom appended instructions) with a live assembled-prefix preview. Leaving a layer empty uses the built-in wording, and an untouched install sends **the same bytes** to the model it sent before the upgrade.
+- Thinking is off by default: reasoning-capable models no longer bill you in first-token latency and tokens for reasoning you never asked for; pick low/medium/high per preset in Settings → Model if you want it.
 - Knowledge panel: import your resume/JD (`.md/.txt/.docx/.pdf/.pptx`), parsed and indexed locally, only sent to your LLM as context when asking; each session is one interview with its own material
+- Batch document import reports itself: Settings → Knowledge takes single files (multi-select) or a whole folder, shows `Importing 12/37…` while it runs and one row per file — imported / unchanged / skipped / failed — with the reason (unsupported format, no extractable text, parse failed, index not ready). Re-importing an unchanged file is skipped by content hash instead of rebuilding the index, and each imported document is cut into sections whose extractive summaries go into the index for document-level questions — locally, with no model call and no cost.
 - Prepared answers surface first: `问：… 答：…` / `Q: … A: …` / `【问题】…【回答】…` blocks in your documents or notes are auto-detected and indexed by question; on a hit the prompt card shows your prepared answer verbatim (local, tens of ms) and the AI only enriches it — no network on that path
 - Exam mode (做题模式): a separate small floating window, forcibly invisible to screen capture, for online assessments. Drag over the question on screen → it is read (local OCR first, vision model otherwise) → **your local question bank answers it in ~1 ms, offline**; the LLM only covers what the bank lacks, and the web only on an explicit opt-in. Four sub-modes, each bound to its own folder: aptitude/essay, coding/technical, personality, other. Paired real-exam PDFs (`…-学生版.pdf` + `…-答案版.pdf`, keys like `N.【答案】D。解析：…` or `1~5 BACDB`) are joined by (section, number) and **refuse to pair when the two papers' sections disagree** — a wrong answer with confidence is the one outcome this must never produce; when the OA page shuffles the options, the answer is re-anchored onto the option text and the on-screen letter. Reading the screen needs either `npm i tesseract.js` (offline, tried first) or a vision-capable key; with neither, paste the stem into the bank field and use **Answer this** for the same bank → AI → web chain. Binding one shared parent folder to all four sub-modes is fine — the index is literal, so extra material can only ever surface as a "similar question" to confirm, never as a direct answer.
 - Phone display over the LAN (设置 → 手机显示): the machine becomes a local-only web service and a phone browser shows the live transcript plus the current answer in large type — streamed token by token, maths typeset with KaTeX. The bridge taps the ASR/LLM/exam event sources **inside the main process**, not the UI, so the PC side can stay hidden or never open a window at all: nothing on this screen is in a shared capture. It also carries the headless screen-answer path — with 「截屏热键只出答案到手机」 on, one press of the screenshot hotkey captures the screen, reads it, **checks your local question bank first** and puts the answer on the phone without raising a window. Latency is an explicit quantity here, not a vibe: the phone calibrates the two clocks with ping/pong so the milliseconds it prints are real end-to-end cost, and the settings row shows wire latency plus how many frames were dropped because a phone could not keep up. Pairing is a 6-digit code → long-lived token, where **the code is only ever displayed on this machine** and never sent back to the device that asked, so nothing else on the LAN can pair itself. HTTPS with a self-signed cert is the default — it encrypts the LAN hop *and* is the only context where the browser's screen Wake Lock exists, so the phone does not dim mid-meeting. Self-signed stops passive sniffing, not an active man-in-the-middle: trusted networks only. Off unless you enable it; default port 18765.
@@ -432,15 +465,25 @@ A printable/offline copy of this document is available as [README.pdf](README.pd
 **Operating guide (short version)** — the full click-level walkthrough is in the Chinese sections
 「界面与操作详解」/「单屏 / 双屏」above; the same docs exist in English under `docs/user/`:
 
-- **Transcribe**: play any audio on the PC → title bar **▶ Start**; the rail shows one line per
-  sentence. Drag the thin strip on the rail's right edge to resize (10–50%); click the rail to open
-  the full-transcript overlay. Optional **🎤 Mic** transcribes your own speech on a separate channel.
+- **Transcribe**: play any audio on the PC → title bar **▶ Start**; the rail shows one chat bubble
+  per sentence. Hover (or Tab to) a bubble for **⧉ copy / translate / ⚡Ans**; **⤢** in the rail header
+  opens the full-transcript panel — clicking a bubble no longer expands it. Drag the thin strip on
+  the rail's right edge to resize (10–50%). Optional **🎤 Mic** transcribes your own speech on a separate channel.
 - **Answer**: click **⚡Ans** on any line; toggle **Auto-answer** for continuous mode (gated),
   **答:中/答:EN** for answer language, **plain-text/multimodal** to switch to the vision model
-  (screenshot Q&A). **🗑** deletes the whole session (transcript, indexed resume/JD, prepared answers).
+  (screenshot Q&A). **🎚** switches answer length, register and persona for the next answer; the
+  **Answer history · N** row above the prompt card expands and collapses (collapsed by default, and
+  remembered). **🗑** deletes the whole session (transcript, indexed resume/JD, prepared answers).
 - **Resume/JD**: **📄Resume / 📋JD** on the prompt card import `.md/.txt/.docx/.pdf/.pptx`, parsed and
   indexed locally. `Q:/A:` blocks surface your prepared answer verbatim before the AI enriches it;
   web search (Tavily/Brave/SerpAPI, off by default, 2.5 s cap) only fires when the local KB misses.
+- **Knowledge documents**: Settings → Knowledge → **Import files…** (multi-select) or **Import folder…**
+  — per-file progress and a per-file verdict with the reason when something did not go in; unchanged
+  files are skipped by content hash, and each document's section summaries are produced locally.
+- **Prompts**: Settings → General → Advanced → **Persona library** (up to 12, or draft one from your
+  resume/JD) and **Advanced prompt editor** (the three layers, grey placeholder = built-in wording,
+  empty box = use it, plus the assembled-prefix preview). Thinking effort lives in Settings → Model
+  and defaults to **off**.
 - **Exam mode**: title bar **做题** opens a capture-invisible panel bound to per-mode bank folders;
   drag-select a question (or `Ctrl+Shift+S` full-screen / `Ctrl+Alt+A` last line / `Ctrl+Alt+S`
   region) → local bank first (~1 ms, offline) → LLM → optional web. See the Chinese section for the
@@ -489,5 +532,5 @@ walkthrough: [QUICK_START.en.md](docs/user/QUICK_START.en.md). Key guides:
 **Supported providers**: DeepSeek, Alibaba Cloud DashScope (CN/INTL), MiMo, Zhipu, Groq, Gemini,
 Ollama, plus any OpenAI-compatible endpoint — see `shared/providerCatalog.ts` (single source of truth).
 
-**License**: [Apache-2.0](LICENSE). The installers are not code-signed (`v1.0.0`) — download only from
+**License**: [Apache-2.0](LICENSE). The installers are not code-signed (`v1.0.1`) — download only from
 this project's Releases page.
