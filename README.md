@@ -95,6 +95,7 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 
 - **入口**：标题栏 **双屏** 分段控件，或 设置 → 通用 → 手机显示 → 打开连接窗口。进入双屏时**自动打开持续答**，主窗自动隐藏并强制隐身。
 - **手机上看到什么**：左边实时转写流，上方大字显示当前答案（流式逐字、公式照常排版）。每次 ping/pong 校准两机时钟差，所以手机上打印的毫秒数是真实端到端延迟；设置面板另有线路延迟与「因手机跟不上而丢弃」计数。
+- **在手机上实时改设置**：连上后手机页面顶部多出一条 **控制** 栏——远程开/关 **转录** 与 **持续答**、切换 **回答内容量 / 专业度**、**输入问题**、回看本次会议 **历史回答**。颜色即桌面真实状态，点了不等于生效（1.5 秒内没等到桌面回状态就标「未确认」），且**电脑侧不弹任何提示**。授权见 设置 → 通用 → 手机显示 → **允许手机远程控制**（默认开启，含六项逐项开关）。详见下文「在手机上实时改设置」。
 - **免看电脑截屏答题**：连接窗口勾选 **「截屏热键只送手机」** 后按 `Ctrl+Shift+S` 或 `Ctrl+Alt+S`——拍屏、读题、查题库、答案直出手机，电脑这边不弹任何窗。不勾选时 `Ctrl+Alt+S` 恢复常规行为（弹做题小窗等你拖框）。
 - **常亮**：手机上必须点一次 **「常亮」**（浏览器规定须用户点击才允许保持亮屏），且只在 https 下可用——这就是默认自签 HTTPS 的第二个理由。
 - **证书**：想彻底消除警告，可从 `/server.crt` 下载证书装进手机信任列表。自签证书挡得住被动嗅探，挡不住主动中间人，**仅限可信局域网**。
@@ -250,6 +251,34 @@ macOS 暂无安装包，需从源码运行（系统声音需 BlackHole 虚拟音
 
 > 隐私边界：这条链路只在你**主动开启**后才监听端口；数据只在电脑与手机之间直连，不经过任何第三方
 > 服务器；关掉开关即停止监听。默认端口 **18765**。
+
+### 在手机上实时改设置（双屏进行中的控制）
+
+连上之后手机页面顶部多出一条 **控制** 栏：折起来是一行状态（转录 / 连续回答 / 内容量·专业度 /
+当前会话与已答条数），点开就是控件。会议进行中不用回头碰电脑就能改的东西全在这里：
+
+| 控件 | 对应桌面开关 | 说明 |
+|---|---|---|
+| 转录 开始 / 停止 | **▶ 开始** | 远程开转录优先走桌面原生采集；走不通时表现为「一直未确认」（见下） |
+| 连续回答 开 / 关 | ⚡ 连续答 | 同一个真开关，不是手机侧的本地状态 |
+| 内容量 精简 / 标准 / 详尽 | 提词卡「回答风格」 | 下一句回答立即生效，无需重连 |
+| 专业度 口语 / 职场 / 技术 | 同上 | 同上 |
+| 输入问题 + 发送 | 自由提问 | 手机上**只有文本提问**；回答沿用同一条答案流，出现在手机顶部 |
+| 历史回答 | 回答栏历史 | 本次会话的全部已答条目，手机上回看、点一下重新铺满 |
+
+三条使用须知：
+
+- **颜色就是桌面的真实状态**：转录红＝桌面正在转录，连续绿＝连续答已开，蓝＝当前档位。
+  关掉的那一项只是中性描边——绿色的「关」按钮是骗人的。
+- **点下去不等于生效**：待确认时按钮是黄色描边加省略号，1.5 秒内电脑把新状态推回来才算数，
+  否则标成「未确认」并把按钮还给你。**电脑上不会弹任何提示**——远程控制的意义就是不打断你正在共享的屏幕。
+- 因此「转录未确认」通常不是坏了：Windows 上浏览器采集需要你**真实点一下页面**才允许录音，
+  没有原生产物时也只能走这条路。要稳，还是在电脑上点 **▶ 开始**。
+
+权限在 **设置 → 通用 → 手机显示**：**允许手机远程控制** 是总开关（**默认开启**，因为能让它连上的
+设备本来就是你手里那台刚输过 6 位配对码的），关掉后手机上整块控制区直接不出现；下面六个**逐项授权**
+可单独收掉某一类，被收掉的项是从手机页面上**移除**而不是变灰。只想给看、不想给改，就把总开关关掉——
+推送内容那一栏（转写 / 答案 / 截图）与控制权限是两套独立的开关。
 
 ## 💻 本地语音识别（可选，免云端）
 
@@ -419,6 +448,15 @@ A printable/offline copy of this document is available as [README.pdf](README.pd
 - **Phone display**: title bar **dual-screen** (or Settings → General → Phone display) opens the
   pairing window — scan the QR, enter the 6-digit code **shown only on the PC**, tap **Keep awake**
   on the phone. Hotkeys can be set to deliver answers phone-only without raising any window.
+- **Remote control from the phone**: once paired, the phone page grows a **控制** bar whose expanded
+  half holds exactly six things — transcript start/stop, continuous answering, answer length and
+  expertise, a text-only question box, and this meeting's answer history. Colours are the desktop's
+  real state (red = capturing, green = continuous); a tap shows a pending outline for 1.5 s and turns
+  into 未确认 if the desktop never reports the value, and **nothing pops up on the desktop** — that is
+  the point. Permissions: **Settings → General → Phone display → Allow remote control** defaults to
+  **on** (a device that got this far was just held in your hand and typed the 6-digit code shown only
+  here), with six per-item grants underneath; a revoked item disappears from the phone page rather
+  than greying out. Want a screen with no controls at all? Turn the master switch off.
 - **Hidden window**: default summon hotkey `Ctrl+B`, or the tray menu (start/stop, new session,
   settings, service status, help, update check, quit).
 - **Latency HUD** (bottom-right): end-to-end speech→caption (last / p50 / p95), first-token and

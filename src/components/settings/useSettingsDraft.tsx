@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type {
   AnswerLang,
   AsrLanguage,
+  CompanionControlItems,
   CompanionState,
   FontScale,
   ProviderSlot,
@@ -194,6 +195,12 @@ export function useSettingsDraft(
   const [cShot, setCShot] = useState(settings.companion.pushScreenshot);
   const [cPhoneOnly, setCPhoneOnly] = useState(settings.companion.hotkeyToPhone);
   const [cPort, setCPort] = useState(String(settings.companion.port));
+  // ⑦ 远程控制：总开关 + 六项逐项授权（R2）
+  const [cControl, setCControl] = useState(settings.companion.allowControl);
+  const [cCtlItems, setCCtlItems] = useState<CompanionControlItems>(settings.companion.allowItems);
+  const setCtlItem = (op: keyof CompanionControlItems, on: boolean): void => {
+    setCCtlItems((prev) => ({ ...prev, [op]: on }));
+  };
   const [cState, setCState] = useState<CompanionState | null>(null);
 
   const llmKey = useKeySlot();
@@ -479,6 +486,10 @@ export function useSettingsDraft(
           pushExam: cAnswers,
           pushInterview: cAnswers,
           pushScreenshot: cShot,
+          allowControl: cControl,
+          // the whole object every time: a partial here would be merged main-side,
+          // and this form always holds all six values
+          allowItems: cCtlItems,
         },
       };
       const next = await window.mc.setSettings(patch);
@@ -775,6 +786,10 @@ export function useSettingsDraft(
     setCPhoneOnly,
     cPort,
     setCPort,
+    cControl,
+    setCControl,
+    cCtlItems,
+    setCtlItem,
     cState,
     llmKey,
     visionKey,

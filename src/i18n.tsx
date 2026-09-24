@@ -643,6 +643,16 @@ const zh = {
     companionPhoneOnly: '截屏热键只出答案到手机',
     companionPhoneOnlyHint:
       '按截屏热键后：拍屏 → 读题 → 先查本机题库 → 答案直接出现在手机上，电脑不弹任何窗口。',
+    companionControl: '允许手机远程控制',
+    companionControlHint:
+      '关掉后手机上完全不出现控制区；开着时下面每一项仍可单独授权。远程操作不会在电脑上弹提示，是否生效只在手机上显示。',
+    companionCtlRichness: '回答内容量',
+    companionCtlExpertise: '回答专业度',
+    companionCtlContinuous: '连续回答开关',
+    companionCtlCapture: '转录开关（开始 / 停止）',
+    companionCtlAsk: '手机输入提问',
+    companionCtlHistory: '回看本次会议历史回答',
+    companionCtlItemsHint: '取消勾选的项会从手机控制区里移除，而不是变灰——手机上点不到它',
     companionOpen: '打开连接窗口',
     companionOpenHint: '二维码、配对码与设备列表都在那个窗口里——手机要拍的是它，不是这一栏',
     companionPortHint: '被占用时会自动往后找一个可用端口，连接窗口里显示的始终是真实端口',
@@ -1377,6 +1387,17 @@ const en: Dict = {
     companionPhoneOnly: 'Screenshot hotkey answers on the phone only',
     companionPhoneOnlyHint:
       'Pressing the screenshot hotkey captures the screen, reads it, checks your local question bank first and puts the answer on the phone — no window opens here.',
+    companionControl: 'Allow remote control from the phone',
+    companionControlHint:
+      'With this off the phone shows no control panel at all; with it on, every item below stays authorised separately. A remote change never interrupts the desktop — only the phone reports whether it took effect.',
+    companionCtlRichness: 'Answer length',
+    companionCtlExpertise: 'Answer expertise',
+    companionCtlContinuous: 'Continuous-answer switch',
+    companionCtlCapture: 'Transcript switch (start / stop)',
+    companionCtlAsk: 'Typing a question on the phone',
+    companionCtlHistory: 'Browsing this meeting’s answer history',
+    companionCtlItemsHint:
+      'An unticked item is removed from the phone panel rather than greyed out — it cannot be tapped there',
     companionOpen: 'Open the connect window',
     companionOpenHint:
       'The QR code, pairing code and device list live in that window — it is the thing a phone camera points at, not this row',

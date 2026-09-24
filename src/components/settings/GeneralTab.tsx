@@ -218,6 +218,74 @@ export function GeneralTab({
             </label>
             <span className="settings-inline-hint">{t.settings.companionPhoneOnlyHint}</span>
           </div>
+          <div className="settings-row">
+            <label>
+              <input
+                type="checkbox"
+                checked={d.cControl}
+                onChange={(e) => d.setCControl(e.target.checked)}
+              />{' '}
+              {t.settings.companionControl}
+            </label>
+            <span className="settings-inline-hint">{t.settings.companionControlHint}</span>
+          </div>
+          {d.cControl && (
+            <>
+              <div className="settings-row">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={d.cCtlItems.richness}
+                    onChange={(e) => d.setCtlItem('richness', e.target.checked)}
+                  />{' '}
+                  {t.settings.companionCtlRichness}
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={d.cCtlItems.expertise}
+                    onChange={(e) => d.setCtlItem('expertise', e.target.checked)}
+                  />{' '}
+                  {t.settings.companionCtlExpertise}
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={d.cCtlItems.continuous}
+                    onChange={(e) => d.setCtlItem('continuous', e.target.checked)}
+                  />{' '}
+                  {t.settings.companionCtlContinuous}
+                </label>
+              </div>
+              <div className="settings-row">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={d.cCtlItems.capture}
+                    onChange={(e) => d.setCtlItem('capture', e.target.checked)}
+                  />{' '}
+                  {t.settings.companionCtlCapture}
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={d.cCtlItems.ask}
+                    onChange={(e) => d.setCtlItem('ask', e.target.checked)}
+                  />{' '}
+                  {t.settings.companionCtlAsk}
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={d.cCtlItems.history}
+                    onChange={(e) => d.setCtlItem('history', e.target.checked)}
+                  />{' '}
+                  {t.settings.companionCtlHistory}
+                </label>
+                <span className="settings-inline-hint">{t.settings.companionCtlItemsHint}</span>
+              </div>
+            </>
+          )}
           {d.cState && !d.cState.running && (
             <div className="settings-warn">
               {t.settings.companionNotRunning}

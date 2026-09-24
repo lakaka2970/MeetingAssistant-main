@@ -112,6 +112,7 @@ Sharing your screen and don't want the answer window in the share? Click **Dual-
 6. The first time Windows starts listening it asks about the firewall: click **Allow** and tick **Private networks**. If you clicked Cancel, the phone can never connect while the PC looks perfectly healthy.
 7. Tap **"Keep awake"** once on the phone (browsers require that tap before allowing wake lock).
 8. Click **▶ Start** on the PC as usual; transcript and answers keep streaming to the phone. Entering dual-screen turns **Auto** answering on by itself.
+9. After connecting, the phone page grows a **控制 / control** bar: collapsed it is one line of status, expanded it lets you start/stop the **transcript**, toggle **Auto** answering, switch **answer length** and **expertise**, **type your own question**, and browse this meeting's **answer history**. Colours are the PC's real state (red = capturing, green = auto answering), and a tap is not proof it worked — the button outlines in amber and only settles when the PC reports the new value within 1.5 s, otherwise it is marked 未确认. **Nothing pops up on the PC.** To withhold these permissions: **Settings → General → Phone display → Allow remote control** (on by default), which also has six per-item grants.
 
 > Privacy: the machine only listens on a LAN port after you enable this; data goes directly between PC and phone through no third-party server; switching it off stops the listener (default port **18765**). The troubleshooting order for failed connections is in [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md).
 

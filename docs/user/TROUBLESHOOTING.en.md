@@ -101,6 +101,17 @@ Work through this in order:
 5. **http auto-upgraded**: if the address is `http://` but the phone still reports `ERR_PROTOCOL_ERROR`, the browser upgraded it to https — type the full `http://` prefix or disable "always use secure connections" in the browser.
 6. **Pairing code**: the 6-digit code is shown **only on the PC**, never on the phone. After tapping "Request pairing" on the phone, read the code from the connect window. If a code expires, request a new one.
 
+## 10. A phone control does not take effect (dual-screen remote control)
+
+1. **No control bar on the phone**: the master switch **Settings → General → Phone display → Allow remote control** is off, or that item's individual grant is (a revoked item is *removed* from the phone page, not greyed out). The phone reads its permissions **when it connects**, so after changing them on the PC, reopen the phone page once. The reverse needs no reconnect: turn a grant off and the control stays on the phone, but tapping it gets an explicit refusal ("this item is not authorised on the PC").
+2. **A tap ends up marked 未确认 (not confirmed)**: the PC did not report the new value back within 1.5 s.
+   - **Transcript · Start**: the browser capture path on Windows needs a *real* tap on the page before it may record audio, and without local native capture there is no other path. To start the transcript reliably, press **▶ Start** on the PC.
+   - **Continuous answering**: this switch lives in the main window. *Hiding* the window is fine — dual-screen works that way — so a persistent 未确认 means the window is shutting down or has not finished loading; reopen the phone page.
+   - **Typing a question**: the phone sends text only and the answer arrives on the same stream the desktop uses. With no current session, or no AI configured, no answer appears out of thin air (the desktop would fail the same way).
+   - **Answer history**: if the panel stays on "PC did not answer", there is no session data to send back; press **Reload**.
+3. **"Too many taps, wait a moment"**: each connection is limited to 5 commands per second; pause and tap again.
+4. **Nothing pops up on the PC**: by design. Remote control deliberately does not interrupt the screen you are sharing, so confirmation lives only on the phone — read the colour of the control you just tapped.
+
 ## Still stuck
 
 1. Settings → General → "Diagnostics" (also in the title-bar `⋯` menu) → "Copy diagnostics". The report is built locally and copied to the clipboard only (nothing is written to disk); it contains **no API keys, resume/JD text or transcripts**, so it is safe to paste into a public issue.
