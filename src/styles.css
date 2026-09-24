@@ -543,7 +543,10 @@ body {
   background: var(--popup-bg);
 }
 
-.rail-bubble:hover .rail-bubble-btns {
+/* keyboard users get the same bar: the buttons are focusable, so the hover rule
+   is duplicated for :focus-within */
+.rail-bubble:hover .rail-bubble-btns,
+.rail-bubble:focus-within .rail-bubble-btns {
   display: flex;
 }
 
@@ -571,6 +574,12 @@ body {
 .rail-btn-ask {
   background: var(--accent);
   border-color: var(--accent);
+  color: #fff;
+}
+
+/* .rail-btn:hover outranks this rule's selector, so the white glyph on the
+   accent fill has to be restated or it turns accent-text-on-accent in light mode */
+.rail-btn-ask:hover {
   color: #fff;
 }
 

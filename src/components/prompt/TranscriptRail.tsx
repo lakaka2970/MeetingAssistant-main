@@ -46,11 +46,13 @@ export function TranscriptRail({
   /** false while the user has scrolled up to re-read — a ref, no re-render */
   const stickRef = useRef(true);
 
-  // follow the live edge only while stuck to it; scrolling up pauses the follow
+  // follow the live edge only while stuck to it; scrolling up pauses the follow.
+  // `expanded` is a dependency so returning from the full panel lands on the
+  // newest line again (the rail's scroll box is remounted on every toggle).
   useEffect(() => {
     const el = boxRef.current;
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
-  }, [segments, partials]);
+  }, [segments, partials, expanded]);
 
   const onRowsScroll = () => {
     const el = boxRef.current;
@@ -87,7 +89,10 @@ export function TranscriptRail({
       <div className="rail-expand">
         <button
           className="btn btn-icon rail-expand-close"
-          onClick={() => setExpanded(false)}
+          onClick={() => {
+            stickRef.current = true;
+            setExpanded(false);
+          }}
           title={t.settings.closeTitle}
           aria-label={t.settings.closeTitle}
         >
