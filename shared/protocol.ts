@@ -16,6 +16,9 @@ import type { SearchProviderId } from './searchProviders';
 export type { SearchProviderId } from './searchProviders';
 import type { ExamSubMode } from './bankStore';
 export type { ExamSubMode } from './bankStore';
+import type { AnswerExpertise, AnswerRichness } from './answerStyle';
+import type { AnswerPersona } from './personas';
+export type { AnswerPersona, AnswerExpertise, AnswerRichness };
 import type { Persona as ExamPersona } from './persona';
 export type { Persona as ExamPersona, TraitTarget as ExamTraitTarget } from './persona';
 
@@ -195,6 +198,20 @@ export interface SettingsFile {
     thinking?: ThinkingLevel;
     /** presetId -> thinking level for routed backends */
     thinkingByPreset?: Record<string, ThinkingLevel>;
+    /** how much to say; feeds the stable prefix, so it is a slow knob */
+    answerRichness?: AnswerRichness;
+    /** which register to say it in */
+    answerExpertise?: AnswerExpertise;
+    /** the user's named answer personas; see shared/personas.ts */
+    personas?: AnswerPersona[];
+    /** '' = no persona. Always points at an existing id (guard drops it otherwise) */
+    activePersonaId?: string;
+    /** advanced: replaces the built-in persona block; absent = built-in */
+    promptPersona?: string;
+    /** advanced: replaces the answer-style directives block */
+    promptStyle?: string;
+    /** advanced: extra user instructions appended before the language directive */
+    promptExtra?: string;
     /** upgrade P1: per-question-kind backend routing + failover chain.
      * byKind maps a QuestionKind to a catalog preset id ('' = primary slot);
      * fallbackChain lists preset ids tried after the chosen backend fails. */
@@ -420,6 +437,14 @@ export interface PublicSettings {
     thinking?: ThinkingLevel;
     /** presetId -> level; always a map on the wire ({} when unset) */
     thinkingByPreset: Record<string, ThinkingLevel>;
+    answerRichness: AnswerRichness;
+    answerExpertise: AnswerExpertise;
+    /** already sanitized by the settings guard — what actually got stored */
+    personas: AnswerPersona[];
+    activePersonaId: string;
+    promptPersona?: string;
+    promptStyle?: string;
+    promptExtra?: string;
     routing: {
       enabled: boolean;
       byKind: Partial<Record<QuestionKind, string>>;
@@ -548,6 +573,15 @@ export interface SettingsPatch {
     /** ThinkingLevel to set; `''` = choose 跟随默认 → clear back to unset */
     thinking?: ThinkingLevel | '';
     thinkingByPreset?: Record<string, ThinkingLevel>;
+    answerRichness?: AnswerRichness;
+    answerExpertise?: AnswerExpertise;
+    /** whole-list replace; the guard trims to the caps in shared/personas.ts */
+    personas?: AnswerPersona[];
+    activePersonaId?: string;
+    /** `''` = 恢复内置 → clears back to unset */
+    promptPersona?: string;
+    promptStyle?: string;
+    promptExtra?: string;
     routing?: {
       enabled?: boolean;
       byKind?: Partial<Record<QuestionKind, string>>;

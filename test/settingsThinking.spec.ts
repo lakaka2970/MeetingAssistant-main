@@ -32,11 +32,11 @@ describe('settings thinking levels', () => {
     rmSync(file);
   });
 
-  it('an old settings.json without the fields loads as "unset" with an empty map', () => {
+  it('an old settings.json without the fields loads with the off default and an empty map', () => {
     const legacy = JSON.stringify({ version: 2, llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-flash' } });
     const { store } = tempStore(legacy);
     const pub = store.getPublic();
-    expect(pub.llm.thinking).toBeUndefined();
+    expect(pub.llm.thinking).toBe('off');
     expect(pub.llm.thinkingByPreset).toEqual({});
   });
 
@@ -47,7 +47,12 @@ describe('settings thinking levels', () => {
     expect(store.getPublic().llm.thinkingByPreset).toEqual({ c: 'medium' });
   });
 
-  it("llm.thinking: '' clears a stored level back to unset", () => {
+  it('llm.thinking defaults to off so answers stop paying for hidden reasoning', () => {
+    const { store } = tempStore();
+    expect(store.getPublic().llm.thinking).toBe('off');
+  });
+
+  it("llm.thinking: '' clears a stored level back to provider default", () => {
     const { store } = tempStore();
     store.applyPatch({ llm: { thinking: 'high' } });
     expect(store.getPublic().llm.thinking).toBe('high');

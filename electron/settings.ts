@@ -20,6 +20,8 @@ import type {
   SettingsPatch,
   UiLang,
 } from '../shared/protocol';
+import { DEFAULT_EXPERTISE, DEFAULT_RICHNESS } from '../shared/answerStyle';
+import { PROMPT_OVERRIDE_MAX_CHARS, clampText, resolveActivePersona, sanitizePersonas } from '../shared/personas';
 import { clampRailSplit, RAIL_SPLIT_DEFAULT } from '../shared/protocol';
 import { defaultHotkeysForPlatform } from '../shared/platform';
 import {
@@ -77,6 +79,13 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       model: 'deepseek-flash',
       answerLang: 'chinese',
       answerWithVision: false,
+      // v1.0.1: answers must not pay for hidden reasoning unless the user asks
+      // for it — 'off' sends the provider's explicit disable field.
+      thinking: 'off',
+      answerRichness: DEFAULT_RICHNESS,
+      answerExpertise: DEFAULT_EXPERTISE,
+      personas: [],
+      activePersonaId: '',
       // upgrade P1: routing off by default — single provider stays the zero-
       // config path; byKind/fallbackChain are opt-in via settings UI
       routing: { enabled: false, byKind: {}, fallbackChain: [] },
@@ -458,12 +467,31 @@ export class SettingsStore {
 
   applyPatch(patch: SettingsPatch): void {
     if (patch.llm) {
-      const { apiKey, routing, routeKeys, thinking, ...rest } = patch.llm;
+      const { apiKey, routing, routeKeys, thinking, personas, promptPersona, promptStyle, promptExtra, ...rest } =
+        patch.llm;
       // '' (UI: 跟随默认) clears back to unset — stripUndefined alone cannot
       // express "remove this key"
       if (thinking === '') delete this.data.llm.thinking;
       else if (thinking !== undefined) this.data.llm.thinking = thinking;
       Object.assign(this.data.llm, stripUndefined(rest));
+      // the library is whole-list-replaced and trimmed here, so the renderer
+      // can never store more than the prompt budget by patching directly
+      if (personas !== undefined) this.data.llm.personas = sanitizePersonas(personas);
+      for (const [key, value] of [
+        ['promptPersona', promptPersona],
+        ['promptStyle', promptStyle],
+        ['promptExtra', promptExtra],
+      ] as const) {
+        if (value === '') delete this.data.llm[key];
+        else if (value !== undefined) this.data.llm[key] = clampText(value, PROMPT_OVERRIDE_MAX_CHARS);
+      }
+      // deleting the persona that was in use must not leave a dangling pointer
+      if (
+        this.data.llm.activePersonaId &&
+        !resolveActivePersona(this.data.llm.personas ?? [], this.data.llm.activePersonaId)
+      ) {
+        this.data.llm.activePersonaId = '';
+      }
       if (routing) {
         const cur = this.data.llm.routing ?? { enabled: false, byKind: {}, fallbackChain: [] as string[] };
         this.data.llm.routing = {
@@ -627,6 +655,13 @@ export class SettingsStore {
         verification: d.llm.verification,
         thinking: d.llm.thinking,
         thinkingByPreset: d.llm.thinkingByPreset ?? {},
+        answerRichness: d.llm.answerRichness ?? DEFAULT_RICHNESS,
+        answerExpertise: d.llm.answerExpertise ?? DEFAULT_EXPERTISE,
+        personas: d.llm.personas ?? [],
+        activePersonaId: d.llm.activePersonaId ?? '',
+        promptPersona: d.llm.promptPersona,
+        promptStyle: d.llm.promptStyle,
+        promptExtra: d.llm.promptExtra,
         routing: {
           enabled: !!d.llm.routing?.enabled,
           byKind: d.llm.routing?.byKind ?? {},
