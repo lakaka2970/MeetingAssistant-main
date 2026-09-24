@@ -423,16 +423,42 @@ body {
   border-right: 1px solid var(--border-1);
 }
 
-/* glance rail: one truncated line per sentence; click anywhere expands.
-   Width follows --rail-split (fraction of the shell, set by App from
+/* chat-bubble transcript rail: full text wraps in the bubble, ⤢ opens the full
+   panel. Width follows --rail-split (fraction of the shell, set by App from
    settings.ui.railSplit and live-dragged by .rail-resizer). */
 .transcript-rail {
   flex: 0 0 calc(var(--rail-split, 0.16) * 100%);
   display: flex;
+  flex-direction: column;
   min-height: 0;
   border-right: 1px solid var(--border-1);
   background: var(--surface-soft);
-  cursor: pointer;
+}
+
+.rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 6px 4px 8px;
+  border-bottom: 1px solid var(--border-soft);
+  flex-shrink: 0;
+}
+
+.rail-title {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-open {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  flex-shrink: 0;
 }
 
 /* the drag strip that resizes the glance rail */
@@ -456,43 +482,108 @@ body {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   padding: 8px 8px;
 }
 
-.rail-row {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
+.rail-bubble {
+  position: relative;
+  align-self: flex-start;
+  max-width: 94%;
+  border-radius: 9px;
+  padding: 5px 7px 6px;
   font-size: 11px;
-  color: var(--text-muted);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
-.rail-dot {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+.rail-them {
+  background: var(--them-bg);
+  border: 1px solid var(--them-border);
 }
 
-.rail-them .rail-dot {
-  background: var(--them-border-hover);
+.rail-me {
+  background: var(--me-bg);
+  border: 1px solid var(--me-border);
 }
 
-.rail-me .rail-dot {
+.rail-bubble-role {
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-bottom: 1px;
+}
+
+.rail-bubble-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-body);
+  user-select: text;
+}
+
+.rail-bubble-trans {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--trans-border);
+  color: var(--trans-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+/* action bar stays hidden until the bubble is hovered; the popup backdrop keeps
+   it readable over the bubble's own text in this narrow column */
+.rail-bubble-btns {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: none;
+  gap: 3px;
+  padding: 1px 2px;
+  border: 1px solid var(--popup-border);
+  border-radius: 6px;
+  background: var(--popup-bg);
+}
+
+.rail-bubble:hover .rail-bubble-btns {
+  display: flex;
+}
+
+.rail-btn {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 5px;
+  color: var(--btn-text);
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.rail-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.rail-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.rail-btn-ask {
   background: var(--accent);
-}
-
-.rail-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .rail-live {
-  opacity: 0.65;
+  opacity: 0.72;
+  border-style: dashed;
+  animation: rail-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes rail-pulse {
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .rail-empty {

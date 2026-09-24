@@ -6,11 +6,12 @@ import { useT } from '../../i18n';
 import { TranscriptPanel } from '../TranscriptPanel';
 
 /**
- * The transcript demoted to a narrow glance rail (子项目② main view): one line
- * per finished sentence, speaker color-coded, live partials pinned at the
- * bottom. Click anywhere and the FULL TranscriptPanel opens as an overlay
- * inside the prompt shell — selection-ask, translation and clearing all keep
- * living in that component untouched.
+ * The transcript shown as chat bubbles in a narrow side rail (子项目② main
+ * view): every finished sentence wraps in full inside its bubble, colored by
+ * speaker, with ⚡答 / 译 / 复制 revealed on hover. Live partials ride at the
+ * bottom. The ⤢ button in the rail header opens the FULL TranscriptPanel as an
+ * overlay inside the prompt shell — selection-ask and clearing keep living in
+ * that component untouched.
  *
  * The thin strip on the rail's right edge drags the rail wider/narrower. The
  * drag writes the shell's `--rail-split` CSS variable directly (no React
@@ -42,12 +43,19 @@ export function TranscriptRail({
   const boxRef = useRef<HTMLDivElement>(null);
   /** live drag state; ratio kept here so pointerup can commit the final value */
   const dragRef = useRef<{ startX: number; startRatio: number; shellW: number; ratio: number } | null>(null);
+  /** false while the user has scrolled up to re-read — a ref, no re-render */
+  const stickRef = useRef(true);
 
-  // the rail is glance-only — it always trails the live edge, no stick logic
+  // follow the live edge only while stuck to it; scrolling up pauses the follow
   useEffect(() => {
     const el = boxRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [segments, partials]);
+
+  const onRowsScroll = () => {
+    const el = boxRef.current;
+    if (el) stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  };
 
   const onResizerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const shell = (e.currentTarget as HTMLElement).closest('.prompt-shell') as HTMLElement | null;
@@ -100,28 +108,73 @@ export function TranscriptRail({
 
   return (
     <>
-      <div className="transcript-rail" onClick={() => setExpanded(true)} title={t.transcript.expandTitle}>
-        <div className="rail-rows" ref={boxRef}>
-          {segments.map((s) => (
-            <div key={s.id} className={`rail-row ${s.speaker === 'me' ? 'rail-me' : 'rail-them'}`}>
-              <span className="rail-dot" />
-              <span className="rail-text">{s.text}</span>
-            </div>
-          ))}
+      <div className="transcript-rail">
+        <div className="rail-head">
+          <span className="rail-title">{t.transcript.title}</span>
+          <button
+            className="btn btn-icon rail-open"
+            onClick={() => setExpanded(true)}
+            title={t.transcript.expandTitle}
+            aria-label={t.transcript.expandTitle}
+          >
+            ⤢
+          </button>
+        </div>
+        <div className="rail-rows" ref={boxRef} onScroll={onRowsScroll}>
+          {segments.map((s) => {
+            const me = s.speaker === 'me';
+            return (
+              <div key={s.id} className={`rail-bubble ${me ? 'rail-me' : 'rail-them'}`}>
+                <div className="rail-bubble-role">{me ? t.transcript.me : t.transcript.them}</div>
+                <div className="rail-bubble-text">{s.text}</div>
+                {(s.translation || s.translating) && (
+                  <div className="rail-bubble-trans">
+                    {s.translating ? t.transcript.translating : s.translation}
+                  </div>
+                )}
+                <div className="rail-bubble-btns">
+                  <button
+                    className="rail-btn"
+                    title={t.transcript.copyTitle}
+                    onClick={() => void navigator.clipboard.writeText(s.text)}
+                  >
+                    ⧉
+                  </button>
+                  <button
+                    className="rail-btn"
+                    title={t.transcript.translateTitle}
+                    onClick={() => onTranslate(s)}
+                  >
+                    {t.transcript.translateBtn}
+                  </button>
+                  {!me && (
+                    <button
+                      className="rail-btn rail-btn-ask"
+                      disabled={!answersReady}
+                      title={answersReady ? t.transcript.answerTitle : answersHint}
+                      onClick={() => onAsk(s.text)}
+                    >
+                      {t.transcript.answerBtn}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
           {partials?.them && (
-            <div className="rail-row rail-them rail-live">
-              <span className="rail-dot" />
-              <span className="rail-text">{partials.them}</span>
+            <div className="rail-bubble rail-them rail-live">
+              <div className="rail-bubble-role">{`${t.transcript.them} · ${t.transcript.live}`}</div>
+              <div className="rail-bubble-text">{partials.them}</div>
             </div>
           )}
           {partials?.me && (
-            <div className="rail-row rail-me rail-live">
-              <span className="rail-dot" />
-              <span className="rail-text">{partials.me}</span>
+            <div className="rail-bubble rail-me rail-live">
+              <div className="rail-bubble-role">{`${t.transcript.me} · ${t.transcript.live}`}</div>
+              <div className="rail-bubble-text">{partials.me}</div>
             </div>
           )}
           {segments.length === 0 && !partials?.them && !partials?.me && (
-            <div className="rail-row rail-empty">{t.transcript.empty}</div>
+            <div className="rail-empty">{t.transcript.empty}</div>
           )}
         </div>
       </div>

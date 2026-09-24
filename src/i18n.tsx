@@ -159,7 +159,8 @@ const zh = {
     langEn: 'EN',
     jumpLatest: '↓ 回到最新',
     answerSelection: '⚡回答选中',
-    expandTitle: '点击展开全部转录',
+    expandTitle: '展开全部转录',
+    copyTitle: '复制这句原文',
   },
   answer: {
     kindTag: {
@@ -864,7 +865,8 @@ const en: Dict = {
     langEn: 'EN',
     jumpLatest: '↓ Latest',
     answerSelection: '⚡ Answer selection',
-    expandTitle: 'Click to open the full transcript',
+    expandTitle: 'Open the full transcript',
+    copyTitle: 'Copy this line',
   },
   answer: {
     kindTag: {
