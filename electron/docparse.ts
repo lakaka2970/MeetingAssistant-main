@@ -8,8 +8,12 @@
 import { readFileSync } from 'fs';
 import { extname } from 'path';
 
-/** extensions offered in the pick dialog (parse support below must match) */
-export const DOC_EXTENSIONS = ['md', 'markdown', 'txt', 'docx', 'pdf'];
+/**
+ * Extensions offered in the single-file pick dialogs (resume / JD / global
+ * knowledge). Parse support below must match, and `extractDocText` must be able
+ * to read everything listed here.
+ */
+export const DOC_EXTENSIONS = ['md', 'markdown', 'txt', 'docx', 'pdf', 'pptx'];
 
 /**
  * Extensions the document library accepts (multi-file / directory import).

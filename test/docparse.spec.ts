@@ -28,7 +28,7 @@ describe('extractDocText (deterministic resume/JD parsing)', () => {
   });
 
   it('advertised extensions match parse support', () => {
-    expect(DOC_EXTENSIONS).toEqual(['md', 'markdown', 'txt', 'docx', 'pdf']);
+    expect(DOC_EXTENSIONS).toEqual(['md', 'markdown', 'txt', 'docx', 'pdf', 'pptx']);
   });
 });
 

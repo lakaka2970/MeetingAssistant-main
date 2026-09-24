@@ -15,7 +15,7 @@ import {
   session,
   shell,
 } from 'electron';
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { mkdirSync, statSync, writeFileSync } from 'fs';
 import { release } from 'os';
 import { join } from 'path';
 import {
@@ -76,6 +76,7 @@ import type {
 } from '../shared/protocol';
 import type { RagHitView } from '../shared/protocol';
 import { DOC_EXTENSIONS, LIBRARY_EXTENSIONS, extractDocText, isLibraryExtension } from './docparse';
+import { importGlobalKnowledge } from './globalKnowledgeImport';
 import { basename } from 'path';
 import { chatOnce, chatStream, type ChatResult, type LlmConfig } from './llm/adapter';
 import { findPresetByEndpoint } from '../shared/providerCatalog';
@@ -1333,23 +1334,18 @@ function bootstrap(): void {
     ipcMain.handle(IPC.knowledgeImport, async () => {
       const r = await dialog.showOpenDialog({
         title: T().kbImportTitle,
-        filters: [{ name: 'Markdown/Text', extensions: ['md', 'markdown', 'txt'] }],
+        filters: [{ name: T().docFilter, extensions: [...DOC_EXTENSIONS] }],
         properties: ['openFile'],
       });
       if (!r.canceled && r.filePaths[0]) {
-        try {
-          knowledge.setFromText(readFileSync(r.filePaths[0], 'utf8'));
-          // upgrade P0: the global KB also becomes L3 vector memory
-          const res = await rag.ingest({
-            text: knowledge.text,
-            source: 'knowledge',
-            ref: basename(r.filePaths[0]),
-            replace: true,
-          });
-          if (res) console.log(`[rag] knowledge ingest: ${res.added}/${res.total} chunks`);
-        } catch (e) {
-          console.error('[knowledge] import failed:', (e as Error).message);
-        }
+        const file = r.filePaths[0];
+        await importGlobalKnowledge(file, {
+          set: (text) => knowledge.setFromText(text),
+          ingest: (text) =>
+            rag.ingest({ text, source: 'knowledge', ref: basename(file), replace: true }),
+          parse: extractDocText,
+          log: (msg) => console.log(msg),
+        });
       }
       return { chars: knowledge.chars };
     });

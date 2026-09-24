@@ -86,7 +86,7 @@ Review the summary and click "Enter MeetingAssistant". The wizard writes the who
 2. Click **▶ Start** in the title bar; the **transcript rail** starts filling (one line per sentence — click it to open the full transcript, drag its right edge to resize).
 3. Click **⚡Ans** on one of their lines and the prompt card streams an answer written to be read aloud.
 4. Turn on **Auto** in the title bar to let the AI answer by itself — only question-like sentences trigger it.
-5. For answers grounded in your experience, import material with **📄Resume** / **📋JD** (`.md/.txt/.docx/.pdf`). Parsing is local; the text is only sent to the LLM you configured, and only as context for a question you asked.
+5. For answers grounded in your experience, import material with **📄Resume** / **📋JD** (`.md/.txt/.docx/.pdf/.pptx`). Parsing is local; the text is only sent to the LLM you configured, and only as context for a question you asked.
 
 Other title-bar controls:
 

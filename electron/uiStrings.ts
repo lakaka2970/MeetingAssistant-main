@@ -8,13 +8,13 @@ import type { TrayMenuLabels } from '../shared/trayMenu';
  */
 const zh = {
   regionTip: '拖动框选要识别的区域 · Esc 取消',
-  kbImportTitle: '导入个人知识库（.md / .txt）',
+  kbImportTitle: '导入个人知识库（md/txt/docx/pdf/pptx，单文件）',
   kbImportFilesTitle: '导入知识文档（md/txt/docx/pdf/pptx，可多选）',
   kbImportDirTitle: '导入文件夹（递归读取其中的文档）',
   kbBindTitle: '选择已分块的知识库文件夹（含 991_index.jsonl）',
   docFilter: '文档',
-  pickResumeTitle: '导入我的简历（md/txt/docx/pdf）',
-  pickJdTitle: '导入岗位JD（md/txt/docx/pdf）',
+  pickResumeTitle: '导入我的简历（md/txt/docx/pdf/pptx）',
+  pickJdTitle: '导入岗位JD（md/txt/docx/pdf/pptx）',
   examBindTitle: '选择题库目录（题目卷/答案卷成对的 PDF、md、json、csv）',
   noApiKey: '未设置 API Key，请在设置里填入后重试',
   noApiKeyShort: '未设置 API Key',
@@ -65,13 +65,13 @@ type MainDict = typeof zh;
 
 const en: MainDict = {
   regionTip: 'Drag to select a region · Esc to cancel',
-  kbImportTitle: 'Import personal knowledge base (.md / .txt)',
+  kbImportTitle: 'Import personal knowledge base (md/txt/docx/pdf/pptx, single file)',
   kbImportFilesTitle: 'Import knowledge documents (md/txt/docx/pdf/pptx, multi-select)',
   kbImportDirTitle: 'Import a folder (recursively reads its documents)',
   kbBindTitle: 'Select a pre-chunked knowledge base folder (containing 991_index.jsonl)',
   docFilter: 'Documents',
-  pickResumeTitle: 'Import my resume (md/txt/docx/pdf)',
-  pickJdTitle: 'Import the job description (md/txt/docx/pdf)',
+  pickResumeTitle: 'Import my resume (md/txt/docx/pdf/pptx)',
+  pickJdTitle: 'Import the job description (md/txt/docx/pdf/pptx)',
   examBindTitle: 'Choose the question-bank folder (paired question/answer PDFs, md, json, csv)',
   noApiKey: 'API Key not set — add one in Settings and retry',
   noApiKeyShort: 'API Key not set',

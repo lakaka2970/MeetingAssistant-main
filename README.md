@@ -32,7 +32,7 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
   - **Windows 防火墙**：第一次监听端口时系统会弹窗，请允许「专用网络」；拒绝后手机会一直连不上而电脑侧毫无异常。
 - **回答可控**：`答:中 / 答:EN` 切换回答语言；`纯文本 / 多模态` 在文本大模型与视觉模型（可**截图提问**）之间切换。
 - **公式与排版正常显示**：回答里的 `$…$` / `$$…$$` / `\(…\)` / `\[…\]` 由 KaTeX 排版（含 `$ … $` 这种两端带空格的写法），`**加粗**`、`*斜体*`、`` `代码` ``、`### 小标题` 也直接渲染，不再把 markdown 原样吐在屏幕上。
-- **贴合你的阅历**：提词卡上 **📄简历 / 📋JD** 导入资料（`.md/.txt/.docx/.pdf`），本地解析、本地建立索引，只在提问时作为上下文发给大模型——资料本身不离开你的电脑。不同面试是不同的会话，各自绑定自己的资料与答案库。
+- **贴合你的阅历**：提词卡上 **📄简历 / 📋JD** 导入资料（`.md/.txt/.docx/.pdf/.pptx`），本地解析、本地建立索引，只在提问时作为上下文发给大模型——资料本身不离开你的电脑。不同面试是不同的会话，各自绑定自己的资料与答案库。
 - **提前准备的答案优先亮出来**：资料或笔记里写成 `问：… 答：…` / `Q: … A: …` / `【问题】…【回答】…` 的段落会被自动识别成问答对并按「问题」建索引。面试官的问题命中时，提词卡**先原样显示你准备的答案**（本地检索，几十毫秒内可见），再由 AI 在其基础上充实成可以直接念的完整回答——这条路径完全离线。
 - **知识库没有答案才联网**：只有本地知识库毫无命中时，才会把问题发给你自己配置的搜索引擎（Tavily / Brave / SerpAPI，BYOK，默认关闭），检索结果作为回答依据并附上来源；一次检索最多等 2.5 秒，超时即放弃、绝不影响出词。
 - **会话可删除**：提词卡上 🗑 删除整场对话（对话、转录、已索引的简历/JD 与其准备答案一并清除，有二次确认）。
@@ -66,7 +66,7 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 
 ### 3. 简历 / JD 知识库：导入 → 准备答案 → 命中
 
-1. 提词卡上点 **📄简历** 或 **📋JD**，选本地文件（`.md/.txt/.docx/.pdf`）。解析与索引**全部在本机**完成，资料本身不出电脑，只有在提问时才作为上下文发给你配置的大模型。
+1. 提词卡上点 **📄简历** 或 **📋JD**，选本地文件（`.md/.txt/.docx/.pdf/.pptx`）。解析与索引**全部在本机**完成，资料本身不出电脑，只有在提问时才作为上下文发给你配置的大模型。
 2. **准备答案优先亮出**：资料或笔记里写成 `问：… 答：…` / `Q: … A: …` / `【问题】…【回答】…` 的段落会被自动识别成问答对、按「问题」建索引。面试官的问题命中时，提词卡**先原样显示你准备的答案**（本地检索，几十毫秒），再由 AI 在其基础上充实成可以直接念的完整回答——这条路径完全离线、不花一次网络请求。
 3. **联网兜底**：只有本地知识库毫无命中时，才会把问题发给你配置的搜索引擎（设置 → 视觉与搜索 → 网络检索兜底：Tavily / Brave / SerpAPI，各自带免费额度，默认关闭）。一次检索最多等 **2.5 秒**，超时即放弃、绝不影响出词；检索结果作为回答依据并附上来源。
 4. 想先看看某个目录能被识别出多少条准备答案：`npm run qa:inventory -- <目录>`（干跑，不调模型）。
@@ -387,7 +387,7 @@ A printable/offline copy of this document is available as [README.pdf](README.pd
 
 - Streaming ASR: local FunASR (default), Alibaba Cloud Bailian realtime (recommended cloud), MiMo, experimental MOSS-Transcribe-Diarize, offline Whisper fallback
 - Per-line ⚡Ans answers + 🎤 optional mic channel; text (`纯文本`) or multimodal/vision mode with screenshot Q&A
-- Knowledge panel: import your resume/JD (`.md/.txt/.docx/.pdf`), parsed and indexed locally, only sent to your LLM as context when asking; each session is one interview with its own material
+- Knowledge panel: import your resume/JD (`.md/.txt/.docx/.pdf/.pptx`), parsed and indexed locally, only sent to your LLM as context when asking; each session is one interview with its own material
 - Prepared answers surface first: `问：… 答：…` / `Q: … A: …` / `【问题】…【回答】…` blocks in your documents or notes are auto-detected and indexed by question; on a hit the prompt card shows your prepared answer verbatim (local, tens of ms) and the AI only enriches it — no network on that path
 - Exam mode (做题模式): a separate small floating window, forcibly invisible to screen capture, for online assessments. Drag over the question on screen → it is read (local OCR first, vision model otherwise) → **your local question bank answers it in ~1 ms, offline**; the LLM only covers what the bank lacks, and the web only on an explicit opt-in. Four sub-modes, each bound to its own folder: aptitude/essay, coding/technical, personality, other. Paired real-exam PDFs (`…-学生版.pdf` + `…-答案版.pdf`, keys like `N.【答案】D。解析：…` or `1~5 BACDB`) are joined by (section, number) and **refuse to pair when the two papers' sections disagree** — a wrong answer with confidence is the one outcome this must never produce; when the OA page shuffles the options, the answer is re-anchored onto the option text and the on-screen letter. Reading the screen needs either `npm i tesseract.js` (offline, tried first) or a vision-capable key; with neither, paste the stem into the bank field and use **Answer this** for the same bank → AI → web chain. Binding one shared parent folder to all four sub-modes is fine — the index is literal, so extra material can only ever surface as a "similar question" to confirm, never as a direct answer.
 - Phone display over the LAN (设置 → 手机显示): the machine becomes a local-only web service and a phone browser shows the live transcript plus the current answer in large type — streamed token by token, maths typeset with KaTeX. The bridge taps the ASR/LLM/exam event sources **inside the main process**, not the UI, so the PC side can stay hidden or never open a window at all: nothing on this screen is in a shared capture. It also carries the headless screen-answer path — with 「截屏热键只出答案到手机」 on, one press of the screenshot hotkey captures the screen, reads it, **checks your local question bank first** and puts the answer on the phone without raising a window. Latency is an explicit quantity here, not a vibe: the phone calibrates the two clocks with ping/pong so the milliseconds it prints are real end-to-end cost, and the settings row shows wire latency plus how many frames were dropped because a phone could not keep up. Pairing is a 6-digit code → long-lived token, where **the code is only ever displayed on this machine** and never sent back to the device that asked, so nothing else on the LAN can pair itself. HTTPS with a self-signed cert is the default — it encrypts the LAN hop *and* is the only context where the browser's screen Wake Lock exists, so the phone does not dim mid-meeting. Self-signed stops passive sniffing, not an active man-in-the-middle: trusted networks only. Off unless you enable it; default port 18765.
@@ -409,7 +409,7 @@ A printable/offline copy of this document is available as [README.pdf](README.pd
 - **Answer**: click **⚡Ans** on any line; toggle **Auto-answer** for continuous mode (gated),
   **答:中/答:EN** for answer language, **plain-text/multimodal** to switch to the vision model
   (screenshot Q&A). **🗑** deletes the whole session (transcript, indexed resume/JD, prepared answers).
-- **Resume/JD**: **📄Resume / 📋JD** on the prompt card import `.md/.txt/.docx/.pdf`, parsed and
+- **Resume/JD**: **📄Resume / 📋JD** on the prompt card import `.md/.txt/.docx/.pdf/.pptx`, parsed and
   indexed locally. `Q:/A:` blocks surface your prepared answer verbatim before the AI enriches it;
   web search (Tavily/Brave/SerpAPI, off by default, 2.5 s cap) only fires when the local KB misses.
 - **Exam mode**: title bar **做题** opens a capture-invisible panel bound to per-mode bank folders;
