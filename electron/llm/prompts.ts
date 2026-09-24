@@ -5,13 +5,17 @@
  * line to Chinese. Answer language (zh/en) is a runtime prompt hook.
  *
  * v2 (2026-07-10): cache-friendly three-layer layout —
- *   stable prefix  = persona + 【简历】 + 【岗位JD】 + lang directive
+ *   stable prefix  = persona + style directives + 【应答人设】 + 【简历】
+ *                    + 【岗位JD】 + 【个人背景】 + 【自定义指令】 + lang directive
  *                    (BYTE-STABLE across requests → DeepSeek prefix cache)
  *   slow state     = 【面试备忘】memo (updated every few turns)
  *   fast context   = history turns + recent transcript + this question + hint
+ * v1.0.1 (2026-09-24): the prefix's editable layers — see {@link PromptLayers}.
  */
 import type { ChatMessage } from './adapter';
 import { classifyQuestion, isLikelyQuestion, type QuestionKind } from '../../shared/textHeuristics';
+import { buildStyleDirectives, DEFAULT_EXPERTISE, DEFAULT_RICHNESS } from '../../shared/answerStyle';
+import { PERSONA_TEXT_MAX, PROMPT_OVERRIDE_MAX_CHARS } from '../../shared/personas';
 
 export { isLikelyQuestion, classifyQuestion };
 
@@ -26,19 +30,41 @@ export function langDirective(lang: AnswerLang): string {
     : '- 用【中文】输出。';
 }
 
-/** teleprompter persona: the output IS what the user reads aloud, verbatim */
-const PERSONA = [
+/**
+ * teleprompter persona: the output IS what the user reads aloud, verbatim.
+ * Split around the two directive lines so the v1.0.1 style ladder can slot in
+ * at the exact byte offset v1.0.0 used (prefix-cache compatibility).
+ */
+const DEFAULT_PERSONA_HEAD = [
   '你是我的实时面试提词器。我正在参加面试，屏幕上是面试官说话的实时转录。',
   '你输出的内容就是我接下来要照着念的话，必须遵守：',
   '- 全程用第一人称「我」，口语自然，让我可以一字不改地念出来；',
-  '- 第一句先给结论或直接回应，再展开 2-3 个短要点；',
-  '- 全文控制在 30-60 秒内可念完（约 150-350 字）；',
+];
+const DEFAULT_PERSONA_TAIL = [
   '- 不用 Markdown 标题、编号、加粗等书面格式，分点直接换行；',
   '- 行为/经历类问题按 STAR 展开：情境→任务→行动→结果；',
   '- 技术类问题先一句话讲思路，再给关键点，必要时给复杂度或对比结论；',
   '- 只能使用【简历】里的真实经历，绝不编造简历之外的公司、项目、数字；',
   '- 没把握的问题，给出稳妥的通用说法，或一句得体的争取思考时间的话术。',
 ];
+
+/**
+ * What 高级设置 · 基础人设模板 edits: the persona WITHOUT the directive lines,
+ * because those belong to the 回答风格 ladder. Rebuild the v1.0.0 block with
+ * `[head, ...styleDirectives, ...tail]` — see {@link DEFAULT_STYLE_DIRECTIVES}.
+ */
+export const DEFAULT_PERSONA_TEMPLATE = [...DEFAULT_PERSONA_HEAD, ...DEFAULT_PERSONA_TAIL].join('\n');
+
+/** the ladder's default rung == the v1.0.0 directive lines, byte for byte */
+export const DEFAULT_STYLE_DIRECTIVES = buildStyleDirectives(DEFAULT_RICHNESS, DEFAULT_EXPERTISE);
+
+/** one override layer as prompt lines; '' / whitespace-only → no lines */
+function layerLines(text: string | undefined): string[] {
+  return (text ?? '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
 
 /** total injected background budget; keeps prompts bounded regardless of size */
 export const MAX_BACKGROUND_CHARS = 8000;
@@ -81,23 +107,63 @@ export function smartClip(text: string, budget: number, priority: RegExp): strin
 }
 
 /**
- * The BYTE-STABLE system prompt: persona + resume + JD + custom notes +
- * language directive. Same inputs MUST yield the identical string (no
- * timestamps / randomness) — the LLM prewarm request and every real request
- * share this prefix so the provider's prefix cache (DeepSeek 0.1x pricing +
- * faster prefill) hits. Notes sit here (they change rarely) while RAG recall
- * is per-question and therefore belongs to the FAST context below — injecting
- * it here would invalidate the cache on every question.
+ * The settings-derived layers folded into the stable prefix (v1.0.1). Every
+ * layer changes only when the user changes a setting, so it may ride the
+ * byte-stable prefix; per-question content (RAG / prepared answer / web / memo)
+ * must stay in the fast context.
  */
-export function buildStablePrefix(
-  resume: string,
-  jd: string,
-  lang: AnswerLang,
-  notes?: string,
-): string {
-  const parts = [...PERSONA];
-  const r = resume.trim();
-  const j = jd.trim();
+export interface PromptLayers {
+  /** 高级设置·基础人设模板 override; '' = the built-in teleprompter persona */
+  persona?: string;
+  /** 高级设置·风格指令 override; '' = the generated {@link PromptLayers.styleDirectives} */
+  styleOverride?: string;
+  /** {@link buildStyleDirectives} of the chosen richness / expertise */
+  styleDirectives?: string[];
+  /** 【应答人设】 — text of the selected persona-library entry */
+  answerPersona?: string;
+  /** 【自定义指令】 — free-form user instruction, wins over the layers above */
+  extra?: string;
+}
+
+export interface StablePrefixInput {
+  resume?: string;
+  jd?: string;
+  lang: AnswerLang;
+  notes?: string;
+  layers?: PromptLayers;
+}
+
+/**
+ * The BYTE-STABLE system prompt: persona + style directives + 应答人设 +
+ * 【简历】 + 【岗位JD】 + 【个人背景】 + 自定义指令 + language directive. Same
+ * inputs MUST yield the identical string (no timestamps / randomness) — the LLM
+ * prewarm request and every real request share this prefix so the provider's
+ * prefix cache (DeepSeek 0.1x pricing + faster prefill) hits. Notes sit here
+ * (they change rarely) while RAG recall is per-question and therefore belongs
+ * to the FAST context below — injecting it here would invalidate the cache on
+ * every question.
+ */
+export function buildStablePrefix(input: StablePrefixInput): string {
+  const layers = input.layers ?? {};
+  const override = layerLines(layers.styleOverride);
+  const style = override.length ? override : (layers.styleDirectives ?? DEFAULT_STYLE_DIRECTIVES);
+  const persona = layerLines(layers.persona);
+  const parts = persona.length
+    ? [...persona, ...style]
+    : [...DEFAULT_PERSONA_HEAD, ...style, ...DEFAULT_PERSONA_TAIL];
+
+  const ap = (layers.answerPersona ?? '').trim();
+  if (ap) {
+    parts.push(
+      '',
+      '【应答人设】（本场面试我要扮演的设定，口吻、立场与详略以它为准，但不编造经历）',
+      ap.slice(0, PERSONA_TEXT_MAX),
+      '【应答人设结束】',
+    );
+  }
+
+  const r = (input.resume ?? '').trim();
+  const j = (input.jd ?? '').trim();
   if (r) {
     parts.push(
       '',
@@ -114,7 +180,7 @@ export function buildStablePrefix(
       '【岗位JD结束】',
     );
   }
-  const n = (notes ?? '').trim();
+  const n = (input.notes ?? '').trim();
   if (n) {
     parts.push(
       '',
@@ -123,7 +189,16 @@ export function buildStablePrefix(
       '【个人背景结束】',
     );
   }
-  parts.push('', langDirective(lang));
+  const extra = (layers.extra ?? '').trim();
+  if (extra) {
+    parts.push(
+      '',
+      '【自定义指令】（我追加的要求，与其它指令冲突时以这里为准）',
+      extra.slice(0, PROMPT_OVERRIDE_MAX_CHARS),
+      '【自定义指令结束】',
+    );
+  }
+  parts.push('', langDirective(input.lang));
   return parts.join('\n');
 }
 
@@ -255,6 +330,8 @@ export interface AnswerPromptInput {
   memo?: string;
   /** L2 personal notes — ride the STABLE prefix (upgrade P0) */
   notes?: string;
+  /** v1.0.1 settings-derived prompt layers; segment/continuous only */
+  promptLayers?: PromptLayers;
   /** L3 RAG recall lines, already formatted, most relevant first (upgrade P0) */
   ragContext?: string[];
   /** recalled blocks whose figures are not settled — see {@link formatRagContext} */
@@ -397,7 +474,8 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
 
   // Free "随便问": raw pass-through — NO meeting-assistant persona, so identity
   // / "which model are you" questions get the model's truthful answer. The
-  // transcript + KB are offered only as optional reference.
+  // transcript + KB are offered only as optional reference. The v1.0.1 layers
+  // (style / 应答人设 / 自定义指令) are deliberately NOT applied here either.
   if (input.mode === 'free') {
     const refs: string[] = [];
     const qa = input.qaHit;
@@ -424,7 +502,10 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
 
   // segment / continuous: teleprompter with the stable prefix
   const msgs: ChatMessage[] = [
-    { role: 'system', content: buildStablePrefix(resume, jd, lang, input.notes) },
+    {
+      role: 'system',
+      content: buildStablePrefix({ resume, jd, lang, notes: input.notes, layers: input.promptLayers }),
+    },
   ];
 
   const memo = (input.memo ?? '').trim();

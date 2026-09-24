@@ -19,6 +19,7 @@ import {
   clampMemo,
   clampTranscript,
   classifyQuestion,
+  DEFAULT_PERSONA_TEMPLATE,
   formatQaBlock,
   formatRagContext,
   formatWebBlock,
@@ -32,7 +33,10 @@ import {
   MAX_MEMO_CHARS,
   MAX_RAG_CONTEXT_CHARS,
   RESUME_PRIORITY,
+  type PromptLayers,
 } from '../electron/llm/prompts';
+import { buildStyleDirectives } from '../shared/answerStyle';
+import { PERSONA_TEXT_MAX, PROMPT_OVERRIDE_MAX_CHARS } from '../shared/personas';
 
 describe('SseParser', () => {
   it('parses complete events', () => {
@@ -261,13 +265,13 @@ describe('dual-slot material injection (resume / JD)', () => {
 
 describe('buildStablePrefix (prefix-cache friendliness)', () => {
   it('is byte-stable: identical inputs yield the identical string', () => {
-    const a = buildStablePrefix('简历内容', 'JD内容', 'chinese');
-    const b = buildStablePrefix('简历内容', 'JD内容', 'chinese');
+    const a = buildStablePrefix({ resume: '简历内容', jd: 'JD内容', lang: 'chinese' });
+    const b = buildStablePrefix({ resume: '简历内容', jd: 'JD内容', lang: 'chinese' });
     expect(a).toBe(b);
     expect(a).not.toMatch(/\d{4}-\d{2}-\d{2}|\d{13}/); // no dates / timestamps
   });
   it('is the entire system message of segment/continuous requests', () => {
-    const prefix = buildStablePrefix('R', 'J', 'english');
+    const prefix = buildStablePrefix({ resume: 'R', jd: 'J', lang: 'english' });
     const msgs = buildAnswerMessages({
       mode: 'segment',
       question: 'q',
@@ -280,8 +284,182 @@ describe('buildStablePrefix (prefix-cache friendliness)', () => {
   });
   it('gives the full budget to a lone slot', () => {
     const huge = 'B'.repeat(20000);
-    const p = buildStablePrefix('', huge, 'chinese');
+    const p = buildStablePrefix({ jd: huge, lang: 'chinese' });
     expect(p).toContain('B'.repeat(MAX_BACKGROUND_CHARS));
+  });
+});
+
+// ---------- v1.0.1: layered stable prefix (style ladder / persona library / overrides) ----------
+describe('buildStablePrefix layers (v1.0.1 prompt engineering)', () => {
+  const resume = '项目经历：实时转录系统。';
+  const jd = '职责：负责高并发服务。';
+  const withLayers = (layers?: PromptLayers) => buildStablePrefix({ resume, jd, lang: 'chinese', layers });
+
+  // C-缓存 (spec §4): a v1.0.0 user who changes nothing must send the exact same
+  // bytes to the provider, or every prefix cache in the wild goes cold for free.
+  it('with no layers it is the v1.0.0 prefix byte-for-byte', () => {
+    const v100 = [
+      '你是我的实时面试提词器。我正在参加面试，屏幕上是面试官说话的实时转录。',
+      '你输出的内容就是我接下来要照着念的话，必须遵守：',
+      '- 全程用第一人称「我」，口语自然，让我可以一字不改地念出来；',
+      '- 第一句先给结论或直接回应，再展开 2-3 个短要点；',
+      '- 全文控制在 30-60 秒内可念完（约 150-350 字）；',
+      '- 不用 Markdown 标题、编号、加粗等书面格式，分点直接换行；',
+      '- 行为/经历类问题按 STAR 展开：情境→任务→行动→结果；',
+      '- 技术类问题先一句话讲思路，再给关键点，必要时给复杂度或对比结论；',
+      '- 只能使用【简历】里的真实经历，绝不编造简历之外的公司、项目、数字；',
+      '- 没把握的问题，给出稳妥的通用说法，或一句得体的争取思考时间的话术。',
+      '',
+      '【简历】（我的真实资料，回答只能基于此）',
+      resume,
+      '【简历结束】',
+      '',
+      '【岗位JD】（本场面试针对的职位，回答向它贴合）',
+      jd,
+      '【岗位JD结束】',
+      '',
+      langDirective('chinese'),
+    ].join('\n');
+    expect(withLayers()).toBe(v100);
+    // explicit defaults from the ladder change nothing either
+    expect(withLayers({ styleDirectives: buildStyleDirectives('standard', 'professional') })).toBe(v100);
+  });
+
+  it('the richness ladder replaces exactly the two legacy directive lines', () => {
+    const std = withLayers().split('\n');
+    const dense = withLayers({ styleDirectives: buildStyleDirectives('detailed', 'professional') }).split('\n');
+    expect(dense).toHaveLength(std.length);
+    expect(std.map((l, i) => (l === dense[i] ? -1 : i)).filter((i) => i >= 0)).toEqual([3, 4]);
+    expect(dense[3]).toContain('分层展开');
+  });
+
+  it('the expertise ladder inserts one diction line right after the directives', () => {
+    const std = withLayers();
+    const tech = withLayers({ styleDirectives: buildStyleDirectives('standard', 'technical') });
+    expect(tech.split('\n')).toHaveLength(std.split('\n').length + 1);
+    const at = tech.indexOf('- 可以直接上术语与指标');
+    expect(at).toBeGreaterThan(std.indexOf('- 全文控制在 30-60 秒内可念完（约 150-350 字）；'));
+    expect(at).toBeLessThan(tech.indexOf('- 不用 Markdown'));
+  });
+
+  it('orders the sections: persona, style, 应答人设, 简历, JD, 个人背景, 自定义指令, language', () => {
+    const p = buildStablePrefix({
+      resume,
+      jd,
+      lang: 'chinese',
+      notes: '我擅长 Redis',
+      layers: { answerPersona: '十年后端架构师，先给数字', extra: '结尾永远补一句反问' },
+    });
+    const order = [
+      '你是我的实时面试提词器',
+      '- 全文控制在 30-60 秒内可念完',
+      '【应答人设】',
+      '【简历】（我的真实资料',
+      '【岗位JD】（本场面试',
+      '【个人背景】',
+      '【自定义指令】',
+      langDirective('chinese'),
+    ].map((s) => p.indexOf(s));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it('adds no section for blank layers', () => {
+    expect(withLayers({ answerPersona: '   ', extra: '', persona: '', styleOverride: '  ' })).toBe(withLayers());
+  });
+
+  it('promptPersona replaces the built-in template and keeps the directives', () => {
+    const p = withLayers({ persona: '我是谈判顾问，替我说话。\n保持礼貌。' });
+    expect(p).not.toContain('你是我的实时面试提词器');
+    expect(p).not.toContain('- 不用 Markdown');
+    expect(p.startsWith('我是谈判顾问，替我说话。\n保持礼貌。\n')).toBe(true);
+    expect(p).toContain('- 全文控制在 30-60 秒内可念完（约 150-350 字）；');
+  });
+
+  it('promptStyle replaces the generated directives in place', () => {
+    const lines = withLayers({ styleOverride: '- 只用三句话，末句给一个数字。' }).split('\n');
+    expect(lines[3]).toBe('- 只用三句话，末句给一个数字。');
+    expect(lines[4]).toBe('- 不用 Markdown 标题、编号、加粗等书面格式，分点直接换行；');
+    expect(lines.join('\n')).not.toContain('第一句先给结论或直接回应');
+  });
+
+  it('promptExtra lands after the material and before the language directive', () => {
+    const p = withLayers({ extra: '每次回答结尾加一句反问。' });
+    const at = p.indexOf('每次回答结尾加一句反问。');
+    expect(at).toBeGreaterThan(p.indexOf('【简历结束】'));
+    expect(at).toBeLessThan(p.indexOf(langDirective('chinese')));
+  });
+
+  it('clamps the persona and extra layers to their stored budgets', () => {
+    const p = withLayers({
+      answerPersona: '人'.repeat(PERSONA_TEXT_MAX + 500),
+      extra: '额'.repeat(PROMPT_OVERRIDE_MAX_CHARS + 500),
+    });
+    expect(p).toContain('人'.repeat(PERSONA_TEXT_MAX));
+    expect(p).not.toContain('人'.repeat(PERSONA_TEXT_MAX + 1));
+    expect(p).toContain('额'.repeat(PROMPT_OVERRIDE_MAX_CHARS));
+    expect(p).not.toContain('额'.repeat(PROMPT_OVERRIDE_MAX_CHARS + 1));
+  });
+
+  it('layered prefixes stay byte-stable and carry no timestamps', () => {
+    const layers: PromptLayers = {
+      answerPersona: 'A',
+      extra: 'B',
+      styleDirectives: buildStyleDirectives('concise', 'casual'),
+    };
+    expect(withLayers(layers)).toBe(withLayers(layers));
+    expect(withLayers(layers)).not.toMatch(/\d{4}-\d{2}-\d{2}|\d{13}/);
+  });
+
+  it('DEFAULT_PERSONA_TEMPLATE is the editor base: every persona line but the directives', () => {
+    expect(DEFAULT_PERSONA_TEMPLATE).toContain('你是我的实时面试提词器');
+    expect(DEFAULT_PERSONA_TEMPLATE).toContain('- 没把握的问题');
+    expect(DEFAULT_PERSONA_TEMPLATE).not.toContain('第一句先给结论');
+    expect(DEFAULT_PERSONA_TEMPLATE).not.toContain('全文控制在 30-60 秒');
+    const lines = DEFAULT_PERSONA_TEMPLATE.split('\n');
+    const rebuilt = [
+      ...lines.slice(0, 3),
+      ...buildStyleDirectives('standard', 'professional'),
+      ...lines.slice(3),
+    ].join('\n');
+    expect(withLayers()).toContain(rebuilt);
+  });
+
+  it('buildAnswerMessages routes layers through: prewarm bytes == real bytes', () => {
+    const layers: PromptLayers = {
+      answerPersona: '十年后端架构师',
+      extra: '结尾加一句反问',
+      styleDirectives: buildStyleDirectives('detailed', 'technical'),
+    };
+    const msgs = buildAnswerMessages({
+      mode: 'segment',
+      question: 'q',
+      recentTranscript: [],
+      resume,
+      jd,
+      promptLayers: layers,
+    });
+    expect(msgs[0].content).toBe(buildStablePrefix({ resume, jd, lang: 'chinese', layers }));
+    expect(buildPrewarmMessages(msgs[0].content as string)[0].content).toBe(msgs[0].content);
+  });
+
+  it('free and translate modes stay persona-free (raw pass-through)', () => {
+    const layers: PromptLayers = { answerPersona: '十年后端架构师', extra: '结尾加一句反问' };
+    const free = buildAnswerMessages({
+      mode: 'free',
+      freeQuestion: '随便问一下',
+      recentTranscript: [],
+      promptLayers: layers,
+    });
+    expect(JSON.stringify(free)).not.toContain('【应答人设】');
+    expect(JSON.stringify(free)).not.toContain('十年后端架构师');
+    const tr = buildAnswerMessages({
+      mode: 'translate',
+      question: 'hello world',
+      recentTranscript: [],
+      promptLayers: layers,
+    });
+    expect(JSON.stringify(tr)).not.toContain('十年后端架构师');
   });
 });
 
@@ -360,7 +538,7 @@ describe('buildMemoUpdateMessages / clampMemo (P1-5 pure logic)', () => {
 
 describe('buildPrewarmMessages (P1-6 prefix-cache warm)', () => {
   it('system message is byte-identical to real answer requests', () => {
-    const prefix = buildStablePrefix('简历', 'JD', 'chinese');
+    const prefix = buildStablePrefix({ resume: '简历', jd: 'JD', lang: 'chinese' });
     const warm = buildPrewarmMessages(prefix);
     const real = buildAnswerMessages({
       mode: 'segment',
@@ -597,17 +775,17 @@ describe('prompt cache safety (upgrade P0: notes / RAG / consistency layering)',
   const notes = '我擅长用 Redis 和 Kafka，讲项目时主动提高并发优化。';
 
   it('notes ride the STABLE prefix byte-stably across repeated calls', () => {
-    const a = buildStablePrefix(resume, jd, 'chinese', notes);
-    const b = buildStablePrefix(resume, jd, 'chinese', notes);
+    const a = buildStablePrefix({ resume, jd, lang: 'chinese', notes });
+    const b = buildStablePrefix({ resume, jd, lang: 'chinese', notes });
     expect(a).toBe(b);
     expect(a).toContain('【个人背景】');
     expect(a).toContain(notes);
     // same inputs with no notes stay identical to the notes-less prefix
-    expect(buildStablePrefix(resume, jd, 'chinese')).not.toContain('【个人背景】');
+    expect(buildStablePrefix({ resume, jd, lang: 'chinese' })).not.toContain('【个人背景】');
   });
 
   it('RAG recall + consistency hint NEVER touch the stable prefix', () => {
-    const plain = buildStablePrefix(resume, jd, 'chinese', notes);
+    const plain = buildStablePrefix({ resume, jd, lang: 'chinese', notes });
     const withRag = buildAnswerMessages({
       mode: 'segment',
       question: '介绍一下你的缓存设计经验',
@@ -695,7 +873,7 @@ describe('prepared-answer + web-fallback blocks (knowledge-first routing)', () =
   });
 
   it('segment mode: the QA block stays OUT of the stable prefix (cache safe)', () => {
-    const plain = buildStablePrefix(resume, '', 'chinese', undefined);
+    const plain = buildStablePrefix({ resume, lang: 'chinese' });
     const msgs = buildAnswerMessages({
       mode: 'segment',
       question: '你如何处理团队冲突？',

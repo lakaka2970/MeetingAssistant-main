@@ -96,7 +96,10 @@ import {
   buildVisionMessages,
   clampMemo,
   classifyQuestion,
+  type PromptLayers,
 } from './llm/prompts';
+import { buildStyleDirectives, DEFAULT_EXPERTISE, DEFAULT_RICHNESS } from '../shared/answerStyle';
+import { resolveActivePersona } from '../shared/personas';
 import type { AppInfo, KnowledgeFilesState, KnowledgeImportResult, PublicSettings, UiLang } from '../shared/protocol';
 import {
   IPC,
@@ -970,14 +973,50 @@ function bootstrap(): void {
     const PREWARM_IDLE_MS = 4 * 60_000;
     let lastPrefix: string | null = null;
     let lastPrefixActivity = 0; // last time the answer prefix hit the provider
+    let lastPrewarmMaterial: { resume?: string; jd?: string } = {};
     let keepWarmTimer: NodeJS.Timeout | null = null;
 
+    /** llm settings baked into the stable prefix: change one mid-session and the
+     * provider-side cache is cold for the new bytes */
+    const PROMPT_PREFIX_KEYS = [
+      'answerLang',
+      'answerRichness',
+      'answerExpertise',
+      'personas',
+      'activePersonaId',
+      'promptPersona',
+      'promptStyle',
+      'promptExtra',
+    ] as const;
+
+    /** v1.0.1: the ONE reader of the editable prompt layers. Prewarm and real
+     * requests both go through it, so their prefixes stay byte-identical */
+    function promptLayers(): PromptLayers {
+      const s = settings.data.llm;
+      return {
+        persona: s.promptPersona ?? '',
+        styleOverride: s.promptStyle ?? '',
+        styleDirectives: buildStyleDirectives(
+          s.answerRichness ?? DEFAULT_RICHNESS,
+          s.answerExpertise ?? DEFAULT_EXPERTISE,
+        ),
+        answerPersona: resolveActivePersona(s.personas ?? [], s.activePersonaId ?? ''),
+        extra: s.promptExtra ?? '',
+      };
+    }
+
     /** same material fallback as llmAsk — prewarm MUST match real requests
-     * byte-for-byte, personal notes included (upgrade P0) */
+     * byte-for-byte, personal notes and prompt layers included (upgrade P0) */
     function stablePrefixFor(resume?: string, jd?: string): string {
       const hasMaterial = !!(resume || jd);
       const effResume = resume || (hasMaterial ? '' : knowledge.text);
-      return buildStablePrefix(effResume, jd ?? '', settings.data.llm.answerLang, rag.notes.text);
+      return buildStablePrefix({
+        resume: effResume,
+        jd: jd ?? '',
+        lang: settings.data.llm.answerLang,
+        notes: rag.notes.text,
+        layers: promptLayers(),
+      });
     }
 
     async function doPrewarm(prefix: string, reason: string): Promise<void> {
@@ -1002,6 +1041,9 @@ function bootstrap(): void {
     ipcMain.on(
       IPC.llmPrewarm,
       (_e, payload: { resume?: string; jd?: string; immediate?: boolean } = {}) => {
+        // remembered so a settings change can re-warm the SAME bytes the
+        // renderer is currently working with
+        lastPrewarmMaterial = { resume: payload.resume, jd: payload.jd };
         const prefix = stablePrefixFor(payload.resume, payload.jd);
         const dirty = prefix !== lastPrefix;
         const cold = Date.now() - lastPrefixActivity >= PREWARM_IDLE_MS;
@@ -1070,6 +1112,15 @@ function bootstrap(): void {
       }
       if (patch.ui?.stealth !== undefined) {
         applyStealth();
+      }
+      // A prompt-layer change makes the cached prefix cold the moment it lands.
+      // Re-warm right away while capturing: switching 回答风格 / 应答人设 mid-meeting
+      // should not charge the next answer for a cold prefill.
+      if (patch.llm && PROMPT_PREFIX_KEYS.some((k) => patch.llm![k] !== undefined)) {
+        lastPrefix = null;
+        if (capturing) {
+          void doPrewarm(stablePrefixFor(lastPrewarmMaterial.resume, lastPrewarmMaterial.jd), 'settings');
+        }
       }
       // the tray menu is a snapshot: rebuild it in the newly chosen language
       if (patch.ui?.lang !== undefined) refreshTray();
@@ -2355,6 +2406,7 @@ function bootstrap(): void {
         jd: isTranslate ? undefined : payload.jd,
         memo: isTranslate ? undefined : payload.memo,
         notes: isTranslate ? undefined : rag.notes.text,
+        promptLayers: isTranslate ? undefined : promptLayers(),
         ragContext: isTranslate ? undefined : ragContext,
         ragConflicts: isTranslate ? undefined : ragConflicts,
         qaHit: isTranslate ? undefined : qaHit,
