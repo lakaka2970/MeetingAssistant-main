@@ -15,6 +15,9 @@ export const DEFAULT_CHUNK_OVERLAP = 50;
 /** sentence enders: CJK punctuation, latin .!? followed by space/EOL, newlines */
 const SENTENCE_SPLIT = /(?<=[。！？!?；;\n])|(?<=\.)\s+/;
 
+/** markdown ATX heading: a document section marker (pptx slides use `## 第N页`) */
+const HEADING = /^#{1,6}\s/;
+
 export function chunkText(
   text: string,
   opts: { chunkSize?: number; overlap?: number } = {},
@@ -32,6 +35,13 @@ export function chunkText(
   };
 
   for (const sentence of sentences) {
+    if (HEADING.test(sentence)) {
+      // A section marker opens a fresh chunk: the overlap tail would otherwise
+      // glue the end of the previous section (e.g. the last slide) onto it.
+      pushCurrent();
+      current = sentence;
+      continue;
+    }
     if (sentence.length > chunkSize) {
       // flush what we have, then hard-slice the giant sentence
       pushCurrent();

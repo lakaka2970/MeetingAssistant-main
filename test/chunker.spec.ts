@@ -54,4 +54,20 @@ describe('chunkText (sentence-boundary sliding window)', () => {
     expect(DEFAULT_CHUNK_SIZE).toBe(300);
     expect(DEFAULT_CHUNK_OVERLAP).toBe(50);
   });
+
+  it('treats a markdown heading as a hard boundary so slides never glue together', () => {
+    const page = (n: number) =>
+      `## 第${n}页\n` +
+      Array.from({ length: 8 }, (_, i) => `这是第${n}页第${i}句，讲幻灯片边界。`).join('');
+    const chunks = chunkText(`${page(1)}\n${page(2)}\n${page(3)}`, { chunkSize: 120, overlap: 30 });
+    expect(chunks.length).toBeGreaterThan(3);
+    for (const c of chunks) {
+      const markers = c.match(/## 第\d+页/g) ?? [];
+      // at most one slide per chunk, and it always opens the chunk
+      expect(markers.length).toBeLessThanOrEqual(1);
+      if (markers.length === 1) expect(c.startsWith(markers[0])).toBe(true);
+      const pages = new Set([...c.matchAll(/第(\d+)页/g)].map((m) => m[1]));
+      expect(pages.size).toBeLessThanOrEqual(1);
+    }
+  });
 });
