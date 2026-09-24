@@ -24,6 +24,7 @@ import {
   type CompanionCaps,
   type CompanionMessage,
 } from './protocol';
+import { CmdRateLimiter, acceptCommand, type ControlCommand } from './control';
 import type { PairingManager } from './pairing';
 
 /** A phone that connected but never spoke our protocol gets cut off this fast. */
@@ -57,6 +58,19 @@ interface Client {
   timer: NodeJS.Timeout | null;
   /** when the last ping went out, so the pong can be turned into an RTT */
   pingAt: number;
+  /** ⑦ this connection's upstream command budget */
+  cmds: CmdRateLimiter;
+}
+
+/**
+ * Everything the `cmd` path needs from the live bridge: the per-connection
+ * budget and the place an accepted command goes. Optional on the call because
+ * the handshake works without a bridge — but a `cmd` that arrives with no
+ * channel is refused, never acked into the void.
+ */
+export interface ControlChannel {
+  limiter: { allow: () => boolean };
+  onCmd: (cmd: ControlCommand) => void;
 }
 
 /**
@@ -68,6 +82,7 @@ export function handleControlMessage(
   session: { authenticated: boolean; device: string },
   pairing: PairingManager,
   caps: CompanionCaps,
+  ctl?: ControlChannel,
 ): { reply?: CompanionMessage; closeCode?: number } {
   if (!msg || typeof msg !== 'object') return { reply: { type: 'error', reason: 'malformed' } };
   const kind = String((msg as { type?: unknown }).type ?? '');
@@ -116,6 +131,24 @@ export function handleControlMessage(
   }
 
   if (!session.authenticated) return { closeCode: CLOSE_INVALID_TOKEN };
+
+  if (kind === 'cmd') {
+    const raw = msg as { id?: unknown; op?: unknown; arg?: unknown };
+    const id = typeof raw.id === 'string' ? raw.id : '';
+    if (!ctl) return { reply: { type: 'error', id, reason: 'not_wired' } };
+    // `caps` is the live object the bridge rewrites on every settings apply, so
+    // un-ticking a grant lands on the next command rather than on the next
+    // rebind — and a phone that cached the old panel gets told, by name.
+    const d = acceptCommand(raw, { allowControl: caps.control, allowItems: caps.controlItems }, ctl.limiter);
+    if (!d.accept) {
+      console.log(`[companion-ctl] refused ${d.id || '?'}: ${d.reason}`);
+      return { reply: { type: 'error', id: d.id, reason: d.reason } };
+    }
+    console.log(`[companion-ctl] ack ${d.command.id || '?'} ${d.command.op}`);
+    ctl.onCmd(d.command);
+    return { reply: { type: 'ack', id: d.command.id, op: d.command.op } };
+  }
+
   return { reply: { type: 'error', reason: `unknown_type:${kind}` } };
 }
 
@@ -150,6 +183,12 @@ export interface CompanionServerOptions {
    * and leaving a QR on screen afterwards is what people share on screen.
    */
   onAuthenticated?: () => void;
+  /**
+   * ⑦ one remote control command that passed authorization, argument validation
+   * and this connection's budget. The `ack` is already on its way by then: this
+   * is where the desktop applies it, and the `st` push is what confirms it.
+   */
+  onControl?: (cmd: ControlCommand) => void;
 }
 
 export class CompanionServer {
@@ -329,6 +368,7 @@ export class CompanionServer {
       device: '',
       alive: true,
       pingAt: 0,
+      cmds: new CmdRateLimiter(),
       timer: setTimeout(() => {
         try {
           ws.close(CLOSE_HANDSHAKE_TIMEOUT, 'handshake timeout');
@@ -340,7 +380,7 @@ export class CompanionServer {
     this.clients.push(client);
 
     ws.on('message', (raw: Buffer, isBinary: boolean) => {
-      if (isBinary) return; // the phone never uploads
+      if (isBinary) return; // the phone uploads nothing: no audio, no screenshots
       let parsed: unknown;
       try {
         parsed = JSON.parse(String(raw));
@@ -353,7 +393,10 @@ export class CompanionServer {
         this.rearm(client);
       }
       const session = { authenticated: client.authenticated, device: client.device };
-      const { reply, closeCode } = handleControlMessage(parsed, session, this.opts.pairing, this.opts.caps);
+      const { reply, closeCode } = handleControlMessage(parsed, session, this.opts.pairing, this.opts.caps, {
+        limiter: client.cmds,
+        onCmd: (cmd) => this.opts.onControl?.(cmd),
+      });
       const justAuthenticated = !client.authenticated && session.authenticated;
       client.authenticated = session.authenticated;
       client.device = session.device;

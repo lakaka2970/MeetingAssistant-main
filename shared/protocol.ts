@@ -1476,4 +1476,19 @@ export const IPC = {
    * brings it back.
    */
   companionConnected: 'companion:connected',
+  /**
+   * main -> renderer (⑦): a paired phone asked to start or stop transcription.
+   * The renderer owns the capture stack, so this is a request, not a report —
+   * the truth comes back through captureStarted/captureStopped and lands in `st`.
+   */
+  companionCtlCapture: 'companion:ctl-capture',
+  /** main -> renderer (⑦): a phone asked for continuous answering on or off */
+  companionCtlContinuous: 'companion:ctl-continuous',
+  /** main -> renderer (⑦): ask this text, through the same free-question pipeline */
+  companionCtlAsk: 'companion:ctl-ask',
+  /**
+   * renderer -> main (⑦): the continuous switch changed. Only the renderer owns
+   * that boolean, so the phone's `st` echo has no other source.
+   */
+  companionContinuous: 'companion:continuous',
 } as const;

@@ -12,8 +12,10 @@ import {
   parseFrame,
   type CompanionCaps,
 } from '../electron/companion/protocol';
+import { CLOSE_INVALID_TOKEN } from '../electron/companion/protocol';
 import { CODE_TTL_MS, MAX_ATTEMPTS, PairingManager } from '../electron/companion/pairing';
 import { handleControlMessage } from '../electron/companion/server';
+import type { ControlCommand } from '../electron/companion/control';
 import { certCovers, ensureCertificate } from '../electron/companion/tls';
 import { COMPANION_CONTROL_GRANTS } from '../shared/protocol';
 
@@ -177,6 +179,111 @@ describe('companion admission', () => {
     expect(isControlMessage({})).toBe(false);
     expect(isControlMessage(null)).toBe(false);
     expect(isControlMessage('hello')).toBe(false);
+  });
+});
+
+// ---------- remote control admission (⑦) ----------
+
+describe('handleControlMessage: cmd', () => {
+  let dir: string;
+  let pairing: PairingManager;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'mc-ctl-'));
+    pairing = new PairingManager(join(dir, 'devices.json'));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  /** an authenticated session, which is every cmd's precondition */
+  const authed = (): { authenticated: boolean; device: string } => ({
+    authenticated: true,
+    device: 'Pixel',
+  });
+  const limiter = (allow: boolean) => ({ allow: () => allow });
+
+  it('closes an unauthenticated cmd through the same fallback as everything else', () => {
+    const res = handleControlMessage(
+      { type: 'cmd', id: 'c1', op: 'ask', arg: 'hi' },
+      session(),
+      pairing,
+      CAPS,
+      { limiter: limiter(true), onCmd: () => {} },
+    );
+    expect(res.closeCode).toBe(CLOSE_INVALID_TOKEN);
+    expect(res.reply).toBeUndefined();
+  });
+
+  it('acks with the caller id and hands the parsed command over', () => {
+    const seen: ControlCommand[] = [];
+    const res = handleControlMessage(
+      { type: 'cmd', id: 'c1', op: 'richness', arg: 'detailed' },
+      authed(),
+      pairing,
+      CAPS,
+      { limiter: limiter(true), onCmd: (c) => seen.push(c) },
+    );
+    expect(res.reply).toEqual({ type: 'ack', id: 'c1', op: 'richness' });
+    expect(seen).toEqual([{ id: 'c1', op: 'richness', value: 'detailed' }]);
+  });
+
+  it('refuses by name when the desktop has control turned off', () => {
+    const seen: ControlCommand[] = [];
+    const res = handleControlMessage(
+      { type: 'cmd', id: 'c2', op: 'capture', arg: true },
+      authed(),
+      pairing,
+      { ...CAPS, control: false },
+      { limiter: limiter(true), onCmd: (c) => seen.push(c) },
+    );
+    expect(res.reply).toEqual({ type: 'error', id: 'c2', reason: 'control_disabled' });
+    expect(seen).toEqual([]);
+  });
+
+  it('refuses a bad argument and an exhausted budget without running anything', () => {
+    const onCmd = (): void => {
+      throw new Error('must not run');
+    };
+    expect(
+      handleControlMessage(
+        { type: 'cmd', id: 'c3', op: 'capture', arg: 'yes' },
+        authed(),
+        pairing,
+        CAPS,
+        { limiter: limiter(true), onCmd },
+      ).reply,
+    ).toEqual({ type: 'error', id: 'c3', reason: 'bad_arg' });
+    expect(
+      handleControlMessage(
+        { type: 'cmd', id: 'c4', op: 'ask', arg: 'hi' },
+        authed(),
+        pairing,
+        CAPS,
+        { limiter: limiter(false), onCmd },
+      ).reply,
+    ).toEqual({ type: 'error', id: 'c4', reason: 'rate_limited' });
+  });
+
+  it('refuses rather than silently ignoring a cmd with no wiring', () => {
+    // a bridge that has not attached its control source must not answer `ack`
+    // to a phone: an ack that is never followed by `st` is a lie
+    const res = handleControlMessage(
+      { type: 'cmd', id: 'c5', op: 'ask', arg: 'hi' },
+      authed(),
+      pairing,
+      CAPS,
+      undefined,
+    );
+    expect(res.reply).toEqual({ type: 'error', id: 'c5', reason: 'not_wired' });
+  });
+
+  it('leaves an unknown type alone: control still answers with unknown_type', () => {
+    const res = handleControlMessage(
+      { type: 'bogus' },
+      authed(),
+      pairing,
+      CAPS,
+      { limiter: limiter(true), onCmd: () => {} },
+    );
+    expect(res.reply).toEqual({ type: 'error', reason: 'unknown_type:bogus' });
   });
 });
 

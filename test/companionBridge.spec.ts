@@ -15,6 +15,7 @@ import WebSocket from 'ws';
 
 import { CompanionServer } from '../electron/companion/server';
 import { PairingManager } from '../electron/companion/pairing';
+import type { ControlCommand } from '../electron/companion/control';
 import { FRAME_HEADER_SIZE, buildFrame, parseFrame } from '../electron/companion/protocol';
 import { COMPANION_CONTROL_GRANTS } from '../shared/protocol';
 
@@ -37,6 +38,8 @@ const PORT = 18901;
 let dir: string;
 let server: CompanionServer;
 let pairing: PairingManager;
+/** ⑦ what the desktop side was told to do, in wire order */
+const received: ControlCommand[] = [];
 
 const open = (path = '/ws'): Promise<WebSocket> =>
   new Promise((resolve, reject) => {
@@ -95,6 +98,7 @@ beforeAll(async () => {
     katexDir: KATEX,
     port: PORT,
     portFallback: 8,
+    onControl: (cmd) => received.push(cmd),
   });
   await server.start();
 });
@@ -212,5 +216,91 @@ describe('companion bridge over the wire', () => {
     const ws = await open();
     expect(server.connectionCount).toBeGreaterThan(server.authenticatedCount);
     await shut(ws);
+  });
+});
+
+/**
+ * ⑦ A `cmd` has to survive the transport too: the unit tests prove the decision,
+ * this proves the server actually reaches it, per connection.
+ */
+describe('remote control over the wire', () => {
+  /**
+   * Buffer every JSON reply of one connection. A one-shot waiter loses messages
+   * here: six commands written back-to-back on localhost arrive in a single TCP
+   * read, and the parser emits all six in the same tick.
+   */
+  function recorder(ws: WebSocket): () => Promise<Record<string, unknown>> {
+    const queue: Record<string, unknown>[] = [];
+    let waiting: ((m: Record<string, unknown>) => void) | null = null;
+    ws.on('message', (data: Buffer, isBinary: boolean) => {
+      if (isBinary) return;
+      const msg = JSON.parse(String(data)) as Record<string, unknown>;
+      const take = waiting;
+      waiting = null;
+      if (take) take(msg);
+      else queue.push(msg);
+    });
+    return () => {
+      const queued = queue.shift();
+      if (queued) return Promise.resolve(queued);
+      return new Promise<Record<string, unknown>>((resolve) => {
+        waiting = resolve;
+      });
+    };
+  }
+
+  /** pair once, then reconnect with the token like the phone does on every boot */
+  async function connect(): Promise<{ phone: WebSocket; next: () => Promise<Record<string, unknown>> }> {
+    const ws = await open();
+    ws.send(JSON.stringify({ type: 'pair_request', device: '控制手机' }));
+    await nextJson(ws);
+    ws.send(JSON.stringify({ type: 'pair_confirm', code: pairing.currentCode()!.code }));
+    const token = String((await nextJson(ws))?.token);
+    await shut(ws);
+    const phone = await open();
+    const next = recorder(phone);
+    phone.send(JSON.stringify({ type: 'hello', token }));
+    expect((await next())?.type).toBe('hello_ok');
+    return { phone, next };
+  }
+
+  const cmd = (id: string, op: string, arg?: unknown): string =>
+    JSON.stringify({ type: 'cmd', id, op, ...(arg === undefined ? {} : { arg }) });
+
+  it('acks an authorized command and hands the parsed value over', async () => {
+    const { phone, next } = await connect();
+    const before = received.length;
+    phone.send(cmd('c1', 'richness', 'detailed'));
+    expect(await next()).toMatchObject({ type: 'ack', id: 'c1', op: 'richness' });
+    expect(received.slice(before)).toEqual([{ id: 'c1', op: 'richness', value: 'detailed' }]);
+    await shut(phone);
+  });
+
+  it('names a refusal instead of failing silently', async () => {
+    const { phone, next } = await connect();
+    const before = received.length;
+    phone.send(cmd('c2', 'richness', 'verbose'));
+    expect(await next()).toMatchObject({ type: 'error', id: 'c2', reason: 'bad_arg' });
+    expect(received.length).toBe(before);
+    await shut(phone);
+  });
+
+  it('gives each connection its own budget: the sixth cmd in a second is refused', async () => {
+    const { phone, next } = await connect();
+    const before = received.length;
+    for (let i = 0; i < 6; i++) phone.send(cmd(`r${i}`, 'history'));
+    const replies: Record<string, unknown>[] = [];
+    for (let i = 0; i < 6; i++) replies.push(await next());
+    expect(replies.slice(0, 5).every((r) => r.type === 'ack')).toBe(true);
+    expect(replies[5]).toMatchObject({ type: 'error', id: 'r5', reason: 'rate_limited' });
+    expect(received.length).toBe(before + 5);
+    await shut(phone);
+  });
+
+  it('refuses a cmd from a peer that never authenticated, same as any other type', async () => {
+    const ws = await open();
+    ws.send(cmd('c3', 'ask', '缓存怎么处理'));
+    expect(await closedCode(ws)).toBe(4001);
+    expect(received.some((c) => c.id === 'c3')).toBe(false);
   });
 });

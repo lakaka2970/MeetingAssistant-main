@@ -92,8 +92,46 @@ export function parseControlArg(op: ControlOp, arg: unknown): ArgParse {
   }
 }
 
-/** Sliding-window limiter for one connection's upstream commands. */
-export class CmdRateLimiter {
+/** one command that passed every check, with its argument already parsed */
+export interface ControlCommand {
+  id: string;
+  op: ControlOp;
+  value: string | boolean | undefined;
+}
+
+/** why a command was refused — the phone shows this, so each needs its own words */
+export type Refusal = Verdict | 'bad_arg' | 'rate_limited';
+
+export type CommandDecision =
+  | { accept: true; command: ControlCommand }
+  | { accept: false; id: string; reason: Refusal };
+
+/**
+ * The whole admission decision for one `cmd` frame: grant, then argument, then
+ * this connection's budget.
+ *
+ * The budget is spent last on purpose. A command that was never going to run
+ * must not eat the window — otherwise one disabled or malformed client can
+ * lock a shared connection out, and the only thing the limiter protects is the
+ * work `run()` does downstream.
+ */
+export function acceptCommand(
+  msg: { id?: unknown; op?: unknown; arg?: unknown },
+  grants: ControlGrants,
+  limiter: { allow: () => boolean },
+): CommandDecision {
+  const id = typeof msg.id === 'string' ? msg.id : '';
+  const op = typeof msg.op === 'string' ? msg.op : '';
+  const verdict = authorizeControl(op, grants);
+  if (verdict !== 'ok') return { accept: false, id, reason: verdict };
+  // `verdict === 'ok'` means op is one of the six, which is what narrows it
+  const parsed = parseControlArg(op as ControlOp, msg.arg);
+  if (!parsed.ok) return { accept: false, id, reason: 'bad_arg' };
+  if (!limiter.allow()) return { accept: false, id, reason: 'rate_limited' };
+  return { accept: true, command: { id, op: op as ControlOp, value: parsed.value } };
+}
+
+/** Sliding-window limiter for one connection's upstream commands. */export class CmdRateLimiter {
   private hits: number[] = [];
   private readonly now: () => number;
   private readonly limit: number;

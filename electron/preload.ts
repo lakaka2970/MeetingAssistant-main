@@ -161,6 +161,14 @@ export interface McApi {
   onAnswerHotkey(cb: () => void): () => void;
   /** main -> renderer: a phone authenticated; the overlay hands the display over */
   onCompanionConnected(cb: () => void): () => void;
+  /** main -> renderer (⑦): a phone asked to start or stop transcription */
+  onCtlCapture(cb: (on: boolean) => void): () => void;
+  /** main -> renderer (⑦): a phone asked for continuous answering on or off */
+  onCtlContinuous(cb: (on: boolean) => void): () => void;
+  /** main -> renderer (⑦): ask this text as if it had been typed on this machine */
+  onCtlAsk(cb: (text: string) => void): () => void;
+  /** renderer -> main (⑦): the continuous switch moved, so the phone's echo must follow */
+  companionContinuous(on: boolean): void;
   /** 面试模式持续答 gate: answer this transcript line or stay quiet? */
   gate(p: { requestId: string; line: string; recent: string[] }): Promise<LlmGateResult>;
   /** continuous mode only: warm the speculative retrieval cache with a partial */
@@ -275,6 +283,22 @@ const api: McApi = {
     ipcRenderer.on(IPC.companionConnected, listener);
     return () => ipcRenderer.removeListener(IPC.companionConnected, listener);
   },
+  onCtlCapture: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, on: boolean) => cb(!!on);
+    ipcRenderer.on(IPC.companionCtlCapture, listener);
+    return () => ipcRenderer.removeListener(IPC.companionCtlCapture, listener);
+  },
+  onCtlContinuous: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, on: boolean) => cb(!!on);
+    ipcRenderer.on(IPC.companionCtlContinuous, listener);
+    return () => ipcRenderer.removeListener(IPC.companionCtlContinuous, listener);
+  },
+  onCtlAsk: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, text: string) => cb(String(text ?? ''));
+    ipcRenderer.on(IPC.companionCtlAsk, listener);
+    return () => ipcRenderer.removeListener(IPC.companionCtlAsk, listener);
+  },
+  companionContinuous: (on) => ipcRenderer.send(IPC.companionContinuous, !!on),
   gate: (p) => ipcRenderer.invoke(IPC.llmGate, p),
   speculate: (p) => ipcRenderer.send(IPC.llmSpeculate, p),
   onNativeCaptureError: (cb) => {

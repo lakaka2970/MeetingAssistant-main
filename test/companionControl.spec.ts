@@ -4,9 +4,11 @@ import { COMPANION_CONTROL_GRANTS } from '../shared/protocol';
 import { isControlMessage, type CompanionCaps } from '../electron/companion/protocol';
 import {
   ASK_MAX_CHARS,
+  CMD_LIMIT,
   CmdRateLimiter,
   HISTORY_ITEMS,
   HISTORY_TEXT_CHARS,
+  acceptCommand,
   authorizeControl,
   buildHistoryPayload,
   buildStatePayload,
@@ -153,6 +155,70 @@ describe('CmdRateLimiter (5 commands per second per connection)', () => {
     let allowed = 0;
     for (let i = 0; i < 10; i++) if (rl.allow()) allowed += 1;
     expect(allowed).toBe(5);
+  });
+});
+
+describe('acceptCommand (the whole admission decision for one cmd)', () => {
+  const always = { allow: () => true };
+  const never = { allow: () => false };
+
+  it('accepts a granted, well-formed command and hands over the parsed value', () => {
+    const d = acceptCommand({ id: 'c1', op: 'richness', arg: 'detailed' }, grants(), always);
+    expect(d).toEqual({ accept: true, command: { id: 'c1', op: 'richness', value: 'detailed' } });
+  });
+
+  it('names the refusal so the phone can say why in its own words', () => {
+    expect(acceptCommand({ id: 'c', op: 'ask', arg: 'hi' }, grants({ allowControl: false }), always)).toEqual(
+      { accept: false, id: 'c', reason: 'control_disabled' },
+    );
+    expect(
+      acceptCommand({ id: 'c', op: 'ask', arg: 'hi' }, grants({ allowItems: off('ask') }), always),
+    ).toEqual({ accept: false, id: 'c', reason: 'item_disabled' });
+    expect(acceptCommand({ id: 'c', op: 'port', arg: 1 }, grants(), always)).toEqual({
+      accept: false,
+      id: 'c',
+      reason: 'unknown_op',
+    });
+    expect(acceptCommand({ id: 'c', op: 'capture', arg: 'yes' }, grants(), always)).toEqual({
+      accept: false,
+      id: 'c',
+      reason: 'bad_arg',
+    });
+    expect(acceptCommand({ id: 'c', op: 'ask', arg: 'hi' }, grants(), never)).toEqual({
+      accept: false,
+      id: 'c',
+      reason: 'rate_limited',
+    });
+  });
+
+  it('checks the grant before the budget: a refused command costs nothing', () => {
+    // otherwise a disabled phone could exhaust the limiter of a shared connection
+    const d = acceptCommand({ id: 'c', op: 'ask', arg: 'hi' }, grants({ allowControl: false }), never);
+    expect(d).toMatchObject({ accept: false, reason: 'control_disabled' });
+  });
+
+  it('spends the budget only on commands it actually runs', () => {
+    const clock = fakeClock();
+    const rl = new CmdRateLimiter({ now: clock.now });
+    let accepted = 0;
+    for (let i = 0; i < 40; i++) {
+      // half of them are malformed, so they must not eat the window
+      const bad = i % 2 === 0;
+      const d = acceptCommand(
+        { id: `c${i}`, op: 'capture', arg: bad ? 'yes' : true },
+        grants(),
+        rl,
+      );
+      if (d.accept) accepted += 1;
+    }
+    expect(accepted).toBe(CMD_LIMIT);
+  });
+
+  it('keeps a missing or non-string id as the empty string, never a crash', () => {
+    const d = acceptCommand({ op: 'ask', arg: 'hi' }, grants(), always);
+    expect(d).toMatchObject({ accept: true, command: { id: '' } });
+    const e = acceptCommand({ id: 7, op: 'nope' }, grants(), always);
+    expect(e).toMatchObject({ accept: false, id: '' });
   });
 });
 

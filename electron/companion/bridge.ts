@@ -33,13 +33,20 @@ import type {
   CompanionState,
   ExamEvent,
   LlmEvent,
+  StoredTurn,
 } from '@shared/protocol';
 import { COMPANION_CONTROL_GRANTS } from '../../shared/protocol';
 import { getResourceRoot } from '../resourcePaths';
 import { CompanionServer } from './server';
 import { PairingManager } from './pairing';
 import { ensureCertificate, primaryLanIp, lanAddresses } from './tls';
-import { buildFrame, type CompanionCaps, type CompanionMessage } from './protocol';
+import { buildFrame, type CompanionCaps, type CompanionMessage, type StateMessage } from './protocol';
+import {
+  buildHistoryPayload,
+  buildStatePayload,
+  sameState,
+  type ControlCommand,
+} from './control';
 
 /** merge window for partials and streamed deltas, in ms */
 const FLUSH_MS = 80;
@@ -59,6 +66,21 @@ export interface CompanionSettings {
   allowItems: CompanionControlItems;
 }
 
+/**
+ * ⑦ The desktop's side of remote control, answered by the main process on
+ * demand: the bridge never keeps a copy of the truth it echoes to phones, so a
+ * forgotten push shows up as a stale switch instead of a second source of
+ * facts.
+ */
+export interface CompanionControlDeps {
+  /** live values for the `st` payload */
+  state(): Omit<StateMessage, 'type'>;
+  /** this session's turns, oldest first — `hx` caps and reverses them */
+  turns(): StoredTurn[];
+  /** one command the server has already authorized, validated and budgeted */
+  run(cmd: ControlCommand): void;
+}
+
 export class CompanionBridge {
   private server: CompanionServer | null = null;
   private pairing: PairingManager | null = null;
@@ -74,6 +96,10 @@ export class CompanionBridge {
   private boundPort = 0;
   private boundHttps = false;
   private lastError = '';
+  /** ⑦ attached by the main process; no deps means no control, and no `st` */
+  private control: CompanionControlDeps | null = null;
+  /** last `st` we put on the wire — the push is lossy, so repeats are noise */
+  private lastState: StateMessage | null = null;
   /** latest text per speaker, waiting for the flush tick */
   private partials = new Map<string, string>();
   /** accumulated delta text per request id, waiting for the flush tick */
@@ -151,7 +177,14 @@ export class CompanionBridge {
         console.log(`[companion] 配对码：${code}`);
         this.onStateChange();
       },
-      onAuthenticated: () => this.onPhoneConnected(),
+      onAuthenticated: () => {
+        this.onPhoneConnected();
+        // A fresh phone has no idea what the desktop looks like, and the dedupe
+        // in publishState would otherwise swallow the state its panel needs.
+        this.lastState = null;
+        this.publishState();
+      },
+      onControl: (cmd) => this.runControl(cmd),
     });
     try {
       await server.start();
@@ -342,6 +375,51 @@ export class CompanionBridge {
         this.push({ type: 'x', phase: 'error', id, message: ev.message });
         break;
     }
+  }
+
+  // ---- remote control (⑦) ----
+
+  /**
+   * Hand the bridge the desktop's side of control. The main process owns every
+   * one of these answers; the bridge only echoes them and relays commands, so
+   * there is no second copy of the truth to fall out of step with.
+   */
+  attachControl(deps: CompanionControlDeps): void {
+    this.control = deps;
+  }
+
+  /**
+   * Echo the desktop's live state to the phones, but only when it moved: `st`
+   * rides the lossy channel, and a phone that is behind should miss a repeated
+   * state, not a transcript.
+   */
+  publishState(): void {
+    const deps = this.control;
+    if (!deps || !this.server) return;
+    const next = buildStatePayload(deps.state());
+    if (this.lastState && sameState(this.lastState, next)) return;
+    this.lastState = next;
+    this.push(next, true);
+  }
+
+  /**
+   * One command the server already authorized, validated and budgeted.
+   *
+   * `history` is the bridge's own answer — it is a read of state the main
+   * process already handed us. Everything else is applied by the desktop, and
+   * the `st` that follows is what tells the phone it worked (R9): a switch the
+   * renderer refused to throw shows up as unmoved, not as an error.
+   */
+  private runControl(cmd: ControlCommand): void {
+    const deps = this.control;
+    if (!deps) return;
+    if (cmd.op === 'history') {
+      // a panel the phone asked for by name must not be dropped for being slow
+      this.push(buildHistoryPayload(deps.turns()));
+      return;
+    }
+    deps.run(cmd);
+    this.publishState();
   }
 
   // ---- coalescing ----

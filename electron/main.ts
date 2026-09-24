@@ -52,6 +52,7 @@ import { supplementMessages, isNoSupplement } from '../shared/webSupplement';
 import { DEFAULT_SEARCH_PROVIDER } from '../shared/searchProviders';
 import { ExamBanks } from './exam/banks';
 import { CompanionBridge, type CompanionSettings } from './companion/bridge';
+import type { ControlCommand } from './companion/control';
 import { destroyConnectWindow, showConnectWindow } from './connectWindow';
 import { createExamWindow, destroyExamWindow } from './examWindow';
 import {
@@ -101,7 +102,13 @@ import {
   type PromptLayers,
 } from './llm/prompts';
 import { buildPersonaDraftMessages, finalizePersonaDraft } from './llm/personaPrompts';
-import { buildStyleDirectives, DEFAULT_EXPERTISE, DEFAULT_RICHNESS } from '../shared/answerStyle';
+import {
+  buildStyleDirectives,
+  DEFAULT_EXPERTISE,
+  DEFAULT_RICHNESS,
+  type AnswerExpertise,
+  type AnswerRichness,
+} from '../shared/answerStyle';
 import { resolveActivePersona } from '../shared/personas';
 import type { AppInfo, KnowledgeFilesState, KnowledgeImportResult, PublicSettings, UiLang } from '../shared/protocol';
 import {
@@ -113,7 +120,10 @@ import {
   type OnboardingProgressPatch,
   type ProviderTestRequest,
   type ProviderTestResult,
+  type SessionsFile,
   type SettingsPatch,
+  type StoredSession,
+  type StoredTurn,
 } from '../shared/protocol';
 import { mainStrings } from './uiStrings';
 
@@ -229,6 +239,14 @@ function bootstrap(): void {
   let screenShotAsk: (() => Promise<{ ok: boolean; ms: number; seq: number }>) | null = null;
   /** renderer capture lifecycle; the tray menu and the diagnostics report read it */
   let capturing = false;
+  /**
+   * v1.0.1 ⑦: the two things main cannot observe otherwise, cached so the
+   * companion `st` state costs no IPC round-trip when a phone asks. Declared
+   * here — before the handlers that write them — because every one of those
+   * listeners is registered in this same scope.
+   */
+  let ctlContinuous = false;
+  let ctlSessions: SessionsFile | null = null;
   const asr = new AsrHost();
   const sidecar = new FunasrSidecar();
   const tray = new AppTray();
@@ -1043,6 +1061,16 @@ function bootstrap(): void {
       }
     }
 
+    /**
+     * A prompt-layer change makes the cached prefix cold the moment it lands.
+     * Re-warm right away while capturing: switching 回答风格 / 应答人设
+     * mid-meeting should not charge the next answer for a cold prefill.
+     */
+    function markPromptPrefixCold(via: string): void {
+      lastPrefix = null;
+      if (capturing) void doPrewarm(stablePrefixFor(lastPrewarmMaterial.resume, lastPrewarmMaterial.jd), via);
+    }
+
     ipcMain.on(
       IPC.llmPrewarm,
       (_e, payload: { resume?: string; jd?: string; immediate?: boolean } = {}) => {
@@ -1122,6 +1150,7 @@ function bootstrap(): void {
         }, 60_000);
       }
     });
+    companion.publishState();
     ipcMain.on(IPC.captureStopped, () => {
       console.log('[main] capture stopped');
       lastCaptureStoppedAt = new Date().toISOString();
@@ -1134,6 +1163,7 @@ function bootstrap(): void {
       }
       asr.flush();
     });
+    companion.publishState(); // ⑦ the phone's ● 转录 follows this, not its own tap
     ipcMain.handle(IPC.settingsGet, () => publicSettings());
     // pull-based replay: renderer asks after subscribing, so instant-ready
     // cloud engines can't race the subscription (stuck "模型加载中" bug)
@@ -1158,13 +1188,8 @@ function bootstrap(): void {
         applyStealth();
       }
       // A prompt-layer change makes the cached prefix cold the moment it lands.
-      // Re-warm right away while capturing: switching 回答风格 / 应答人设 mid-meeting
-      // should not charge the next answer for a cold prefill.
       if (patch.llm && PROMPT_PREFIX_KEYS.some((k) => patch.llm![k] !== undefined)) {
-        lastPrefix = null;
-        if (capturing) {
-          void doPrewarm(stablePrefixFor(lastPrewarmMaterial.resume, lastPrewarmMaterial.jd), 'settings');
-        }
+        markPromptPrefixCold('settings');
       }
       // the tray menu is a snapshot: rebuild it in the newly chosen language
       if (patch.ui?.lang !== undefined) refreshTray();
@@ -1192,6 +1217,9 @@ function bootstrap(): void {
       } else if (patch.asr?.language) {
         asr.setLanguage(patch.asr.language);
       }
+      // ⑦ a desktop-side change to one of the four `st` fields is a phone-side
+      // change too — the panel recolours without being told by the click
+      companion.publishState();
       return publicSettings();
     });
     // ---- first-run wizard state (settings v2) ----
@@ -1465,7 +1493,16 @@ function bootstrap(): void {
       // fallback session pointer fresh (it fires from a hotkey, no payload)
       const cid = (data as { currentId?: unknown })?.currentId;
       if (typeof cid === 'string' && cid) lastKnownSessionId = cid;
+      // ⑦ the phone's `st.session` and `hx` snapshot are read from here, so the
+      // bridge never has to touch sessions.json while a command is in flight
+      ctlSessions = data as SessionsFile;
       sessionStore.save(data);
+      companion.publishState();
+    });
+    // ⑦ `continuous` lives in the renderer; main only learns it second-hand
+    ipcMain.on(IPC.companionContinuous, (_e, on: unknown) => {
+      ctlContinuous = !!on;
+      companion.publishState();
     });
     // the renderer owns the JSON file, so a delete has to also reach the vector
     // index: otherwise the session's resume/JD/facts keep answering questions
@@ -1917,6 +1954,63 @@ function bootstrap(): void {
       console.log(`[shot] 整屏 seq=${cap.seq} 抓屏=${cap.ms}ms → 已送题库/模型`);
       return { ok: true, ms: cap.ms, seq: cap.seq };
     };
+
+    /**
+     * ⑦ The session a phone is looking at is the renderer's current one. Cached
+     * from `IPC.sessionsSave` rather than re-read: `st` fires on every state
+     * change, and the file is written by this same path.
+     */
+    function ctlCurrentSession(): StoredSession | null {
+      const file = ctlSessions;
+      if (!file?.currentId) return null;
+      return file.sessions.find((s) => s.id === file.currentId) ?? null;
+    }
+
+    /**
+     * Apply one command the bridge has already authorized, validated and
+     * budgeted. Two style ladders are main's own business (settings + a cold
+     * prompt prefix); the rest belong to the renderer, which is the only place
+     * that can start a capture, flip 连续回答, or ask a question with the live
+     * transcript and material attached.
+     */
+    function runCompanionControl(cmd: ControlCommand): void {
+      // `server.ts` ran parseControlArg before this, so the value's shape is
+      // already pinned by the op
+      const value = cmd.value;
+      if (cmd.op === 'richness' || cmd.op === 'expertise') {
+        settings.applyPatch(
+          cmd.op === 'richness'
+            ? { llm: { answerRichness: value as AnswerRichness } }
+            : { llm: { answerExpertise: value as AnswerExpertise } },
+        );
+        markPromptPrefixCold('companion');
+        console.log(`[companion-ctl] ${cmd.op}=${String(value)} applied`);
+        return;
+      }
+      if (!win || win.isDestroyed()) {
+        console.log(`[companion-ctl] ${cmd.op} dropped: no main window`);
+        return;
+      }
+      if (cmd.op === 'capture') win.webContents.send(IPC.companionCtlCapture, value as boolean);
+      if (cmd.op === 'continuous') win.webContents.send(IPC.companionCtlContinuous, value as boolean);
+      if (cmd.op === 'ask') win.webContents.send(IPC.companionCtlAsk, value as string);
+      console.log(`[companion-ctl] ${cmd.op}=${String(value)} sent to renderer`);
+    }
+
+    companion.attachControl({
+      state: () => {
+        const s = ctlCurrentSession();
+        return {
+          capturing,
+          continuous: ctlContinuous,
+          richness: settings.data.llm.answerRichness ?? DEFAULT_RICHNESS,
+          expertise: settings.data.llm.answerExpertise ?? DEFAULT_EXPERTISE,
+          session: s ? { id: s.id, name: s.name, answers: s.turns.length } : null,
+        };
+      },
+      turns: (): StoredTurn[] => ctlCurrentSession()?.turns ?? [],
+      run: runCompanionControl,
+    });
 
     ipcMain.handle(IPC.companionState, () => companion.state());
     ipcMain.handle(IPC.companionApply, async (): Promise<CompanionState> => {
