@@ -11,7 +11,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { KnowledgeFile, KnowledgeImportResult } from '../shared/protocol';
+import type {
+  KnowledgeFile,
+  KnowledgeImportProgress,
+  KnowledgeImportResult,
+} from '../shared/protocol';
 import { textHash } from '../electron/rag/vector-store';
 import {
   LIBRARY_WALK_MAX_DEPTH,
@@ -69,6 +73,7 @@ function harness(
     throws?: Record<string, string>;
     ingestNull?: boolean;
     files?: KnowledgeFile[];
+    onProgress?: (p: KnowledgeImportProgress) => void;
   } = {},
 ) {
   const manifest = new FakeManifest();
@@ -83,6 +88,7 @@ function harness(
     manifest,
     now: () => new Date('2026-09-24T10:00:00Z'),
     log: (m) => logs.push(m),
+    onProgress: opts.onProgress,
     stat: (path) => stamps.get(path) ?? { mtimeMs: 1_000, size: (texts[path] ?? '').length },
     extract: async (path) => {
       extracted.push(path);
@@ -109,8 +115,16 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'mc-lib-'));
 });
 
+/** everything an import reports except the per-file list */
+type Counters = Omit<KnowledgeImportResult, 'items'>;
+
+const counts = (r: KnowledgeImportResult): Counters => {
+  const { items: _items, ...rest } = r;
+  return rest;
+};
+
 /** an import tally with every counter at zero except the ones under test */
-const result = (over: Partial<KnowledgeImportResult> = {}): KnowledgeImportResult => ({
+const result = (over: Partial<Counters> = {}): Counters => ({
   imported: 0,
   skipped: 0,
   failed: 0,
@@ -206,7 +220,7 @@ describe('ingestLibraryFiles', () => {
   it('counts an empty-text file as skipped and never ingests it', async () => {
     const { lib, ingested } = harness({ texts: { '/a.md': '   \n  ' } });
     const out: KnowledgeImportResult = await lib.ingestFiles(['/a.md']);
-    expect(out).toEqual(result({ skipped: 1 }));
+    expect(counts(out)).toEqual(result({ skipped: 1 }));
     expect(ingested).toEqual([]);
   });
 
@@ -216,13 +230,14 @@ describe('ingestLibraryFiles', () => {
       throws: { '/bad.md': 'boom' },
     });
     const out = await lib.ingestFiles(['/bad.md', '/good.md']);
-    expect(out).toEqual(result({ imported: 1, failed: 1, chars: 5, chunks: 3 }));
+    expect(counts(out)).toEqual(result({ imported: 1, failed: 1, chars: 5, chunks: 3 }));
     expect(ingested.map((i) => i.ref)).toEqual(['good.md']);
   });
 
   it('counts a silent partial ingest (null result) as imported with 0 chunks', async () => {
     const { lib } = harness({ texts: { '/a.md': 'abc' }, ingestNull: true });
-    expect(await lib.ingestFiles(['/a.md'])).toEqual(result({ imported: 1, chars: 3 }));
+    expect(counts(await lib.ingestFiles(['/a.md']))).toEqual(
+      result({ imported: 1, chars: 3 }));
   });
 
   it('writes the manifest entry with ref, basename and the injected clock', async () => {
@@ -258,7 +273,7 @@ describe('ingestLibraryFiles', () => {
 
   it('sums chars and chunks across files', async () => {
     const { lib, logs } = harness({ texts: { '/a.md': 'aa', '/b.md': 'bbbb' } });
-    expect(await lib.ingestFiles(['/a.md', '/b.md'])).toEqual(
+    expect(counts(await lib.ingestFiles(['/a.md', '/b.md']))).toEqual(
       result({ imported: 2, chars: 6, chunks: 6 }),
     );
     expect(logs.join('\n')).toContain('2 imported, 0 skipped, 0 failed, 0 unchanged, 6 chunks');
@@ -272,7 +287,7 @@ describe('incremental import (unchanged files are skipped)', () => {
       files: [knownFile({ ref: 'a.md', path: '/a.md', text: 'v1 content', mtimeMs: 1_000 })],
     });
     const out = await lib.ingestFiles(['/a.md']);
-    expect(out).toEqual(result({ unchanged: 1 }));
+    expect(counts(out)).toEqual(result({ unchanged: 1 }));
     expect(extracted).toEqual([]); // the whole point: no PDF/docx decode
     expect(ingested).toEqual([]); // and no re-embedding
   });
@@ -284,7 +299,7 @@ describe('incremental import (unchanged files are skipped)', () => {
     });
     touch('/a.md'); // same size, so the fast path cannot decide
     texts['/a.md'] = 'v2 content';
-    expect(await lib.ingestFiles(['/a.md'])).toEqual(
+    expect(counts(await lib.ingestFiles(['/a.md']))).toEqual(
       result({ imported: 1, chars: 10, chunks: 3 }),
     );
     expect(ingested.map((i) => i.text)).toEqual(['v2 content']);
@@ -296,7 +311,8 @@ describe('incremental import (unchanged files are skipped)', () => {
       files: [knownFile({ ref: 'a.md', path: '/a.md', text: 'v1 content', mtimeMs: 1_000 })],
     });
     touch('/a.md');
-    expect(await lib.ingestFiles(['/a.md'])).toEqual(result({ unchanged: 1 }));
+    expect(counts(await lib.ingestFiles(['/a.md']))).toEqual(
+      result({ unchanged: 1 }));
     expect(ingested).toEqual([]);
     // the stored stamp advances, so the next import takes the fast path again
     expect(manifest.files[0]).toMatchObject({ mtimeMs: 2_000, status: 'unchanged' });
@@ -332,8 +348,91 @@ describe('incremental import (unchanged files are skipped)', () => {
       files: [knownFile({ ref: 'a.md', path: '/a.md', text: 'aaa', mtimeMs: 1_000 })],
     });
     rewrite('/b.md', 'a newer body');
-    expect(await lib.ingestFiles(['/a.md', '/b.md'])).toEqual(
+    expect(counts(await lib.ingestFiles(['/a.md', '/b.md']))).toEqual(
       result({ imported: 1, unchanged: 1, chars: 12, chunks: 3 }),
     );
+  });
+});
+
+describe('per-file outcome list', () => {
+  it('lists every file exactly once, in the order it was worked on', async () => {
+    const { lib } = harness({
+      texts: { '/a.md': 'aaa', '/b.md': 'bbb', '/c.md': 'ccc' },
+      files: [knownFile({ ref: 'c.md', path: '/c.md', text: 'ccc', mtimeMs: 1_000 })],
+      throws: { '/d.docx': 'no parser' },
+    });
+    const out = await lib.ingestFiles(['/a.md', '/b.md', '/c.md', '/e.zip', '/d.docx']);
+    expect(out.items.map((i) => i.name)).toEqual(['a.md', 'b.md', 'c.md', 'e.zip', 'd.docx']);
+    expect(out.items.map((i) => i.status)).toEqual([
+      'imported',
+      'imported',
+      'unchanged',
+      'skipped',
+      'failed',
+    ]);
+    expect(counts(out)).toEqual(
+      result({ imported: 2, unchanged: 1, skipped: 1, failed: 1, chars: 6, chunks: 6 }),
+    );
+  });
+
+  it('names the reason a file was skipped, instead of a bare counter', async () => {
+    const { lib, extracted } = harness({ texts: { '/scan.pdf': '   ', '/notes.docx': '正文' } });
+    const out = await lib.ingestFiles(['/scan.pdf', '/notes.docx', '/movie.mp4']);
+    expect(out.items.map((i) => [i.name, i.status, i.reason])).toEqual([
+      ['scan.pdf', 'skipped', 'no-extractable-text'],
+      ['notes.docx', 'imported', undefined],
+      ['movie.mp4', 'skipped', 'unsupported-extension'],
+    ]);
+    // a rejected extension is decided from the name — the parser is never called
+    expect(extracted).toEqual(['/scan.pdf', '/notes.docx']);
+  });
+
+  it('keeps the parser message visible when a file fails to parse', async () => {
+    const { lib } = harness({ throws: { '/bad.docx': 'corrupt zip' } });
+    const out = await lib.ingestFiles(['/bad.docx']);
+    expect(out.items[0]).toMatchObject({
+      name: 'bad.docx',
+      status: 'failed',
+      reason: 'parse-failed',
+      detail: 'corrupt zip',
+    });
+  });
+
+  it('flags a file the index silently declined, so 0 chunks is not a mystery', async () => {
+    const { lib } = harness({ texts: { '/a.md': 'abc' }, ingestNull: true });
+    const out = await lib.ingestFiles(['/a.md']);
+    expect(out.items[0]).toMatchObject({
+      name: 'a.md',
+      status: 'imported',
+      reason: 'index-declined',
+      chunks: 0,
+    });
+  });
+
+  it('reports the ref and chunk count of a document that went in', async () => {
+    const { lib } = harness({ texts: { '/notes/a.md': 'abcdef' } });
+    const out = await lib.ingestFiles(['/notes/a.md'], '/notes');
+    expect(out.items[0]).toMatchObject({ name: 'a.md', ref: 'a.md', status: 'imported', chunks: 3 });
+  });
+});
+
+describe('import progress reporting', () => {
+  it('emits one event per file with a running done/total and the file that settled', async () => {
+    const seen: KnowledgeImportProgress[] = [];
+    const { lib } = harness({ texts: { '/a.md': 'a', '/b.md': 'b' }, onProgress: (p) => seen.push(p) });
+    await lib.ingestFiles(['/a.md', '/b.md']);
+    expect(seen.map((p) => [p.done, p.total, p.item?.name])).toEqual([
+      [1, 2, 'a.md'],
+      [2, 2, 'b.md'],
+    ]);
+  });
+
+  it('still counts a file that throws, so the bar can never stick below total', async () => {
+    const seen: KnowledgeImportProgress[] = [];
+    const { lib } = harness({ throws: { '/a.docx': 'boom' }, onProgress: (p) => seen.push(p) });
+    await lib.ingestFiles(['/a.docx']);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ done: 1, total: 1 });
+    expect(seen[0].item?.status).toBe('failed');
   });
 });

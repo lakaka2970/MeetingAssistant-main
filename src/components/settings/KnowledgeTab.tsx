@@ -11,6 +11,8 @@ import { useT } from '../../i18n';
 import { EMBEDDING_MODELS } from '../../../shared/embeddingModels';
 import type {
   KnowledgeFilesState,
+  KnowledgeImportItem,
+  KnowledgeImportProgress,
   PreparedQaView,
   RagHitView,
   RagStatus,
@@ -49,6 +51,10 @@ export function KnowledgeTab({
   const [skills, setSkills] = useState<SkillView[]>([]);
   const [library, setLibrary] = useState<KnowledgeFilesState>({ files: [], chars: 0 });
   const [importing, setImporting] = useState(false);
+  /** live import state: progress counters plus every file settled so far */
+  const [importRun, setImportRun] = useState<KnowledgeImportProgress & {
+    items: KnowledgeImportItem[];
+  } | null>(null);
   /** in flight: the folder dialog, the index read, or the unbind */
   const [bindingKb, setBindingKb] = useState(false);
   const [importNotice, setImportNotice] = useState<string | null>(null);
@@ -91,6 +97,19 @@ export function KnowledgeTab({
       .catch(() => {});
     return off;
   }, [refreshStatus, refreshQa]);
+
+  // The import runs in main and pushes one event per file, so a 300-document
+  // folder reports as it goes instead of looking frozen until the invoke lands.
+  useEffect(() => {
+    const off = window.mc.onKnowledgeImportProgress((p) => {
+      setImportRun((prev) => ({
+        done: p.done,
+        total: p.total,
+        items: p.item ? [...(prev?.items ?? []), p.item] : (prev?.items ?? []),
+      }));
+    });
+    return off;
+  }, []);
 
   const search = useCallback(async () => {
     const q = query.trim();
@@ -146,8 +165,10 @@ export function KnowledgeTab({
   const importFiles = useCallback(async () => {
     setImporting(true);
     setImportNotice(null);
+    setImportRun(null);
     try {
       const r = await window.mc.importKnowledgeFiles();
+      setImportRun({ done: r.items.length, total: r.items.length, items: r.items });
       setImportNotice(t.knowledge.importResult(r));
       setLibrary(await window.mc.listKnowledgeFiles());
       refreshStatus();
@@ -162,8 +183,10 @@ export function KnowledgeTab({
   const importDir = useCallback(async () => {
     setImporting(true);
     setImportNotice(null);
+    setImportRun(null);
     try {
       const r = await window.mc.importKnowledgeDir();
+      setImportRun({ done: r.items.length, total: r.items.length, items: r.items });
       setImportNotice(t.knowledge.importResult(r));
       setLibrary(await window.mc.listKnowledgeFiles());
       refreshStatus();
@@ -303,6 +326,29 @@ export function KnowledgeTab({
           {t.knowledge.importDirBtn}
         </button>
       </div>
+      {importing && importRun ? (
+        <div className="settings-inline-hint">
+          {t.knowledge.importProgress(importRun.done, importRun.total)}
+        </div>
+      ) : null}
+      {importRun && importRun.items.length > 0 ? (
+        <div className="knowledge-hits">
+          {importRun.items.map((it, i) => (
+            <div key={`${it.ref ?? it.name}-${i}`} className="knowledge-hit">
+              <div
+                className="knowledge-hit-meta"
+                title={it.status === 'failed' ? it.detail : undefined}
+              >
+                {it.name} · {t.knowledge.importItemStatus[it.status]}
+                {it.reason ? ` · ${t.knowledge.importItemReason[it.reason]}` : ''}
+                {it.status === 'imported'
+                  ? ` · ${t.knowledge.importItemChunks(it.chunks ?? 0)}`
+                  : ''}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {library.files.length > 0 ? (
         <>
           <div className="knowledge-hits">

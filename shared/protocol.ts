@@ -1074,6 +1074,43 @@ export interface KnowledgeImportResult {
   chars: number;
   /** total RAG chunks added */
   chunks: number;
+  /** what happened to each picked file, in the order it was worked on */
+  items: KnowledgeImportItem[];
+}
+
+/**
+ * One file's outcome. `imported` covers a first import and a content change
+ * alike; `reason` explains any row the user would otherwise read as a mystery
+ * (a scanned PDF that yielded no text, a 0-chunk document, a bad file).
+ */
+export interface KnowledgeImportItem {
+  /** basename, as the user knows it */
+  name: string;
+  /** RAG ref, once the file has one (absent for a rejected extension) */
+  ref?: string;
+  status: 'imported' | 'unchanged' | 'skipped' | 'failed';
+  /** why this row needs explaining; a stable key the renderer translates */
+  reason?: KnowledgeImportReason;
+  /** the parser's own message, for `parse-failed` only */
+  detail?: string;
+  /** RAG chunks this file contributed */
+  chunks?: number;
+}
+
+/** machine-readable cause, so the copy lives in the renderer's dictionary */
+export type KnowledgeImportReason =
+  | 'unsupported-extension'
+  | 'no-extractable-text'
+  | 'parse-failed'
+  /** the index declined the text (model not ready) — the file did not really land */
+  | 'index-declined';
+
+/** one tick of a running import, pushed to the settings window */
+export interface KnowledgeImportProgress {
+  /** files settled so far, including failures */
+  done: number;
+  total: number;
+  item?: KnowledgeImportItem;
 }
 
 /** embed-worker / index health, polled by the knowledge panel */
@@ -1191,6 +1228,9 @@ export const IPC = {
   knowledgeRemoveFile: 'knowledge:remove-file',
   /** invoke: () => KnowledgeFilesState — clear the whole document library */
   knowledgeFilesClear: 'knowledge:files-clear',
+  /** main -> renderer: KnowledgeImportProgress — one push per settled file of
+   * a library import, so the panel can show a bar and a per-file verdict */
+  knowledgeImportProgress: 'knowledge:import-progress',
   /** invoke: (KbSlot) => {name,text,chars} | null — pick a resume/JD document
    * (.md/.txt/.docx/.pdf, parsed deterministically) for the CURRENT session */
   knowledgePick: 'knowledge:pick',

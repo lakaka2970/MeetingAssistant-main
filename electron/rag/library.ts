@@ -10,7 +10,12 @@
  */
 import { readdirSync, type Dirent } from 'fs';
 import { basename, join, relative, sep } from 'path';
-import type { KnowledgeFile, KnowledgeImportResult } from '../../shared/protocol';
+import type {
+  KnowledgeFile,
+  KnowledgeImportItem,
+  KnowledgeImportProgress,
+  KnowledgeImportResult,
+} from '../../shared/protocol';
 import { isLibraryExtension } from '../docparse';
 import { textHash } from './vector-store';
 
@@ -42,6 +47,8 @@ export interface LibraryDeps {
   }) => Promise<{ added: number; qa?: number } | null>;
   /** source-file freshness; null when the file cannot be stat'd (gone, locked) */
   stat: (path: string) => FileStamp | null;
+  /** one call per settled file, so a large import can show a live progress bar */
+  onProgress?: (p: KnowledgeImportProgress) => void;
   now: () => Date;
   log?: (message: string) => void;
 }
@@ -53,6 +60,7 @@ export const emptyImportResult = (): KnowledgeImportResult => ({
   unchanged: 0,
   chars: 0,
   chunks: 0,
+  items: [],
 });
 
 /** recursive walk; skips hidden entries and unsupported extensions */
@@ -95,17 +103,31 @@ export function createLibraryImporter(deps: LibraryDeps) {
   async function ingestFiles(files: string[], root?: string): Promise<KnowledgeImportResult> {
     const out = emptyImportResult();
     const known = new Map(deps.manifest.list().map((f) => [f.path, f] as const));
+    const settle = (item: KnowledgeImportItem): KnowledgeImportItem => {
+      out.items.push(item);
+      deps.onProgress?.({ done: out.items.length, total: files.length, item });
+      return item;
+    };
     for (const filePath of files) {
+      const name = basename(filePath);
+      if (!isLibraryExtension(filePath)) {
+        // decided from the name alone: the parser is never handed a .zip
+        out.skipped++;
+        settle({ name, status: 'skipped', reason: 'unsupported-extension', chunks: 0 });
+        continue;
+      }
       try {
         const prev = known.get(filePath);
         const stamp = deps.stat(filePath);
         if (prev && stamp && prev.hash && prev.mtimeMs === stamp.mtimeMs && prev.size === stamp.size) {
           out.unchanged++; // the cheap short-circuit: no parse, no embed, no rewrite
+          settle({ name, ref: prev.ref, status: 'unchanged', chunks: prev.chunks });
           continue;
         }
         const text = await deps.extract(filePath);
         if (!text.trim()) {
           out.skipped++; // scanned/image-only PDF or empty file
+          settle({ name, ref: prev?.ref, status: 'skipped', reason: 'no-extractable-text', chunks: 0 });
           continue;
         }
         const hash = textHash(text);
@@ -117,30 +139,37 @@ export function createLibraryImporter(deps: LibraryDeps) {
           // touched but not edited — the chunks are already right, only the stamp moves
           out.unchanged++;
           deps.manifest.upsert({ ...prev, ...fresh, status: 'unchanged' });
+          settle({ name, ref: prev.ref, status: 'unchanged', chunks: prev.chunks });
           continue;
         }
         const ref = libraryRefFor(filePath, deps.manifest, root);
         const res = await deps.ingest({ text, source: 'doc', ref, replace: true });
+        const chunks = res?.added ?? 0;
         out.imported++;
         out.chars += text.length;
-        out.chunks += res?.added ?? 0;
+        out.chunks += chunks;
         const entry: KnowledgeFile = {
           ref,
-          name: basename(filePath),
+          name,
           path: filePath,
           chars: text.length,
           addedAt: deps.now().toISOString(),
           hash,
           ...fresh,
           status: prev ? 'reimported' : 'imported',
-          chunks: res?.added ?? 0,
+          chunks,
           qaCount: res?.qa ?? 0,
         };
         deps.manifest.upsert(entry);
         known.set(filePath, entry);
+        // null = the index declined the text (model not ready): a row with 0
+        // chunks that would otherwise look like a successful import
+        settle({ name, ref, status: 'imported', chunks, reason: res ? undefined : 'index-declined' });
       } catch (e) {
-        log(`[knowledge-files] import failed ${filePath}: ${(e as Error).message}`);
+        const detail = (e as Error).message;
+        log(`[knowledge-files] import failed ${filePath}: ${detail}`);
         out.failed++;
+        settle({ name, status: 'failed', reason: 'parse-failed', detail, chunks: 0 });
       }
     }
     log(

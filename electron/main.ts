@@ -1380,6 +1380,9 @@ function bootstrap(): void {
       },
       now: () => new Date(),
       log: (m) => console.log(m),
+      onProgress: (p) => {
+        if (win && !win.isDestroyed()) win.webContents.send(IPC.knowledgeImportProgress, p);
+      },
     });
 
     ipcMain.handle(IPC.knowledgeImportFiles, async (): Promise<KnowledgeImportResult> => {

@@ -7,6 +7,7 @@ import {
   type ExamEvent,
   type KbSlot,
   type KnowledgeFilesState,
+  type KnowledgeImportProgress,
   type KnowledgeImportResult,
   type LlmAskPayload,
   type LlmEvent,
@@ -123,6 +124,8 @@ export interface McApi {
   ragQaList(sessionId?: string): Promise<PreparedQaView[]>;
   /** pushed whenever the embed worker state changes */
   onRagStatus(cb: (s: RagStatus) => void): () => void;
+  /** pushed once per file while a document-library import runs */
+  onKnowledgeImportProgress(cb: (p: KnowledgeImportProgress) => void): () => void;
   /** L2 personal notes (userData/notes.md); strict 8000-char cap */
   notesGet(): Promise<{ text: string; chars: number; maxChars: number }>;
   notesSet(text: string): Promise<NotesSaveResult>;
@@ -241,6 +244,11 @@ const api: McApi = {
     const listener = (_e: Electron.IpcRendererEvent, s: RagStatus) => cb(s);
     ipcRenderer.on(IPC.ragStatusPush, listener);
     return () => ipcRenderer.removeListener(IPC.ragStatusPush, listener);
+  },
+  onKnowledgeImportProgress: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, p: KnowledgeImportProgress) => cb(p);
+    ipcRenderer.on(IPC.knowledgeImportProgress, listener);
+    return () => ipcRenderer.removeListener(IPC.knowledgeImportProgress, listener);
   },
   notesGet: () => ipcRenderer.invoke(IPC.notesGet),
   notesSet: (text) => ipcRenderer.invoke(IPC.notesSet, { text }),

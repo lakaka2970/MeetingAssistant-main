@@ -293,6 +293,20 @@ const zh = {
       chunks: number;
     }) =>
       `已导入 ${r.imported} 个、跳过 ${r.skipped} 个、失败 ${r.failed} 个、未变化 ${r.unchanged} 个，新增 ${r.chunks} 个语块。`,
+    importProgress: (done: number, total: number) => `导入中 ${done}/${total}…`,
+    importItemStatus: {
+      imported: '已入库',
+      unchanged: '未变化',
+      skipped: '已跳过',
+      failed: '失败',
+    },
+    importItemReason: {
+      'unsupported-extension': '格式不支持',
+      'no-extractable-text': '抽不出文字（扫描版/图片型）',
+      'parse-failed': '解析失败',
+      'index-declined': '索引未就绪，未写入',
+    },
+    importItemChunks: (n: number) => `${n} 个语块`,
     modelLabel: '嵌入模型',
     modelLocal: '已缓存（离线可用）',
     modelDownload: '首次使用需下载',
@@ -1009,6 +1023,20 @@ const en: Dict = {
       chunks: number;
     }) =>
       `Imported ${r.imported}, skipped ${r.skipped}, failed ${r.failed}, unchanged ${r.unchanged} — ${r.chunks} new chunks.`,
+    importProgress: (done: number, total: number) => `importing ${done}/${total}…`,
+    importItemStatus: {
+      imported: 'stored',
+      unchanged: 'unchanged',
+      skipped: 'skipped',
+      failed: 'failed',
+    },
+    importItemReason: {
+      'unsupported-extension': 'unsupported format',
+      'no-extractable-text': 'no text found (scanned?)',
+      'parse-failed': 'could not parse',
+      'index-declined': 'index not ready — nothing stored',
+    },
+    importItemChunks: (n: number) => `${n} chunks`,
     modelLabel: 'Embedding model',
     modelLocal: 'cached (works offline)',
     modelDownload: 'downloads on first use',
