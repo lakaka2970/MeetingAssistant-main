@@ -10,12 +10,21 @@ import {
   buildFrame,
   isControlMessage,
   parseFrame,
+  type CompanionCaps,
 } from '../electron/companion/protocol';
 import { CODE_TTL_MS, MAX_ATTEMPTS, PairingManager } from '../electron/companion/pairing';
 import { handleControlMessage } from '../electron/companion/server';
 import { certCovers, ensureCertificate } from '../electron/companion/tls';
+import { COMPANION_CONTROL_GRANTS } from '../shared/protocol';
 
-const CAPS = { transcript: true, interview: true, exam: true, screenshot: true };
+const CAPS: CompanionCaps = {
+  transcript: true,
+  interview: true,
+  exam: true,
+  screenshot: true,
+  control: true,
+  controlItems: { ...COMPANION_CONTROL_GRANTS },
+};
 const session = (): { authenticated: boolean; device: string } => ({
   authenticated: false,
   device: '',

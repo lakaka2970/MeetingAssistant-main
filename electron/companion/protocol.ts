@@ -20,6 +20,10 @@
  * never be the reason the bridge fails to start.
  */
 
+import type { AnswerExpertise, AnswerRichness } from '../../shared/answerStyle';
+import type { CompanionControlItems } from '../../shared/protocol';
+import type { ControlOp } from './control';
+
 export const FRAME_MAGIC = 'MC';
 export const FRAME_VERSION = 1;
 export const FRAME_FLAG_JPEG = 0x01;
@@ -77,6 +81,52 @@ export interface CompanionCaps {
   interview: boolean;
   exam: boolean;
   screenshot: boolean;
+  /**
+   * ⑦ remote control. A phone that predates this simply ignores the extra keys
+   * and renders no control panel; the desktop refuses its commands anyway.
+   */
+  control: boolean;
+  /** which operations `control` actually covers (master switch already on) */
+  controlItems: CompanionControlItems;
+}
+
+/**
+ * ⑦ The desktop's live control surface, echoed to every paired phone. The phone
+ * colours its controls from this message and never from its own click, so a
+ * command that was refused shows up as the switch not moving.
+ */
+export interface StateMessage {
+  type: 'st';
+  /** transcript capture running on the desktop */
+  capturing: boolean;
+  /** continuous answering on */
+  continuous: boolean;
+  richness: AnswerRichness;
+  expertise: AnswerExpertise;
+  /** the interview whose answers the phone is looking at */
+  session: { id: string; name: string; answers: number } | null;
+}
+
+/** ⑦ one answer from this session's history, newest first */
+export interface HistoryItemView {
+  id: string;
+  kind: string;
+  /** the question it answers */
+  label: string;
+  text: string;
+  /** prepared-answer hit this came from, so the phone can badge it */
+  qaRef?: string;
+  error?: string;
+}
+
+/** ⑦ answer history replay for `cmd: history` */
+export interface HistoryMessage {
+  type: 'hx';
+  items: HistoryItemView[];
+  /** how many answers the session really has, before the cap */
+  total: number;
+  /** items were dropped or shortened to fit the wire budget */
+  truncated: boolean;
 }
 
 export type CompanionMessage =
@@ -85,13 +135,20 @@ export type CompanionMessage =
   | { type: 'pair_request'; device: string }
   | { type: 'pair_confirm'; code: string }
   | { type: 'ping'; t: number }
+  /** one remote command; `op` is one of six names, never a settings key */
+  | { type: 'cmd'; id: string; op: ControlOp; arg?: string | boolean }
   // bridge -> phone
   | { type: 'hello_ok'; caps: CompanionCaps }
   | { type: 'pair_request_ok' }
   | { type: 'pair_ok'; token: string }
   | { type: 'pair_fail'; reason: string }
   | { type: 'pong'; t: number; pc: number }
-  | { type: 'error'; reason: string }
+  /** `id` set when the failure answers a `cmd`, so the phone can un-spin it */
+  | { type: 'error'; reason: string; id?: string }
+  /** a command was accepted and queued — the effect shows up in `st` */
+  | { type: 'ack'; id: string; op: ControlOp }
+  | StateMessage
+  | HistoryMessage
   /** ASR engine state, so the phone can show whether words are coming at all */
   | { type: 'asr'; state: string }
   /** transient in-flight line; replaced by the next partial or by `line` */

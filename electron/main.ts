@@ -254,6 +254,8 @@ function bootstrap(): void {
         useHttps: c.useHttps,
         jpegQuality: c.jpegQuality,
         maxDim: c.maxDim,
+        allowControl: c.allowControl,
+        allowItems: c.allowItems,
       };
     },
     app.getPath('userData'),

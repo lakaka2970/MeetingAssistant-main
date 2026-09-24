@@ -28,11 +28,13 @@ import QRCode from 'qrcode';
 
 import type {
   AsrEvent,
+  CompanionControlItems,
   CompanionDeviceView,
   CompanionState,
   ExamEvent,
   LlmEvent,
 } from '@shared/protocol';
+import { COMPANION_CONTROL_GRANTS } from '../../shared/protocol';
 import { getResourceRoot } from '../resourcePaths';
 import { CompanionServer } from './server';
 import { PairingManager } from './pairing';
@@ -52,12 +54,22 @@ export interface CompanionSettings {
   useHttps: boolean;
   jpegQuality: number;
   maxDim: number;
+  /** ⑦ remote control: master switch plus the six per-item grants */
+  allowControl: boolean;
+  allowItems: CompanionControlItems;
 }
 
 export class CompanionBridge {
   private server: CompanionServer | null = null;
   private pairing: PairingManager | null = null;
-  private caps: CompanionCaps = { transcript: true, interview: true, exam: true, screenshot: true };
+  private caps: CompanionCaps = {
+    transcript: true,
+    interview: true,
+    exam: true,
+    screenshot: true,
+    control: true,
+    controlItems: { ...COMPANION_CONTROL_GRANTS },
+  };
   private started = false;
   private boundPort = 0;
   private boundHttps = false;
@@ -94,6 +106,8 @@ export class CompanionBridge {
     this.caps.interview = s.pushInterview;
     this.caps.exam = s.pushExam;
     this.caps.screenshot = s.pushScreenshot;
+    this.caps.control = s.allowControl;
+    this.caps.controlItems = { ...s.allowItems };
 
     if (!s.enabled) {
       await this.shutdown();

@@ -16,8 +16,16 @@ import WebSocket from 'ws';
 import { CompanionServer } from '../electron/companion/server';
 import { PairingManager } from '../electron/companion/pairing';
 import { FRAME_HEADER_SIZE, buildFrame, parseFrame } from '../electron/companion/protocol';
+import { COMPANION_CONTROL_GRANTS } from '../shared/protocol';
 
-const CAPS = { transcript: true, interview: true, exam: true, screenshot: true };
+const CAPS = {
+  transcript: true,
+  interview: true,
+  exam: true,
+  screenshot: true,
+  control: true,
+  controlItems: { ...COMPANION_CONTROL_GRANTS },
+};
 /** the same directory the main process uses, so a renamed asset fails here */
 const ASSETS = join(__dirname, '..', 'resources', 'companion');
 /** same resolution rule as CompanionBridge.katexDir (a directory is not a valid subpath) */
