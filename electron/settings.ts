@@ -22,7 +22,7 @@ import type {
 } from '../shared/protocol';
 import { DEFAULT_EXPERTISE, DEFAULT_RICHNESS } from '../shared/answerStyle';
 import { PROMPT_OVERRIDE_MAX_CHARS, clampText, resolveActivePersona, sanitizePersonas } from '../shared/personas';
-import { clampRailSplit, RAIL_SPLIT_DEFAULT } from '../shared/protocol';
+import { COMPANION_CONTROL_GRANTS, clampRailSplit, RAIL_SPLIT_DEFAULT } from '../shared/protocol';
 import { defaultHotkeysForPlatform } from '../shared/platform';
 import {
   findPresetById,
@@ -175,6 +175,10 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       hotkeyToPhone: false,
       jpegQuality: 80,
       maxDim: 1920,
+      // ⑦ remote control is on by default: pairing already requires the code
+      // that only ever appears on this screen
+      allowControl: true,
+      allowItems: { ...COMPANION_CONTROL_GRANTS },
     },
   };
 }
@@ -290,7 +294,13 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
       // binding the user still has (the patch uses null for that instead)
       banks: { ...defaults.exam.banks, ...raw.exam?.banks },
     },
-    companion: { ...defaults.companion, ...raw.companion },
+    companion: {
+      ...defaults.companion,
+      ...raw.companion,
+      // grants merge per key: a file naming only some of the six must not
+      // revoke the ones it never mentions
+      allowItems: { ...COMPANION_CONTROL_GRANTS, ...raw.companion?.allowItems },
+    },
   };
 }
 
@@ -587,7 +597,16 @@ export class SettingsStore {
       else if (persona) this.data.exam.persona = persona;
     }
     if (patch.companion) {
-      this.data.companion = { ...this.data.companion, ...stripUndefined(patch.companion) };
+      const { allowItems, ...rest } = patch.companion;
+      this.data.companion = { ...this.data.companion, ...stripUndefined(rest) };
+      if (allowItems) {
+        // the phone and the settings page both write one grant at a time
+        this.data.companion.allowItems = {
+          ...COMPANION_CONTROL_GRANTS,
+          ...this.data.companion.allowItems,
+          ...stripUndefined(allowItems),
+        };
+      }
     }
     this.save();
   }
@@ -781,6 +800,17 @@ export class SettingsStore {
         hotkeyToPhone: !!d.companion?.hotkeyToPhone,
         jpegQuality: clampInt(d.companion?.jpegQuality, 10, 100, 80),
         maxDim: clampInt(d.companion?.maxDim, 640, 4096, 1920),
+        // ⑦ every grant defaults to on, and the item list is expanded key by
+        // key so the settings draft never sees an undefined checkbox
+        allowControl: d.companion?.allowControl !== false,
+        allowItems: {
+          richness: d.companion?.allowItems?.richness !== false,
+          expertise: d.companion?.allowItems?.expertise !== false,
+          capture: d.companion?.allowItems?.capture !== false,
+          continuous: d.companion?.allowItems?.continuous !== false,
+          ask: d.companion?.allowItems?.ask !== false,
+          history: d.companion?.allowItems?.history !== false,
+        },
       },
     };
   }

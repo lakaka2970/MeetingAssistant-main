@@ -5,6 +5,7 @@ import {
   deriveServiceHealth,
   type HealthInput,
 } from '../shared/healthState';
+import { COMPANION_CONTROL_GRANTS } from '../shared/protocol';
 import type { ProviderVerification, PublicSettings } from '../shared/protocol';
 
 const okVerdict: ProviderVerification = {
@@ -89,6 +90,8 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
       hotkeyToPhone: false,
       jpegQuality: 80,
       maxDim: 1920,
+      allowControl: true,
+      allowItems: { ...COMPANION_CONTROL_GRANTS },
     },
     ...over,
   };

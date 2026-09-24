@@ -885,3 +885,60 @@ describe('SettingsStore.recordVerification', () => {
     expect(new SettingsStore(join(dir, 'other.json'), fakeCipher).getApiKeyForSlot('llm')).toBeUndefined();
   });
 });
+
+describe('companion remote-control grants (⑦ dual-screen)', () => {
+  const ALL_ON = {
+    richness: true,
+    expertise: true,
+    capture: true,
+    continuous: true,
+    ask: true,
+    history: true,
+  };
+
+  it('ships with control on and every item allowed', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.data.companion.allowControl).toBe(true);
+    expect(s.data.companion.allowItems).toEqual(ALL_ON);
+  });
+
+  it('publishes the grants as a complete object for the settings draft', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.getPublic().companion.allowControl).toBe(true);
+    expect(s.getPublic().companion.allowItems).toEqual(ALL_ON);
+    s.applyPatch({ companion: { allowControl: false } });
+    expect(s.getPublic().companion.allowControl).toBe(false);
+  });
+
+  it('fills in missing grants from the defaults when a settings file lists only some', () => {
+    writeFileSync(
+      file,
+      JSON.stringify({ version: 2, companion: { allowItems: { ask: false } } }),
+      'utf8',
+    );
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.data.companion.allowItems?.ask).toBe(false);
+    expect(s.data.companion.allowItems?.capture).toBe(true);
+    expect(s.getPublic().companion.allowItems.history).toBe(true);
+  });
+
+  // The phone writes one grant at a time, so a patch must never take its
+  // neighbours down with it. These two pin what `applyPatch` does at the block
+  // boundary and one level deeper.
+  it('patching allowControl keeps the rest of the companion block', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({ companion: { port: 19000 } });
+    s.applyPatch({ companion: { allowControl: false } });
+    const pub = s.getPublic().companion;
+    expect(pub.port).toBe(19000);
+    expect(pub.allowControl).toBe(false);
+    expect(pub.allowItems).toEqual(ALL_ON);
+  });
+
+  it('patching one allowItems grant keeps the other five', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({ companion: { allowItems: { ask: false } } });
+    s.applyPatch({ companion: { allowItems: { capture: false } } });
+    expect(s.getPublic().companion.allowItems).toEqual({ ...ALL_ON, ask: false, capture: false });
+  });
+});

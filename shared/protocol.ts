@@ -175,6 +175,37 @@ export function clampRailSplit(v: number | undefined): number {
   return Math.min(RAIL_SPLIT_MAX, Math.max(RAIL_SPLIT_MIN, v));
 }
 
+/**
+ * ⑦ v1.0.1 dual-screen: the narrow set of things a paired phone may change on
+ * this machine. Keys mirror the remote `ControlOp` names one-to-one — a control
+ * the phone cannot name is a control it cannot use, which is the whole point of
+ * not exposing `SettingsPatch`.
+ */
+export interface CompanionControlItems {
+  /** answerRichness (concise / standard / detailed) */
+  richness: boolean;
+  /** answerExpertise (casual / professional / technical) */
+  expertise: boolean;
+  /** start or stop the desktop transcript capture */
+  capture: boolean;
+  /** the continuous-answer switch */
+  continuous: boolean;
+  /** ask from the phone instead of only reading the answer */
+  ask: boolean;
+  /** browse this session's answer history on the phone */
+  history: boolean;
+}
+
+/** R2: a paired phone may do all six until the user turns something off */
+export const COMPANION_CONTROL_GRANTS: CompanionControlItems = Object.freeze({
+  richness: true,
+  expertise: true,
+  capture: true,
+  continuous: true,
+  ask: true,
+  history: true,
+});
+
 export interface SettingsFile {
   version: 2;
   /** first-run wizard state; added in v2 (migrated files are grandfathered) */
@@ -411,6 +442,15 @@ export interface SettingsFile {
     /** jpeg quality (1-100) and longest edge for the pushed screenshot */
     jpegQuality?: number;
     maxDim?: number;
+    /**
+     * Master switch for phone-side remote control (⑦). Default ON: pairing
+     * already needs the 6-digit code that is only ever displayed here, so a
+     * device that can send commands is a device the user just held in their
+     * hand. Every item stays separately gated below.
+     */
+    allowControl?: boolean;
+    /** per-item grants, effective only while `allowControl` is on */
+    allowItems?: CompanionControlItems;
   };
 }
 
@@ -558,6 +598,9 @@ export interface PublicSettings {
     hotkeyToPhone: boolean;
     jpegQuality: number;
     maxDim: number;
+    /** always a complete object: a sparse one shows the draft checkboxes as undefined */
+    allowControl: boolean;
+    allowItems: CompanionControlItems;
   };
 }
 
@@ -674,6 +717,9 @@ export interface SettingsPatch {
     hotkeyToPhone?: boolean;
     jpegQuality?: number;
     maxDim?: number;
+    allowControl?: boolean;
+    /** one item at a time must never clear its siblings (see applyPatch) */
+    allowItems?: Partial<CompanionControlItems>;
   };
 }
 
