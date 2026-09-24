@@ -1,0 +1,120 @@
+/**
+ * Document-library import (v1.0.1 ③): the walk / ref-naming / ingest rules for
+ * multi-file knowledge import, extracted from `registerIpc` so it can be tested
+ * without an Electron process. Behaviour is unchanged from the inline version.
+ *
+ * Everything external is injected: the parser, the RAG ingest call, the on-disk
+ * manifest and the clock. `extract` is the only async dependency by design —
+ * parsing is what makes a single file fail while the rest of a directory import
+ * still succeeds.
+ */
+import { readdirSync, type Dirent } from 'fs';
+import { basename, join, relative, sep } from 'path';
+import type { KnowledgeFile, KnowledgeImportResult } from '../../shared/protocol';
+import { isLibraryExtension } from '../docparse';
+
+/** guard against pathological nesting / symlink loops */
+export const LIBRARY_WALK_MAX_DEPTH = 12;
+
+export interface LibraryManifest {
+  list(): KnowledgeFile[];
+  hasRef(ref: string): boolean;
+  upsert(entry: KnowledgeFile): void;
+}
+
+export interface LibraryDeps {
+  manifest: LibraryManifest;
+  /** document → text; throws on a corrupt or unreadable file */
+  extract: (path: string) => Promise<string>;
+  /** returns null when the index silently declined the text */
+  ingest: (req: {
+    text: string;
+    source: 'doc';
+    ref: string;
+    replace: true;
+  }) => Promise<{ added: number } | null>;
+  now: () => Date;
+  log?: (message: string) => void;
+}
+
+export const emptyImportResult = (): KnowledgeImportResult => ({
+  imported: 0,
+  skipped: 0,
+  failed: 0,
+  chars: 0,
+  chunks: 0,
+});
+
+/** recursive walk; skips hidden entries and unsupported extensions */
+export function walkLibraryDir(dir: string, out: string[], depth = 0): void {
+  if (depth > LIBRARY_WALK_MAX_DEPTH) return;
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (e) {
+    console.warn(`[knowledge-files] cannot read ${dir}:`, (e as Error).message);
+    return;
+  }
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+  for (const ent of entries) {
+    if (ent.name.startsWith('.')) continue;
+    const full = join(dir, ent.name);
+    if (ent.isDirectory()) walkLibraryDir(full, out, depth + 1);
+    else if (ent.isFile() && isLibraryExtension(ent.name)) out.push(full);
+  }
+}
+
+/** unique RAG ref for one file; re-importing the same path keeps its ref */
+export function libraryRefFor(filePath: string, manifest: LibraryManifest, root?: string): string {
+  const existing = manifest.list().find((f) => f.path === filePath);
+  if (existing) return existing.ref;
+  const base = root ? relative(root, filePath).split(sep).join('/') : basename(filePath);
+  if (!manifest.hasRef(base)) return base;
+  const dot = base.lastIndexOf('.');
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  const ext = dot > 0 ? base.slice(dot) : '';
+  let n = 2;
+  while (manifest.hasRef(`${stem} (${n})${ext}`)) n++;
+  return `${stem} (${n})${ext}`;
+}
+
+export function createLibraryImporter(deps: LibraryDeps) {
+  const log = deps.log ?? ((m: string) => console.log(m));
+
+  /** `root` is the picked directory, so a folder import keeps relative refs */
+  async function ingestFiles(files: string[], root?: string): Promise<KnowledgeImportResult> {
+    const out = emptyImportResult();
+    for (const filePath of files) {
+      try {
+        const text = await deps.extract(filePath);
+        if (!text.trim()) {
+          out.skipped++; // scanned/image-only PDF or empty file
+          continue;
+        }
+        const ref = libraryRefFor(filePath, deps.manifest, root);
+        const res = await deps.ingest({ text, source: 'doc', ref, replace: true });
+        out.imported++;
+        out.chars += text.length;
+        out.chunks += res?.added ?? 0;
+        deps.manifest.upsert({
+          ref,
+          name: basename(filePath),
+          path: filePath,
+          chars: text.length,
+          addedAt: deps.now().toISOString(),
+        });
+      } catch (e) {
+        log(`[knowledge-files] import failed ${filePath}: ${(e as Error).message}`);
+        out.failed++;
+      }
+    }
+    log(
+      `[knowledge-files] import: ${out.imported} imported, ${out.skipped} skipped, ${out.failed} failed, ${out.chunks} chunks`,
+    );
+    return out;
+  }
+
+  return { ingestFiles, walk: walkLibraryDir, refFor: (p: string, root?: string) => libraryRefFor(p, deps.manifest, root) };
+}
+
+export type LibraryImporter = ReturnType<typeof createLibraryImporter>;

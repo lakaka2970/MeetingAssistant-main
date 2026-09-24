@@ -15,9 +15,9 @@ import {
   session,
   shell,
 } from 'electron';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, type Dirent } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { release } from 'os';
-import { join, relative, sep } from 'path';
+import { join } from 'path';
 import {
   captureKindForPlatform,
   whisperExecutionProvidersForPlatform,
@@ -41,6 +41,7 @@ import { KnowledgeStore } from './knowledge';
 import { KnowledgeFileStore } from './knowledgeFiles';
 import { SessionStore } from './sessions';
 import { RagService, MIN_QUERY_CHARS, type RetrieveResult } from './rag/service';
+import { createLibraryImporter, emptyImportResult } from './rag/library';
 import { SpeculativeCache, after, specKey } from './rag/speculative';
 import { SkillsManager } from './skills/manager';
 import { extractMemoFacts, formatFactsHint } from './consistency/facts';
@@ -1363,73 +1364,15 @@ function bootstrap(): void {
     // Import many files / a whole directory into the L3 semantic-recall index
     // (source 'doc', one ref per file) so answers recall them by relevance
     // instead of stuffing everything into the always-in-context prompt.
-
-    /** recursive walk; skips hidden entries and unsupported extensions */
-    function walkLibraryDir(dir: string, out: string[], depth = 0): void {
-      if (depth > 12) return; // guard against pathological nesting / symlink loops
-      let entries: Dirent[];
-      try {
-        entries = readdirSync(dir, { withFileTypes: true });
-      } catch (e) {
-        console.warn(`[knowledge-files] cannot read ${dir}:`, (e as Error).message);
-        return;
-      }
-      entries.sort((a, b) => a.name.localeCompare(b.name));
-      for (const ent of entries) {
-        if (ent.name.startsWith('.')) continue;
-        const full = join(dir, ent.name);
-        if (ent.isDirectory()) walkLibraryDir(full, out, depth + 1);
-        else if (ent.isFile() && isLibraryExtension(ent.name)) out.push(full);
-      }
-    }
-
-    /** unique RAG ref for one file; re-importing the same path keeps its ref */
-    function libraryRefFor(filePath: string, root?: string): string {
-      const existing = knowledgeFiles.list().find((f) => f.path === filePath);
-      if (existing) return existing.ref;
-      const base = root
-        ? relative(root, filePath).split(sep).join('/')
-        : basename(filePath);
-      if (!knowledgeFiles.hasRef(base)) return base;
-      const dot = base.lastIndexOf('.');
-      const stem = dot > 0 ? base.slice(0, dot) : base;
-      const ext = dot > 0 ? base.slice(dot) : '';
-      let n = 2;
-      while (knowledgeFiles.hasRef(`${stem} (${n})${ext}`)) n++;
-      return `${stem} (${n})${ext}`;
-    }
-
-    async function ingestLibraryFiles(files: string[], root?: string): Promise<KnowledgeImportResult> {
-      const out: KnowledgeImportResult = { imported: 0, skipped: 0, failed: 0, chars: 0, chunks: 0 };
-      for (const filePath of files) {
-        try {
-          const text = await extractDocText(filePath);
-          if (!text.trim()) {
-            out.skipped++; // scanned/image-only PDF or empty file
-            continue;
-          }
-          const ref = libraryRefFor(filePath, root);
-          const res = await rag.ingest({ text, source: 'doc', ref, replace: true });
-          out.imported++;
-          out.chars += text.length;
-          out.chunks += res?.added ?? 0;
-          knowledgeFiles.upsert({
-            ref,
-            name: basename(filePath),
-            path: filePath,
-            chars: text.length,
-            addedAt: new Date().toISOString(),
-          });
-        } catch (e) {
-          console.warn(`[knowledge-files] import failed ${filePath}:`, (e as Error).message);
-          out.failed++;
-        }
-      }
-      console.log(
-        `[knowledge-files] import: ${out.imported} imported, ${out.skipped} skipped, ${out.failed} failed, ${out.chunks} chunks`,
-      );
-      return out;
-    }
+    // The walk / ref / ingest rules live in electron/rag/library.ts, where they
+    // are unit-tested; this is the wiring to the real parser and index.
+    const library = createLibraryImporter({
+      manifest: knowledgeFiles,
+      extract: extractDocText,
+      ingest: (req) => rag.ingest(req),
+      now: () => new Date(),
+      log: (m) => console.log(m),
+    });
 
     ipcMain.handle(IPC.knowledgeImportFiles, async (): Promise<KnowledgeImportResult> => {
       const r = await dialog.showOpenDialog({
@@ -1438,9 +1381,9 @@ function bootstrap(): void {
         properties: ['openFile', 'multiSelections'],
       });
       if (r.canceled || !r.filePaths.length) {
-        return { imported: 0, skipped: 0, failed: 0, chars: 0, chunks: 0 };
+        return emptyImportResult();
       }
-      return ingestLibraryFiles(r.filePaths);
+      return library.ingestFiles(r.filePaths);
     });
 
     ipcMain.handle(IPC.knowledgeImportDir, async (): Promise<KnowledgeImportResult> => {
@@ -1449,14 +1392,14 @@ function bootstrap(): void {
         properties: ['openDirectory'],
       });
       if (r.canceled || !r.filePaths[0]) {
-        return { imported: 0, skipped: 0, failed: 0, chars: 0, chunks: 0 };
+        return emptyImportResult();
       }
       const files: string[] = [];
-      walkLibraryDir(r.filePaths[0], files);
+      library.walk(r.filePaths[0], files);
       if (!files.length) {
-        return { imported: 0, skipped: 0, failed: 0, chars: 0, chunks: 0 };
+        return emptyImportResult();
       }
-      return ingestLibraryFiles(files, r.filePaths[0]);
+      return library.ingestFiles(files, r.filePaths[0]);
     });
 
     ipcMain.handle(IPC.knowledgeFilesList, (): KnowledgeFilesState => knowledgeFiles.state());
