@@ -679,6 +679,31 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---- ⑦ remote control from a paired phone ----
+  const capturingRef = useRef(capturing);
+  useEffect(() => {
+    capturingRef.current = capturing;
+    // Main has no way to observe 连续回答 — it lives in this component only. Without
+    // the report the phone's ⚡ chip never matches the desktop's.
+    window.mc.companionContinuous(continuous);
+  }, [capturing, continuous]);
+
+  useEffect(() => {
+    const offCapture = window.mc.onCtlCapture((on) => {
+      // The switch names a state, not an action: a chip that is stale on the phone
+      // must not stop a capture that is already stopped.
+      if (on === capturingRef.current) return;
+      void (on ? startCapture() : stopCapture());
+    });
+    const offContinuous = window.mc.onCtlContinuous(setContinuous);
+    const offAsk = window.mc.onCtlAsk((text) => askLlmRef.current('free', text));
+    return () => {
+      offCapture();
+      offContinuous();
+      offAsk();
+    };
+  }, [startCapture, stopCapture]);
+
   // 🎤 独立麦克风采集：只转麦克风(我)，与系统声音互不影响，按钮直接控制起停
   const toggleMicCapture = useCallback(async () => {
     const mic = micRef.current!;
