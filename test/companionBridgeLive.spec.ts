@@ -1,9 +1,9 @@
 /**
  * ⑦ The control loop end to end: a real CompanionBridge on a real port with a
  * paired phone. The unit specs prove the payload builders and the admission
- * rules; this proves the two things the phone actually depends on — the `st`
- * echo that colours its switches arrives, and it stops the moment the user
- * revokes remote control.
+ * rules; this proves the three things the phone actually depends on — the `st`
+ * echo that colours its switches arrives, it stops the moment the user revokes
+ * remote control, and a desktop-side failure never takes the connection down.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -48,8 +48,11 @@ let settings: CompanionSettings;
 const applied: ControlCommand[] = [];
 
 /** point the bridge's state getter at one of the two fixtures above */
-function useState(state: (typeof STATES)[keyof typeof STATES]): void {
-  bridge.attachControl({ state: () => state, turns: () => [], run: (cmd) => applied.push(cmd) });
+function useState(
+  state: (typeof STATES)[keyof typeof STATES],
+  run: (cmd: ControlCommand) => void = (cmd) => void applied.push(cmd),
+): void {
+  bridge.attachControl({ state: () => state, turns: () => [], run });
 }
 
 const makeSettings = (over: Partial<CompanionSettings> = {}): CompanionSettings => ({
@@ -188,6 +191,33 @@ describe('companion control loop over a live bridge', () => {
     const again = phone.next(1500);
     bridge.publishState();
     expect(await again).toMatchObject({ type: 'st', capturing: true });
+    await phone.close();
+  });
+
+  it('keeps answering the phone when a command throws on the desktop', async () => {
+    // Not hypothetical: `richness` writes settings.json through writeFileSync,
+    // and capture/continuous/ask send to a webContents that may be going away.
+    // Main has no uncaughtException handler and this call stack is the ws
+    // message callback, so an escaping error closes the app under a connected
+    // phone — mid-meeting, with the meeting still running on the desktop.
+    useState(STATES.off, (cmd) => {
+      applied.push(cmd);
+      throw new Error('ENOSPC: no space left on device, write');
+    });
+    const phone = await paired();
+    expect((await phone.next())?.type).toBe('st');
+
+    phone.ws.send(JSON.stringify({ type: 'cmd', id: 'c1', op: 'capture', arg: true }));
+    expect(await phone.next()).toMatchObject({ type: 'ack', id: 'c1' });
+    expect(applied.at(-1)).toMatchObject({ op: 'capture' });
+
+    // the socket must still be a usable one, and the switch the phone tapped
+    // settles because the desktop echoes the state it actually ended up in
+    phone.ws.send(JSON.stringify({ type: 'ping', t: 1 }));
+    expect((await phone.next())?.type).toBe('pong');
+    useState(STATES.on);
+    bridge.publishState();
+    expect(await phone.next()).toMatchObject({ type: 'st', capturing: true });
     await phone.close();
   });
 });

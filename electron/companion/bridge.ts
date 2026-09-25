@@ -413,16 +413,27 @@ export class CompanionBridge {
    * process already handed us. Everything else is applied by the desktop, and
    * the `st` that follows is what tells the phone it worked (R9): a switch the
    * renderer refused to throw shows up as unmoved, not as an error.
+   *
+   * The desktop call is wrapped because this stack runs inside the ws message
+   * callback and main has no uncaughtException handler: `settings.save()` can
+   * fail on a full disk and `webContents.send` on a window that is going away,
+   * and either would take the whole app down under a connected phone. The
+   * commands are not atomic, so the state echo afterwards — not a retry — is
+   * what reports how far the desktop actually got.
    */
   private runControl(cmd: ControlCommand): void {
     const deps = this.control;
     if (!deps) return;
-    if (cmd.op === 'history') {
-      // a panel the phone asked for by name must not be dropped for being slow
-      this.push(buildHistoryPayload(deps.turns()));
-      return;
+    try {
+      if (cmd.op === 'history') {
+        // a panel the phone asked for by name must not be dropped for being slow
+        this.push(buildHistoryPayload(deps.turns()));
+        return;
+      }
+      deps.run(cmd);
+    } catch (e) {
+      console.error(`[companion-ctl] ${cmd.op} failed on the desktop:`, (e as Error).message);
     }
-    deps.run(cmd);
     this.publishState();
   }
 
