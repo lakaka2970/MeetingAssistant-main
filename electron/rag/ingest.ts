@@ -51,6 +51,14 @@ export class RagIngestor {
     const pairs = opts.qa === false ? [] : extractQaPairs(opts.text);
     if (!chunks.length && !pairs.length) return { total: 0, added: 0, skipped: 0, qa: 0 };
 
+    // Embed the whole run *before* touching the store. A worker that dies
+    // halfway through a re-import must leave the previous chunks alone, not
+    // hand back a document that is half indexed or gone entirely.
+    const vectors: Float32Array[] = [];
+    for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
+      vectors.push(...(await this.embedder.embed(chunks.slice(i, i + EMBED_BATCH))));
+    }
+
     if (opts.replace) {
       // `#s` refs belong to the same document: re-importing the body invalidates
       // its section summaries, and re-importing one section must not touch the
@@ -73,20 +81,16 @@ export class RagIngestor {
     }
 
     let added = 0;
-    for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
-      const batch = chunks.slice(i, i + EMBED_BATCH);
-      const vectors = await this.embedder.embed(batch);
-      for (let j = 0; j < batch.length; j++) {
-        const record = this.store.add({
-          source: opts.source,
-          sessionId: opts.sessionId,
-          ref: opts.ref,
-          text: batch[j],
-          metadata: { ...(opts.metadata ?? {}), chunk_index: i + j },
-          embedding: vectors[j],
-        });
-        if (record) added++;
-      }
+    for (let i = 0; i < chunks.length; i++) {
+      const record = this.store.add({
+        source: opts.source,
+        sessionId: opts.sessionId,
+        ref: opts.ref,
+        text: chunks[i],
+        metadata: { ...(opts.metadata ?? {}), chunk_index: i },
+        embedding: vectors[i],
+      });
+      if (record) added++;
     }
     const qa = await this.ingestQaPairs(pairs, opts);
     return { total: chunks.length, added, skipped: chunks.length - added, qa };

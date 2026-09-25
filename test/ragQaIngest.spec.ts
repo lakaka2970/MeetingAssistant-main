@@ -174,3 +174,22 @@ describe('RagIngestor — prepared Q&A become dedicated records', () => {
     expect(left).not.toContain('简历里的项目');
   });
 });
+
+describe('RagIngestor — a failed replace keeps the previous index', () => {
+  it('leaves the old chunks in place when the embed worker dies mid-import', async () => {
+    const store = new VectorStore('test');
+    store.add({ source: 'doc', ref: 'a.md', text: '旧内容第一段', embedding: new Float32Array(64) });
+    store.add({ source: 'doc', ref: 'a.md', text: '旧内容第二段', embedding: new Float32Array(64) });
+    const ing = new RagIngestor(store, {
+      embed: async () => {
+        throw new Error('embed worker gone');
+      },
+      embedOne: async () => new Float32Array(64),
+    } as unknown as ConstructorParameters<typeof RagIngestor>[1]);
+
+    await expect(
+      ing.ingest({ source: 'doc', ref: 'a.md', text: '新内容完全不同的一段文字', replace: true }),
+    ).rejects.toThrow('embed worker gone');
+    expect(store.allRecords().map((r) => r.text)).toEqual(['旧内容第一段', '旧内容第二段']);
+  });
+});
