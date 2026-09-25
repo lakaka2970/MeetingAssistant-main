@@ -76,7 +76,7 @@ Get-FileHash .\MeetingAssistant-1.0.1-win-x64.exe -Algorithm SHA256
 - **手机端不能截屏提问，也不能切换会话**：文本提问是手机端唯一的主动提问方式；整屏截屏仍在电脑上按热键（可配成「只送手机」）。
 - 节摘要是**抽取式定位**，不是模型总结：它帮你找到那一节，不会替你归纳一份 PPT 的结论。
 - **扫描版 / 纯图片 PDF 抽不出文字**，会被跳过并标注原因（本版本不含 OCR）。
-- README 首页的两张主界面截图仍是 v1.0.0 的界面（气泡导轨、折叠的历史回答、🎚 与 ◐ 按钮都没有反映），需要重拍。
+- README 首页的两张主界面截图仍是 v1.0.0 的界面（气泡导轨、折叠的历史回答、🎚 与 ◐ 都没有反映）。**本版本决定不再重拍**：v1.0.1 界面上每颗按钮的含义与上手顺序，以 README 的「🧭 界面速查」与「🚀 照这个顺序点」两节为准。
 
 遇到问题：先看应用内「帮助与教程」和 [TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)（双屏连不上在第九、十节），仍未解决就带上诊断信息到 [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant-main/issues)。
 
@@ -151,6 +151,6 @@ Compare it with the value in the `.sha256` file before running the installer.
 - **No screenshot asking and no session switching from the phone**: the text box is the phone's only active question path; full-screen capture stays on the PC hotkey (which can be set to deliver to the phone only).
 - Section summaries are **extractive locators**, not model-written abstracts: they find the section, they do not conclude the deck for you.
 - **Scanned or image-only PDFs yield no text** and are skipped with a reason (no OCR in this release).
-- The two screenshots on the README's first page still show the v1.0.0 interface (no bubbles, no collapsed history, no 🎚 or ◐ button) and need re-photographing.
+- The two screenshots on the README's first page still show the v1.0.0 interface (no bubbles, no collapsed history, no 🎚 or ◐ button). **This release deliberately does not re-shoot them** — what each v1.0.1 control means is spelled out in the README's "title bar, left to right" and "four typical sessions" tables instead.
 
 Problems: start with the in-app **Help & guides** and [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md) (phone connection failures: sections 9 and 10); if that does not solve it, bring the diagnostics report to [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant-main/issues).
