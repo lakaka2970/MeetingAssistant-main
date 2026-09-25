@@ -119,6 +119,16 @@ export function createLibraryImporter(deps: LibraryDeps) {
       deps.onProgress?.({ done: out.items.length, total: files.length, item });
       return item;
     };
+    /** local section analysis — a failure costs the summaries, never the import */
+    const analyze = async (filePath: string, ref: string, name: string, text: string) => {
+      if (!deps.summarize) return { summaries: 0, failed: false };
+      try {
+        return { summaries: (await deps.summarize({ ref, text, name })) ?? 0, failed: false };
+      } catch (e) {
+        log(`[knowledge-files] section analysis failed ${filePath}: ${(e as Error).message}`);
+        return { summaries: 0, failed: true };
+      }
+    };
     for (const filePath of files) {
       const name = basename(filePath);
       if (!isLibraryExtension(filePath)) {
@@ -130,7 +140,14 @@ export function createLibraryImporter(deps: LibraryDeps) {
       try {
         const prev = known.get(filePath);
         const stamp = deps.stat(filePath);
-        if (prev && stamp && prev.hash && prev.mtimeMs === stamp.mtimeMs && prev.size === stamp.size) {
+        if (
+          prev &&
+          !prev.analysisFailed &&
+          stamp &&
+          prev.hash &&
+          prev.mtimeMs === stamp.mtimeMs &&
+          prev.size === stamp.size
+        ) {
           out.unchanged++; // the cheap short-circuit: no parse, no embed, no rewrite
           settle({ name, ref: prev.ref, status: 'unchanged', chunks: prev.chunks });
           continue;
@@ -153,10 +170,24 @@ export function createLibraryImporter(deps: LibraryDeps) {
           size: stamp?.size ?? text.length,
         };
         if (prev && prev.hash === hash) {
-          // touched but not edited — the chunks are already right, only the stamp moves
+          // touched but not edited — the chunks are already right, only the stamp
+          // moves. A section analysis that failed on an earlier run is still owed,
+          // so this branch re-runs that step rather than the whole ingest.
+          const a = prev.analysisFailed ? await analyze(filePath, prev.ref, name, text) : null;
           out.unchanged++;
-          deps.manifest.upsert({ ...prev, ...fresh, status: 'unchanged' });
-          settle({ name, ref: prev.ref, status: 'unchanged', chunks: prev.chunks });
+          deps.manifest.upsert({
+            ...prev,
+            ...fresh,
+            status: 'unchanged',
+            ...(a?.failed ? { analysisFailed: true as const } : { analysisFailed: undefined }),
+          });
+          settle({
+            name,
+            ref: prev.ref,
+            status: 'unchanged',
+            chunks: prev.chunks,
+            ...(a ? { summaries: a.summaries } : {}),
+          });
           continue;
         }
         const ref = libraryRefFor(filePath, deps.manifest, root);
@@ -175,6 +206,7 @@ export function createLibraryImporter(deps: LibraryDeps) {
         out.imported++;
         out.chars += text.length;
         out.chunks += chunks;
+        const a = await analyze(filePath, ref, name, text);
         const entry: KnowledgeFile = {
           ref,
           name,
@@ -186,18 +218,11 @@ export function createLibraryImporter(deps: LibraryDeps) {
           status: prev ? 'reimported' : 'imported',
           chunks,
           qaCount: res.qa ?? 0,
+          ...(a.failed ? { analysisFailed: true as const } : {}),
         };
         deps.manifest.upsert(entry);
         known.set(filePath, entry);
-        let summaries = 0;
-        if (deps.summarize) {
-          try {
-            summaries = (await deps.summarize({ ref, text, name })) ?? 0;
-          } catch (e) {
-            log(`[knowledge-files] section analysis failed ${filePath}: ${(e as Error).message}`);
-          }
-        }
-        settle({ name, ref, status: 'imported', chunks, summaries });
+        settle({ name, ref, status: 'imported', chunks, summaries: a.summaries });
       } catch (e) {
         const detail = (e as Error).message;
         log(`[knowledge-files] import failed ${filePath}: ${detail}`);

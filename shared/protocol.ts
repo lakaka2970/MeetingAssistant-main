@@ -1102,6 +1102,12 @@ export interface KnowledgeFile {
   chunks: number;
   /** prepared Q&A pairs extracted from the document */
   qaCount: number;
+  /**
+   * Set when the import indexed the document's body but its section analysis
+   * threw. The content hash would otherwise mark the file "unchanged" forever,
+   * so the next import re-runs just that step.
+   */
+  analysisFailed?: true;
 }
 
 /**

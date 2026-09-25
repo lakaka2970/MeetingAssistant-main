@@ -518,6 +518,31 @@ describe('automatic section analysis after import', () => {
     expect(counts(out)).toEqual(result({ imported: 1, chars: 3, chunks: 3 }));
     expect(logs.join('\n')).toContain('embed worker gone');
   });
+
+  it('owes the analysis to a document whose analysis failed', async () => {
+    // The body indexed fine, so the content hash says "unchanged" — but the
+    // document has no section summaries, and retrieval quietly loses that
+    // coverage until the user edits the file. The failed step has to be retried
+    // on the next import even though nothing about the file changed.
+    let broken = true;
+    const { lib, summarized, ingested } = harness({
+      texts: { '/a.md': 'abc' },
+      summarize: async () => {
+        if (broken) throw new Error('embed worker gone');
+        return 2;
+      },
+    });
+    await lib.ingestFiles(['/a.md']);
+    expect(summarized).toHaveLength(1);
+
+    broken = false;
+    const out = await lib.ingestFiles(['/a.md']);
+    expect(summarized).toHaveLength(2);
+    // retried the analysis only: the chunks are already in the index
+    expect(ingested).toHaveLength(1);
+    expect(out.items[0]).toMatchObject({ status: 'unchanged', summaries: 2 });
+    expect(counts(out)).toEqual(result({ unchanged: 1 }));
+  });
 });
 
 describe('analysis scope', () => {
