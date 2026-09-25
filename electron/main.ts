@@ -1149,8 +1149,8 @@ function bootstrap(): void {
           }
         }, 60_000);
       }
+      companion.publishState(); // ⑦ the phone's ● 转录 follows this, not its own tap
     });
-    companion.publishState();
     ipcMain.on(IPC.captureStopped, () => {
       console.log('[main] capture stopped');
       lastCaptureStoppedAt = new Date().toISOString();
@@ -1162,8 +1162,8 @@ function bootstrap(): void {
         keepWarmTimer = null;
       }
       asr.flush();
+      companion.publishState();
     });
-    companion.publishState(); // ⑦ the phone's ● 转录 follows this, not its own tap
     ipcMain.handle(IPC.settingsGet, () => publicSettings());
     // pull-based replay: renderer asks after subscribing, so instant-ready
     // cloud engines can't race the subscription (stuck "模型加载中" bug)
@@ -1575,8 +1575,9 @@ function bootstrap(): void {
     }));
     ipcMain.handle(IPC.notesSet, (_e, p: { text: string }) => {
       const res = rag.notes.setNotes(String(p?.text ?? ''));
-      // notes ride the stable prefix → prewarm the new prefix promptly
-      if (res.ok) lastPrefix = null;
+      // notes ride the stable prefix → cold the instant they change, and
+      // re-warm right away when capturing (same rule as a style/persona edit)
+      if (res.ok) markPromptPrefixCold('notes');
       // their 问:/答: blocks are prepared answers: keep the direct-hit records
       // in step with the text (replace-semantics on ref 'notes')
       if (res.ok) void rag.ingestNotes(rag.notes.text);
