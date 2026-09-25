@@ -13,7 +13,7 @@ import { join } from 'node:path';
 
 import { metaFieldOf, parseKbChunkLine, parseKbIndex } from '../electron/rag/kbIndex';
 import { KbRetrieval } from '../electron/rag/kbRetrieval';
-import { RagService, rrfMerge } from '../electron/rag/service';
+import { RagService, mergeRetrieved, rrfMerge } from '../electron/rag/service';
 import { formatRagContext } from '../electron/llm/prompts';
 
 const chunk = (over: Record<string, unknown>): string =>
@@ -380,6 +380,28 @@ describe('rrfMerge', () => {
     expect(
       rrfMerge([{ items: [1, 2, 3, 4], key: String }], 2),
     ).toEqual([1, 2]);
+  });
+});
+
+describe('mergeRetrieved (merge + summary quota + trim)', () => {
+  type Row = { id: string; kind?: string };
+  const lists = (rows: Row[]) => [{ items: rows, key: (r: Row) => r.id }];
+
+  it('refills the trimmed tail with body passages when summaries rank first', () => {
+    // Section summaries score highest on a broad question. Merging to `limit`
+    // first and only then applying the quota deletes hits instead of replacing
+    // them: the answer block loses the actual passages it was built for.
+    const rows: Row[] = [
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `s${i + 1}`, kind: 'summary' })),
+      ...Array.from({ length: 9 }, (_, i) => ({ id: `b${i + 1}` })),
+    ];
+    const out = mergeRetrieved(lists(rows), 3).map((r) => r.id);
+    expect(out).toEqual(['s1', 's2', 'b1']);
+  });
+
+  it('never returns more than limit', () => {
+    const rows: Row[] = Array.from({ length: 40 }, (_, i) => ({ id: `b${i + 1}` }));
+    expect(mergeRetrieved(lists(rows), 5).length).toBe(5);
   });
 });
 

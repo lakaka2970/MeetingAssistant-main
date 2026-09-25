@@ -145,6 +145,28 @@ export function rrfMerge<T>(
     .map((v) => v.item);
 }
 
+/**
+ * How far past the requested count to merge before trimming. The quota below
+ * removes hits rather than replacing them, so it needs candidates to swap in.
+ */
+const MERGE_OVERFETCH = 3;
+
+/**
+ * The retrieval merge: fuse the channels, cap the section summaries, then trim.
+ *
+ * Order matters. Applying the quota to a list already trimmed to `limit` can
+ * return fewer than `limit` hits while passages that would have filled the
+ * block sat unexamined one rank lower — summaries outrank their own source
+ * text on a broad question, and there are up to 40 of them per document.
+ */
+export function mergeRetrieved<T extends { kind?: string }>(
+  lists: { items: T[]; key: (t: T) => string }[],
+  limit: number,
+): T[] {
+  const wide = limit * MERGE_OVERFETCH;
+  return applySummaryQuota(rrfMerge(lists, wide)).slice(0, limit);
+}
+
 const INDEX_DIR = 'rag';
 const INDEX_FILE = 'index.json';
 const NOTES_FILE = 'notes.md';
@@ -403,9 +425,10 @@ export class RagService {
     const s = this.deps.getSettings();
     const empty: RetrieveResult = { hits: [], facts: [], qa: [], conflicts: [], ms: 0 };
     if (!s.enabled || q.length < MIN_QUERY_CHARS) return { ...empty, ms: 0 };
+    const limit = topK ?? s.topK;
     this.ensureKb();
     // the knowledge base answers even with no embedder ready — it needs no model
-    const kbHits = this.kb.search(q, Math.max(topK ?? s.topK, 5));
+    const kbHits = this.kb.search(q, Math.max(limit * MERGE_OVERFETCH, 5));
     const kbAsView: MergedHitView[] = kbHits.map((h) => ({
       text: h.text,
       source: '知识库',
@@ -437,22 +460,16 @@ export class RagService {
       );
       const dense = store
         .search(qvec, {
-          topK: topK ?? s.topK,
+          topK: limit * MERGE_OVERFETCH,
           minScore: s.minScore,
           sessionId,
           excludeSources: ['fact', 'qa'],
         })
         .map(toHitView);
-      const limit = topK ?? s.topK;
-      const hits = applySummaryQuota(
-        rrfMerge<MergedHitView>(
-          [
-            { items: kbAsView, key: (h) => `kb:${h.ref}:${h.text.slice(0, 40)}` },
-            { items: dense, key: (h) => `d:${h.source}:${h.ref}:${h.text.slice(0, 40)}` },
-          ],
-          limit,
-        ),
-      );
+      const hits = mergeRetrieved<MergedHitView>([
+        { items: kbAsView, key: (h) => `kb:${h.ref}:${h.text.slice(0, 40)}` },
+        { items: dense, key: (h) => `d:${h.source}:${h.ref}:${h.text.slice(0, 40)}` },
+      ], limit);
       const facts = store
         .search(qvec, { topK: 4, minScore: Math.max(0.35, s.minScore), sessionId, sources: ['fact'] })
         .map(toHitView);
@@ -496,19 +513,15 @@ export class RagService {
     const qvec = await this.embedder.embedOne(query, 15_000);
     const s = this.deps.getSettings();
     const store = this.ensureStore();
+    const limit = Math.max(5, s.topK * 2);
     const dense: MergedHitView[] = store
-      .search(qvec, { topK: Math.max(5, s.topK * 2), minScore: 0, sessionId })
+      .search(qvec, { topK: limit * MERGE_OVERFETCH, minScore: 0, sessionId })
       .map(toHitView);
     return {
-      hits: applySummaryQuota(
-        rrfMerge<MergedHitView>(
-          [
-            { items: kbAsView, key: (h) => `kb:${h.ref}:${h.text.slice(0, 40)}` },
-            { items: dense, key: (h) => `d:${h.source}:${h.ref}:${h.text.slice(0, 40)}` },
-          ],
-          Math.max(5, s.topK * 2),
-        ),
-      ),
+      hits: mergeRetrieved<MergedHitView>([
+        { items: kbAsView, key: (h) => `kb:${h.ref}:${h.text.slice(0, 40)}` },
+        { items: dense, key: (h) => `d:${h.source}:${h.ref}:${h.text.slice(0, 40)}` },
+      ], limit),
       facts: [],
       qa: [],
       conflicts,
