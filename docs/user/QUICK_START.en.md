@@ -95,6 +95,7 @@ Other title-bar controls:
 |---|---|
 | `A:ZH` / `A:EN` | Language the AI answers in |
 | `🎚` | Answer length / register / persona — the next answer uses it |
+| `◐` | Panel transparency: drag to let the desktop show through the window background (30%–100%). Only the backdrop fades — text stays sharp. Released = remembered |
 | `Text` / `Vision` | Answer with the text LLM, or with the vision model (screenshot Q&A) |
 | `🎤Mic` | Transcribe your own voice separately |
 | `Stealth:On/Off` | Hides the window from recording / sharing / screenshots (Windows; best-effort on macOS) |

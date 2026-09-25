@@ -123,6 +123,14 @@ Work through this in order:
 7. **`.doc / .ppt` reports "unsupported format"**: legacy 97-2003 OLE binaries have no reliable pure-JS parser; save them as `.docx` / `.pptx` first.
 8. **The ⚡Ans button is gone**: the transcript became **chat bubbles**, so ⧉ / translate / ⚡Ans appear when you **hover** (or Tab to) a line. **Clicking a bubble no longer expands it** — the full-transcript panel is behind **⤢** in the rail header, and the old answers collapsed into one "Answer history · N" row that expands with ▸.
 
+## 12. Panel transparency (◐)
+
+1. **I dragged it all the way down and the desktop still barely shows**: the floor is **30%**, and the slider **multiplies** the theme's own backdrop alpha — the dark theme's base is already 80% opaque, so 30% lands at roughly 24%; the light theme's base is 93%, so the same rung looks noticeably more solid (~28%). And there has to be something behind the window to compare against: on a plain black desktop the difference is invisible at any value.
+2. **It didn't stick, or it came back at 100% after a restart**: ◐ previews every frame while you drag and writes the setting **when you release** — quitting mid-drag saves nothing. Settings → General → "Panel opacity" behaves differently on purpose: it is a draft, so it only applies when you press **Save** (Cancel restores the old value). 100% *is* the v1.0.0 look; it is not a lost setting.
+3. **Transparency is not stealth**: recording and meeting-sharing capture the **composited** desktop, so a faded window is faded on the other end too — still perfectly readable. ◐ solves "let me see what is behind the window", not "let them not see me": for that use **Stealth** in the title bar (section 8).
+4. **The text did not fade along with it**: by design. Only the backdrop layer fades; text, icons and borders stay full-strength, because a 30% panel with 30% text would be unreadable.
+5. **The exam window and the pairing window did not change**: also by design. ◐ applies to the main window's backdrop only; the separate small windows (exam, dual-screen pairing, region capture) do not share the value.
+
 ## Still stuck
 
 1. Settings → General → "Diagnostics" (also in the title-bar `⋯` menu) → "Copy diagnostics". The report is built locally and copied to the clipboard only (nothing is written to disk); it contains **no API keys, resume/JD text or transcripts**, so it is safe to paste into a public issue.

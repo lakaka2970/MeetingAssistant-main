@@ -26,6 +26,7 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
   - **读屏有两条路**：装 `npm i tesseract.js`（约 2MB 语言包，全离线）则截图先在本机识别文字，读不到题再交给视觉模型；没装就需要一个**支持图片的 API Key**（Gemini / 智谱 / Groq / 百炼 / MiMo / Ollama 等）。两者都没有时框选会直接说明缺什么，此时可用「题库自检」右侧的 **作答这题**：把题干粘贴进去，同样走 题库 → AI → 网络 的完整链路。
 - **提词主视图 + 转录气泡**：左栏是一条**转录导轨**——每句一个**聊天气泡**、说话人分色、整句在泡内换行，实时_partial_ 钉在底部；**⧉ 复制 / 译 / ⚡答** 在悬停（或键盘 Tab 聚焦）到那句时才出现。导轨右缘的细条可**拖拽调宽**（10%–50%，默认 16%，重启保留）；点右上角 **⤢** 才展开完整转录面板（框选提问、清屏在那里），**点泡泡本身不会放大**。提词卡的历史回答收成一行「历史回答 · N」，▸ 展开 / ▾ 收起，**默认收起**并把空间留给当前回答（状态重启保留）。
 - **🎚 回答风格（会议中随时改）**：标题栏 🎚 一次弹出**内容量**（精简 15-25 秒 / 标准 30-60 秒 / 详尽 90-150 秒）、**专业度**（口语 / 职场 / 技术）与**应答人设**三组选择，改完**下一条回答就生效**。默认「标准 + 职场」，输出长度与上一版一致。
+- **◐ 面板透明度（会中随手拖）**：主窗口本身是透明覆盖层，挡住背后内容时把背景拖透一点就行——标题栏 **◐** 或 设置 → 通用 里的滑块，范围 30%–100%。**只有背景变透，文字、图标和按钮保持原有清晰度**。◐ 里拖动**即时生效**、松手即记住；设置里那条改完需点保存。**默认 100%，升级后观感与上一版完全相同**。
 - **应答人设库与提示词进阶**：设置 → 通用 → 高级设置 → **应答人设库** 里预先写好最多 12 套「我是谁、我怎么说话」（可点**从简历/JD 生成初稿**，草稿要你确认保存），会前用 🎚 选一套；同处的 **提示词进阶** 直接编辑系统提示词的三层（基础人设模板 / 回答风格指令 / 自定义追加指令），灰字即内置原文、留空即用，并给出**最终拼接预览**的字数。这些层都落在**可缓存的稳定前缀**上：什么都不设置时，发给模型的提示词与上一版**逐字节相同**。
 - **右下角延迟 HUD**：状态栏右侧显示「话落→出字」端到端延迟（末条 / p50 / p95）、首字延迟与推理耗时；悬停每项都有解释，用于判断慢在防抖门控、检索还是模型本身。
 - **手机显示（局域网）**：设置里打开 **手机显示** 后，本机变成一个只在局域网里说话的网页服务，**手机浏览器扫码即看**——左边实时转写、上面大字显示当前答案（流式逐字、公式照常排版）。它挂在主进程的事件源上，**不经过界面窗口**，所以电脑这边可以彻底隐身、不开任何窗口，屏幕上没有任何东西会被共享或拍到。同时它也接管「**后台截屏答题**」：按下截屏热键 → 拍屏 → 读题 → **先查本机题库** → 答案直接出现在手机上，全程不用回头看电脑。延迟在这条链路上是显式量：手机上每次 ping/pong 校准两机时钟差后显示真实端到端毫秒数，设置面板显示线路延迟与「因手机跟不上而丢弃」的计数。
@@ -146,13 +147,24 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 - **为什么这些改动不影响缓存**：以上所有层都拼在**稳定前缀**上（每次请求逐字节相同的部分），风格/人设变化只在该档位变化时改变字节；**装了新版本什么都不设置时，前缀与上一版逐字节相同**（有测试钉住），升级不会让既有回答风格漂移。
 - **思考强度**：在 设置 → 模型，默认 **关闭**。支持思考模式的模型不再在你没要求时偷偷推理（那会同时抬高首字延迟与 token 费用）；要开就选 低 / 中 / 高，选 **跟随默认** 则一个思考参数都不发。手机端目前**不能**远程切换思考强度，只能远程切内容量与专业度。
 
+### 10. 面板透明度（◐）
+
+共享屏幕、投屏、或者把窗口盖在别的资料上时，主窗口的背景会挡住后面的东西。主窗口本身是**无边框透明覆盖层**，遮挡只来自那一层背景色，所以这颗滑块调的就是它。
+
+- **入口两处**：标题栏 **◐**（会中随手用，拖动即时生效、**松手才记住**）；设置 → 通用 → **面板不透明度**（走保存流程，点保存后生效）。
+- **只淡背景**：变的是底色透明度，**文字、图标、按钮、边框都不跟着变淡**，提词照样能读。这是它和"把整个窗口设成半透明"的区别。
+- **30% 是下限**：再低就透到看不清字了，所以滑块不允许；拉到 100% 即默认观感（深色底 80% 不透明 / 浅色底 93%）。
+- **会记住**：设置存在本机，重启后保持。主题（深色 / 浅色）与字号互不影响。
+- **不管做题窗口和手机连接小窗**：那两个窗口有自己的外观，这颗滑块只管主窗口。
+- ⚠️ 透明度只影响**你这台电脑上看到的画面**。如果对方看的是你的**整个屏幕共享**，共享里同样能看到变透的背景——它不是隐身手段，要防被拍到请用 🕶 隐身（`setContentProtection`，对方屏幕录制 / 截屏里窗口会变黑）。
+
 ## 📸 界面预览
 
 | 浅色 | 深色 |
 |---|---|
 | ![浅色主界面](docs/main-light.png) | ![深色主界面](docs/main-dark.png) |
 
-> 下面两张截图仍是 v1.0.0 的界面：转录栏还不是气泡、历史回答未折叠、标题栏还没有 🎚。重拍待补，界面以应用实际显示为准。
+> 下面两张截图仍是 v1.0.0 的界面：转录栏还不是气泡、历史回答未折叠、标题栏还没有 🎚 与 ◐。重拍待补，界面以应用实际显示为准。
 
 - 双语实时演示：![demo-bilingual.gif](docs/demo-bilingual.gif)
 - 完整演示视频：[MeetingAssistant-demo.mp4](docs/MeetingAssistant-demo.mp4)
@@ -452,6 +464,7 @@ A printable/offline copy of this document is available as [README.pdf](README.pd
 - Batch document import reports itself: Settings → Knowledge takes single files (multi-select) or a whole folder, shows `Importing 12/37…` while it runs and one row per file — imported / unchanged / skipped / failed — with the reason (unsupported format, no extractable text, parse failed, index not ready). Re-importing an unchanged file is skipped by content hash instead of rebuilding the index, and each imported document is cut into sections whose extractive summaries go into the index for document-level questions — locally, with no model call and no cost.
 - Prepared answers surface first: `问：… 答：…` / `Q: … A: …` / `【问题】…【回答】…` blocks in your documents or notes are auto-detected and indexed by question; on a hit the prompt card shows your prepared answer verbatim (local, tens of ms) and the AI only enriches it — no network on that path
 - Exam mode (做题模式): a separate small floating window, forcibly invisible to screen capture, for online assessments. Drag over the question on screen → it is read (local OCR first, vision model otherwise) → **your local question bank answers it in ~1 ms, offline**; the LLM only covers what the bank lacks, and the web only on an explicit opt-in. Four sub-modes, each bound to its own folder: aptitude/essay, coding/technical, personality, other. Paired real-exam PDFs (`…-学生版.pdf` + `…-答案版.pdf`, keys like `N.【答案】D。解析：…` or `1~5 BACDB`) are joined by (section, number) and **refuse to pair when the two papers' sections disagree** — a wrong answer with confidence is the one outcome this must never produce; when the OA page shuffles the options, the answer is re-anchored onto the option text and the on-screen letter. Reading the screen needs either `npm i tesseract.js` (offline, tried first) or a vision-capable key; with neither, paste the stem into the bank field and use **Answer this** for the same bank → AI → web chain. Binding one shared parent folder to all four sub-modes is fine — the index is literal, so extra material can only ever surface as a "similar question" to confirm, never as a direct answer.
+- ◐ **Panel transparency, dragged mid-meeting**: this overlay's only opaque layer is its backdrop, so a slider (30–100%) lets the screen behind show through — from the title bar's **◐** (applies as you drag, remembered when you release) or Settings → General. Only the backdrop fades; text, icons and buttons stay full strength. Default 100% looks exactly like the previous version. Note this changes the composited image, so a viewer of your full-screen share sees the fade too — it is not a stealth tool; use 🕶 stealth for that.
 - Phone display over the LAN (设置 → 手机显示): the machine becomes a local-only web service and a phone browser shows the live transcript plus the current answer in large type — streamed token by token, maths typeset with KaTeX. The bridge taps the ASR/LLM/exam event sources **inside the main process**, not the UI, so the PC side can stay hidden or never open a window at all: nothing on this screen is in a shared capture. It also carries the headless screen-answer path — with 「截屏热键只出答案到手机」 on, one press of the screenshot hotkey captures the screen, reads it, **checks your local question bank first** and puts the answer on the phone without raising a window. Latency is an explicit quantity here, not a vibe: the phone calibrates the two clocks with ping/pong so the milliseconds it prints are real end-to-end cost, and the settings row shows wire latency plus how many frames were dropped because a phone could not keep up. Pairing is a 6-digit code → long-lived token, where **the code is only ever displayed on this machine** and never sent back to the device that asked, so nothing else on the LAN can pair itself. HTTPS with a self-signed cert is the default — it encrypts the LAN hop *and* is the only context where the browser's screen Wake Lock exists, so the phone does not dim mid-meeting. Self-signed stops passive sniffing, not an active man-in-the-middle: trusted networks only. Off unless you enable it; default port 18765.
 - Two modes stay apart by construction: exam banks and the personality persona live in their own store and never enter the interview RAG index, so civil-service arithmetic cannot start answering interview questions, or the other way round.
 - Continuous answering is now gated: greetings and logistics never cost a model call, only a genuinely ambiguous line gets one tiny classifier request, and any timeout or failure falls back to answering.
@@ -484,6 +497,11 @@ A printable/offline copy of this document is available as [README.pdf](README.pd
   resume/JD) and **Advanced prompt editor** (the three layers, grey placeholder = built-in wording,
   empty box = use it, plus the assembled-prefix preview). Thinking effort lives in Settings → Model
   and defaults to **off**.
+- **Panel transparency**: title bar **◐** (or Settings → General) drags the backdrop between 30% and
+  100%, so the overlay stops hiding whatever is behind it. Only the backdrop fades — text, icons and
+  buttons keep full strength — and 100% is exactly the default look. ◐ applies while you drag and is
+  remembered when you let go; the Settings row applies on Save. This changes what *you* see: to hide
+  the window from a recorder or a share, use **🕶 stealth**.
 - **Exam mode**: title bar **做题** opens a capture-invisible panel bound to per-mode bank folders;
   drag-select a question (or `Ctrl+Shift+S` full-screen / `Ctrl+Alt+A` last line / `Ctrl+Alt+S`
   region) → local bank first (~1 ms, offline) → LLM → optional web. See the Chinese section for the

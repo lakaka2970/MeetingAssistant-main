@@ -42,6 +42,7 @@ Get-FileHash .\MeetingAssistant-1.0.1-win-x64.exe -Algorithm SHA256
 - 转录导轨改成**聊天气泡**：每句一个泡泡、说话人分色、整句在泡内换行。**⧉ 复制 / 译 / ⚡答** 三个按钮在鼠标悬停（或键盘 Tab 聚焦）到那句时才出现，不再常驻占宽度。
 - **点泡泡不再弹出整屏转录面板**。面板改由导轨右上角的 **⤢** 打开（框选提问、清屏仍然在那里），点 ✕ 回到导轨；导轨右缘细条拖拽调宽（10%–50%，重启保留）照旧。
 - 提词卡的**历史回答可折叠**：一行「历史回答 · N」，▸ 展开、▾ 收起，**默认收起**，把纵向空间留给当前回答；展开与否会记住，重启保留。
+- 标题栏新增 **◐ 面板透明度**：拖动滑块（30%–100%）让窗口背景变透，看到它后面的内容。**只有背景变透，文字、图标和按钮保持清晰**——这是它和"把窗口整个设成半透明"的区别。◐ 里拖动**即时生效、松手就记住**；设置 → 通用 里同一条滑块要走「保存」。**默认 100%，等于 v1.0.0 的观感**，不拖就什么都没变。
 
 **提示词引擎（对远程模型的输出做优化与匹配）**
 
@@ -75,7 +76,7 @@ Get-FileHash .\MeetingAssistant-1.0.1-win-x64.exe -Algorithm SHA256
 - **手机端不能截屏提问，也不能切换会话**：文本提问是手机端唯一的主动提问方式；整屏截屏仍在电脑上按热键（可配成「只送手机」）。
 - 节摘要是**抽取式定位**，不是模型总结：它帮你找到那一节，不会替你归纳一份 PPT 的结论。
 - **扫描版 / 纯图片 PDF 抽不出文字**，会被跳过并标注原因（本版本不含 OCR）。
-- README 首页的两张主界面截图仍是 v1.0.0 的界面（气泡导轨、折叠的历史回答、🎚 按钮都没有反映），需要重拍。
+- README 首页的两张主界面截图仍是 v1.0.0 的界面（气泡导轨、折叠的历史回答、🎚 与 ◐ 按钮都没有反映），需要重拍。
 
 遇到问题：先看应用内「帮助与教程」和 [TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)（双屏连不上在第九、十节），仍未解决就带上诊断信息到 [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant-main/issues)。
 
@@ -116,6 +117,7 @@ Compare it with the value in the `.sha256` file before running the installer.
 - The transcript rail is now **chat bubbles**: one bubble per sentence, coloured by speaker, wrapping inside the bubble. **⧉ copy / translate / ⚡Ans** appear when you hover (or Tab to) that line instead of sitting there taking width.
 - **Clicking a bubble no longer opens the full transcript panel.** That panel is behind the **⤢** button in the rail header now (selection-to-ask and clear still live there); ✕ returns you to the rail. Dragging the thin strip on the rail's right edge still resizes it (10–50%, persisted).
 - The prompt card's **answer history collapses**: one "Answer history · N" row, ▸ to expand, ▾ to hide, **collapsed by default** so the vertical space goes to the answer you are reading — and the choice is remembered across restarts.
+- New **◐ Panel transparency** in the title bar: drag the slider (30–100%) and the window's backdrop lets the content behind it show through. **Only the backdrop fades — text, icons and buttons stay crisp**, which is what separates this from making the whole window translucent. In ◐ the change is live while you drag and remembered when you release; the same slider in Settings → General applies on Save. **It defaults to 100%, i.e. exactly how v1.0.0 looked** — nothing changes unless you drag it.
 
 **The prompt engine (shaping what a remote model sends back)**
 
@@ -149,6 +151,6 @@ Compare it with the value in the `.sha256` file before running the installer.
 - **No screenshot asking and no session switching from the phone**: the text box is the phone's only active question path; full-screen capture stays on the PC hotkey (which can be set to deliver to the phone only).
 - Section summaries are **extractive locators**, not model-written abstracts: they find the section, they do not conclude the deck for you.
 - **Scanned or image-only PDFs yield no text** and are skipped with a reason (no OCR in this release).
-- The two screenshots on the README's first page still show the v1.0.0 interface (no bubbles, no collapsed history, no 🎚 button) and need re-photographing.
+- The two screenshots on the README's first page still show the v1.0.0 interface (no bubbles, no collapsed history, no 🎚 or ◐ button) and need re-photographing.
 
 Problems: start with the in-app **Help & guides** and [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md) (phone connection failures: sections 9 and 10); if that does not solve it, bring the diagnostics report to [GitHub Issues](https://github.com/lakaka2970/MeetingAssistant-main/issues).
