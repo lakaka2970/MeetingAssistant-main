@@ -7,13 +7,13 @@
  * NOT ported because they scored worse here.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { metaFieldOf, parseKbChunkLine, parseKbIndex } from '../electron/rag/kbIndex';
 import { KbRetrieval } from '../electron/rag/kbRetrieval';
-import { RagService, mergeRetrieved, rrfMerge } from '../electron/rag/service';
+import { RagService, mergeRetrieved, rrfMerge, writeIndexFileAtomic } from '../electron/rag/service';
 import { formatRagContext } from '../electron/llm/prompts';
 
 const chunk = (over: Record<string, unknown>): string =>
@@ -423,5 +423,30 @@ describe('conflict guardrail in the prompt', () => {
 
   it('returns nothing when there is no material, conflict or not', () => {
     expect(formatRagContext([], ['X §1'])).toBe('');
+  });
+});
+
+describe('writeIndexFileAtomic', () => {
+  // The index is one multi-megabyte JSON holding the whole library, and its
+  // load path starts from empty on a parse failure — so a write that dies
+  // halfway (crash, full disk) must never leave the previous file torn.
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'mc-index-'));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('leaves the last good index on disk when the write fails', () => {
+    const file = join(dir, 'index.json');
+    writeFileSync(file, 'GOOD', 'utf8');
+    mkdirSync(`${file}.tmp`); // nothing can be written under that name
+
+    expect(() => writeIndexFileAtomic(file, 'TORN')).toThrow();
+    expect(readFileSync(file, 'utf8')).toBe('GOOD');
+
+    rmSync(`${file}.tmp`, { recursive: true, force: true });
+    writeIndexFileAtomic(file, 'NEW');
+    expect(readFileSync(file, 'utf8')).toBe('NEW');
+    expect(existsSync(`${file}.tmp`)).toBe(false); // no debris for the next save
   });
 });

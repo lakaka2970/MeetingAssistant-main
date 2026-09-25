@@ -155,6 +155,30 @@ describe('DeferredWriter', () => {
     expect(written).toHaveLength(1);
     expect(written[0].records).toHaveLength(5);
   });
+
+  it('keeps the snapshot outstanding so a failed write is retried', () => {
+    // A full disk during one meeting must not switch persistence off for the
+    // rest of the session: the whole library would be lost on exit.
+    const clock = fakeClock();
+    let serializations = 0;
+    const errors: string[] = [];
+    const w = new DeferredWriter(
+      () => {
+        serializations++;
+        throw new Error('ENOSPC: no space left on device');
+      },
+      () => emptyFile(serializations),
+      400,
+      clock,
+      (msg) => errors.push(msg),
+    );
+    w.request();
+    clock.advance(400);
+    expect(serializations).toBe(1);
+    expect(errors).toEqual(['ENOSPC: no space left on device']);
+    w.flush(); // the next bulk op — or shutdown — gets another shot
+    expect(serializations).toBe(2);
+  });
 });
 
 function emptyFile(nextId = 0): RagIndexFile {

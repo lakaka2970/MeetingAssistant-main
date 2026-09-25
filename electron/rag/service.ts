@@ -9,7 +9,7 @@
  * `rag.enabled` is true, so the worker/index cost is zero when unused.
  * Persistence is a single debounced JSON file under userData/rag/.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { EmbedClient } from './embedClient';
 import { getEmbeddingModel } from './embedding';
@@ -175,6 +175,23 @@ const INDEX_SAVE_DEBOUNCE_MS = 400;
 /** minimum question length worth a retrieval round-trip */
 export const MIN_QUERY_CHARS = 6;
 
+/**
+ * tmp + rename, so a save that dies halfway cannot destroy the file it was
+ * replacing: the index is one multi-megabyte JSON, and its load path starts
+ * from empty on a parse failure. Same shape as the sessions-file save.
+ * Throws on failure — the caller decides what the user is told.
+ */
+export function writeIndexFileAtomic(filePath: string, json: string): void {
+  const tmp = `${filePath}.tmp`;
+  try {
+    writeFileSync(tmp, json, 'utf8');
+    renameSync(tmp, filePath);
+  } catch (e) {
+    rmSync(tmp, { force: true }); // a half-written tmp must not outlive the incident
+    throw e;
+  }
+}
+
 export class RagService {
   private embedder: EmbedClient;
   private store: VectorStore | null = null;
@@ -184,6 +201,8 @@ export class RagService {
   /** coalesces index mutations into one serialize+write per quiet window */
   private readonly writer: DeferredWriter;
   private lastDownloadPct: number | null = null;
+  /** last index-persist failure; '' while the file on disk is current */
+  private persistError = '';
   /** pre-chunked knowledge base, retrieved lexically (no model needed) */
   private readonly kb = new KbRetrieval();
   private kbPathLoaded: string | null = null;
@@ -216,6 +235,11 @@ export class RagService {
       (f) => this.writeIndexFile(f),
       () => this.store!.serialize(),
       INDEX_SAVE_DEBOUNCE_MS,
+      undefined, // real timers; the writer's retry policy is what matters here
+      (msg) => {
+        this.persistError = msg;
+        this.deps.onStatusChange?.(); // the knowledge tab shows status.lastError
+      },
     );
   }
 
@@ -259,7 +283,12 @@ export class RagService {
 
   private writeIndexFile(file: RagIndexFile): void {
     mkdirSync(join(this.deps.userDataDir, INDEX_DIR), { recursive: true });
-    writeFileSync(this.indexPath, JSON.stringify(file), 'utf8');
+    writeIndexFileAtomic(this.indexPath, JSON.stringify(file));
+    // a clean write closes the incident the settings row has been showing
+    if (this.persistError) {
+      this.persistError = '';
+      this.deps.onStatusChange?.();
+    }
   }
 
   /**
@@ -677,7 +706,8 @@ export class RagService {
       loadMs: this.embedder.ready?.loadMs ?? null,
       chunks,
       bySource: store ? store.countsBySource() : {},
-      lastError: this.embedder.lastError,
+      // one field, two possible incidents: the model, else the index file
+      lastError: this.embedder.lastError || this.persistError,
       downloadPct: this.embedder.state === 'loading' ? this.lastDownloadPct : null,
       kb: {
         configured: (this.deps.getSettings().kbIndex ?? '').trim(),

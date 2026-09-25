@@ -173,6 +173,8 @@ export class DeferredWriter {
     private readonly build: () => RagIndexFile,
     private readonly delayMs: number,
     private readonly clock: WriterClock = REAL_CLOCK,
+    /** the owner surfaces the failure; the writer keeps the snapshot regardless */
+    private readonly onError: (message: string) => void = () => {},
   ) {}
 
   /** something changed; the snapshot is taken when the window settles */
@@ -192,11 +194,15 @@ export class DeferredWriter {
       this.timer = null;
     }
     if (!this.pending) return;
-    this.pending = false;
     try {
       this.write(this.build());
+      this.pending = false;
     } catch (e) {
+      // Discarding `pending` here would switch persistence off for the rest of
+      // the session on one full disk, and the whole library would be gone at
+      // exit while the import UI still reads 已导入.
       console.warn('[rag] index persist failed:', (e as Error).message);
+      this.onError((e as Error).message);
     }
   }
 }
