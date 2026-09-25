@@ -2534,7 +2534,12 @@ function bootstrap(): void {
       // but only when the primary endpoint is the one actually serving, since
       // the cache is per provider/model pair
       if (!isTranslate && !useVision && payload.mode !== 'free' && plan[0] === primary) {
-        lastPrefix = stablePrefixFor(payload.resume || payload.background, payload.jd);
+        // Keep the remembered material in step with `lastPrefix`: a later
+        // markPromptPrefixCold re-warms lastPrewarmMaterial and must produce the
+        // SAME bytes this answer just cached, not the last ▶-prewarm's material.
+        const material = { resume: payload.resume || payload.background, jd: payload.jd };
+        lastPrewarmMaterial = material;
+        lastPrefix = stablePrefixFor(material.resume, material.jd);
         lastPrefixActivity = Date.now();
       }
 
