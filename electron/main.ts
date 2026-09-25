@@ -39,7 +39,7 @@ import { AppTray, trayIconPath } from './tray';
 import { isRendererCommand, type TrayCommand, type TrayMenuState } from '../shared/trayMenu';
 import { KnowledgeStore } from './knowledge';
 import { KnowledgeFileStore } from './knowledgeFiles';
-import { SessionStore } from './sessions';
+import { SessionStore, asSessionsFile } from './sessions';
 import { RagService, MIN_QUERY_CHARS, type RetrieveResult } from './rag/service';
 import { createLibraryImporter, emptyImportResult } from './rag/library';
 import { SpeculativeCache, after, specKey } from './rag/speculative';
@@ -1489,14 +1489,21 @@ function bootstrap(): void {
     });
     ipcMain.handle(IPC.sessionsLoad, () => sessionStore.load());
     ipcMain.on(IPC.sessionsSave, (_e, data) => {
+      // The renderer owns this file, but the payload arrives as `unknown` and
+      // the phone-facing snapshot below dereferences it on every `st` echo —
+      // so a malformed write is refused here rather than thrown later.
+      const file = asSessionsFile(data);
+      if (!file) {
+        console.warn('[sessions] ignored a malformed sessionsSave payload');
+        return;
+      }
       // the renderer owns the session lifecycle; keep the shot pipeline's
       // fallback session pointer fresh (it fires from a hotkey, no payload)
-      const cid = (data as { currentId?: unknown })?.currentId;
-      if (typeof cid === 'string' && cid) lastKnownSessionId = cid;
+      if (file.currentId) lastKnownSessionId = file.currentId;
       // ⑦ the phone's `st.session` and `hx` snapshot are read from here, so the
       // bridge never has to touch sessions.json while a command is in flight
-      ctlSessions = data as SessionsFile;
-      sessionStore.save(data);
+      ctlSessions = file;
+      sessionStore.save(file);
       companion.publishState();
     });
     // ⑦ `continuous` lives in the renderer; main only learns it second-hand
