@@ -149,6 +149,27 @@ describe('companion bridge over the wire', () => {
     expect(await closedCode(ws)).toBe(4001);
   });
 
+  it('refuses an oversized frame before it reaches the parser', async () => {
+    // The socket listens on 0.0.0.0 and JSON.parse(String(raw)) runs before the
+    // auth check, so ws's 100 MiB default lets any LAN device hand the main
+    // process a 100 MB string to materialise and parse. The phone's largest
+    // legitimate frame is a 500-character question.
+    const ws = await open();
+    const code = closedCode(ws);
+    ws.send('x'.repeat(64 * 1024));
+    expect(await code).toBe(1009);
+  });
+
+  it('still accepts a long device label under that cap', async () => {
+    // the cap must sit above real traffic, not just above the attack: a phone
+    // sends its user agent as the device label, and pairing has to survive it
+    const ws = await open();
+    const reply = nextJson(ws);
+    ws.send(JSON.stringify({ type: 'pair_request', device: 'M'.repeat(4096) }));
+    expect((await reply)?.type).toBe('pair_request_ok');
+    await shut(ws);
+  });
+
   it('walks pairing -> token -> hello -> broadcast', async () => {
     const ws = await open();
     ws.send(JSON.stringify({ type: 'pair_request', device: '测试手机' }));

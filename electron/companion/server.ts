@@ -34,6 +34,14 @@ export const HANDSHAKE_TIMEOUT_MS = 15_000;
  * code off the PC and type it on glass. 15 s would make pairing look broken.
  */
 export const PAIRING_TIMEOUT_MS = 150_000;
+/**
+ * Largest frame a phone may send. The client never uploads — audio and
+ * screenshots stay on the PC — so the biggest legitimate message is a
+ * 500-character question, and this leaves an order of magnitude of headroom
+ * while capping what an unauthenticated LAN peer can make this process
+ * allocate and JSON.parse.
+ */
+export const MAX_INBOUND_FRAME = 16 * 1024;
 /** keepalive interval; also the liveness probe that reaps dead sockets */
 const HEARTBEAT_MS = 20_000;
 /**
@@ -277,7 +285,7 @@ export class CompanionServer {
         server.close();
         reject(e);
       });
-      const wss = new WebSocketServer({ noServer: true });
+      const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_INBOUND_FRAME });
       server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
         const path = (req.url ?? '/').split('?')[0];
         if (path !== '/ws') {
