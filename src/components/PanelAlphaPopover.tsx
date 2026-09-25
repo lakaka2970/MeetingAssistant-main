@@ -6,7 +6,8 @@ import { PANEL_ALPHA_MAX, PANEL_ALPHA_MIN } from '../../shared/protocol';
  * ◐ 面板透明度 popover — the mid-meeting path for fading this overlay back
  * into the screen behind it. Dragging writes `--panel-alpha` straight to the
  * document root so the fade tracks the pointer without a settings round-trip
- * per frame, and the release commits one persisted patch (same rule as the
+ * per frame, and the release — or a canceled drag, so the screen never shows a
+ * value the settings do not — commits one persisted patch (same rule as the
  * rail divider's drag). Only the backdrop fades; text stays crisp.
  */
 export function PanelAlphaPopover({
@@ -71,6 +72,7 @@ export function PanelAlphaPopover({
                   onLive(next / 100);
                 }}
                 onPointerUp={commit}
+                onPointerCancel={commit}
                 onKeyUp={commit}
               />
               <span className="alpha-value">{pct}%</span>

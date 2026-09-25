@@ -421,6 +421,9 @@ body {
 
 .settings-row .alpha-range:focus {
   border: none;
+  /* the generic focus rule paints a border, which this row does not have */
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .style-pop-label {
