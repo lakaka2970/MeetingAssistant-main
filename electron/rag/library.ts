@@ -21,6 +21,12 @@ import { textHash } from './vector-store';
 
 /** guard against pathological nesting / symlink loops */
 export const LIBRARY_WALK_MAX_DEPTH = 12;
+/**
+ * Nothing real a meeting needs is bigger than this, and the parsers read the
+ * whole file into memory (pdf/pptx unzip it too), so a bigger one is refused by
+ * its stat — the cost of letting it through is the main process, not a slow import.
+ */
+export const LIBRARY_MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 export interface LibraryManifest {
   list(): KnowledgeFile[];
@@ -127,6 +133,12 @@ export function createLibraryImporter(deps: LibraryDeps) {
         if (prev && stamp && prev.hash && prev.mtimeMs === stamp.mtimeMs && prev.size === stamp.size) {
           out.unchanged++; // the cheap short-circuit: no parse, no embed, no rewrite
           settle({ name, ref: prev.ref, status: 'unchanged', chunks: prev.chunks });
+          continue;
+        }
+        if (stamp && stamp.size > LIBRARY_MAX_FILE_BYTES) {
+          // decided from the stat alone, before a byte is read
+          out.skipped++;
+          settle({ name, ref: prev?.ref, status: 'skipped', reason: 'too-large', chunks: 0 });
           continue;
         }
         const text = await deps.extract(filePath);

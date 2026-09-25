@@ -18,6 +18,7 @@ import type {
 } from '../shared/protocol';
 import { textHash } from '../electron/rag/vector-store';
 import {
+  LIBRARY_MAX_FILE_BYTES,
   LIBRARY_WALK_MAX_DEPTH,
   createLibraryImporter,
   libraryRefFor,
@@ -114,7 +115,11 @@ function harness(
     texts[path] = body;
     stamps.set(path, { mtimeMs: (stamps.get(path)?.mtimeMs ?? 1_000) + 1_000, size: body.length });
   };
-  return { lib, manifest, ingested, logs, texts, throws, extracted, summarized, touch, rewrite, setDecline: (v: boolean) => { decline = v; } };
+  /** pretend the file is N bytes on disk, whatever `texts` holds for it */
+  const setSize = (path: string, size: number) => {
+    stamps.set(path, { mtimeMs: stamps.get(path)?.mtimeMs ?? 1_000, size });
+  };
+  return { lib, manifest, ingested, logs, texts, throws, extracted, summarized, touch, rewrite, setSize, setDecline: (v: boolean) => { decline = v; } };
 }
 
 let root: string;
@@ -244,6 +249,24 @@ describe('ingestLibraryFiles', () => {
   it('counts a declined ingest (null result) as skipped, with nothing claimed', async () => {
     const { lib } = harness({ texts: { '/a.md': 'abc' }, ingestNull: true });
     expect(counts(await lib.ingestFiles(['/a.md']))).toEqual(result({ skipped: 1 }));
+  });
+
+  it('refuses a file past the size cap without ever opening it', async () => {
+    // The cap is the only thing between one 500 MB file in a picked folder and
+    // an OOM that takes the main process down: for pdf/pptx `extract` is a
+    // whole-file readFileSync plus an unzip, and no try/catch survives that.
+    const { lib, extracted, setSize } = harness({ texts: { '/huge.pdf': 'x', '/ok.pdf': 'abc' } });
+    setSize('/huge.pdf', LIBRARY_MAX_FILE_BYTES + 1);
+    setSize('/ok.pdf', LIBRARY_MAX_FILE_BYTES); // at the cap: still somebody's spec sheet
+    const out = await lib.ingestFiles(['/huge.pdf', '/ok.pdf']);
+    expect(extracted).toEqual(['/ok.pdf']);
+    expect(counts(out)).toEqual(result({ imported: 1, skipped: 1, chars: 3, chunks: 3 }));
+    expect(out.items[0]).toEqual({
+      name: 'huge.pdf',
+      status: 'skipped',
+      reason: 'too-large',
+      chunks: 0,
+    });
   });
 
   it('writes the manifest entry with ref, basename and the injected clock', async () => {

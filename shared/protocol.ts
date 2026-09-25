@@ -1175,7 +1175,9 @@ export type KnowledgeImportReason =
   | 'no-extractable-text'
   | 'parse-failed'
   /** the index declined the text (model not ready) — the file did not really land */
-  | 'index-declined';
+  | 'index-declined'
+  /** above the library's byte cap: refused by its stat, never opened */
+  | 'too-large';
 
 /** one tick of a running import, pushed to the settings window */
 export interface KnowledgeImportProgress {
