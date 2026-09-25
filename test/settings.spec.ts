@@ -1062,3 +1062,33 @@ describe('style ladder and persona library read from disk', () => {
   });
 });
 
+/**
+ * The same two rungs on the *write* boundary. `settings:set` is the one IPC
+ * channel that takes a whole SettingsPatch from any renderer, and these two
+ * fields sit in the `...rest` copy — unvalidated there, an off-ladder value
+ * reaches the prompt builder and every later answer throws.
+ */
+describe('style ladder validated on the way in from a patch', () => {
+  it('drops a rung the ladder does not have', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({ llm: { answerRichness: 'ultra', answerExpertise: 7 } as never });
+    expect(s.data.llm.answerRichness).toBe(DEFAULT_RICHNESS);
+    expect(s.data.llm.answerExpertise).toBe(DEFAULT_EXPERTISE);
+  });
+
+  it('keeps a rung the user actually chose', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({ llm: { answerRichness: 'concise', answerExpertise: 'technical' } });
+    expect(s.data.llm.answerRichness).toBe('concise');
+    expect(s.data.llm.answerExpertise).toBe('technical');
+  });
+
+  it('lets a patch that omits the ladder leave it alone', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({ llm: { answerRichness: 'detailed' } });
+    s.applyPatch({ llm: { answerExpertise: 'casual' } });
+    expect(s.data.llm.answerRichness).toBe('detailed');
+    expect(s.data.llm.answerExpertise).toBe('casual');
+  });
+});
+

@@ -499,12 +499,39 @@ export class SettingsStore {
 
   applyPatch(patch: SettingsPatch): void {
     if (patch.llm) {
-      const { apiKey, routing, routeKeys, thinking, personas, promptPersona, promptStyle, promptExtra, ...rest } =
-        patch.llm;
+      const {
+        apiKey,
+        routing,
+        routeKeys,
+        thinking,
+        answerRichness,
+        answerExpertise,
+        personas,
+        promptPersona,
+        promptStyle,
+        promptExtra,
+        ...rest
+      } = patch.llm;
       // '' (UI: 跟随默认) clears back to unset — stripUndefined alone cannot
       // express "remove this key"
       if (thinking === '') delete this.data.llm.thinking;
       else if (thinking !== undefined) this.data.llm.thinking = thinking;
+      // The two rungs are pulled out of `rest` on purpose: they end up in the
+      // byte-stable prompt prefix, and an off-ladder value makes
+      // buildStyleDirectives throw, which fails every later answer with no
+      // visible cause. Same fallback rule as the read from disk — an unknown
+      // rung becomes the default rather than rejecting the whole patch, because
+      // the patch carries unrelated fields the form expects to have saved.
+      if (answerRichness !== undefined) {
+        this.data.llm.answerRichness = isRichness(answerRichness)
+          ? answerRichness
+          : DEFAULT_RICHNESS;
+      }
+      if (answerExpertise !== undefined) {
+        this.data.llm.answerExpertise = isExpertise(answerExpertise)
+          ? answerExpertise
+          : DEFAULT_EXPERTISE;
+      }
       Object.assign(this.data.llm, stripUndefined(rest));
       // the library is whole-list-replaced and trimmed here, so the renderer
       // can never store more than the prompt budget by patching directly
