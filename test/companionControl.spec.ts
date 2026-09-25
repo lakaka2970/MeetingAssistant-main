@@ -114,7 +114,7 @@ describe('parseControlArg (nothing but the named values reaches settings)', () =
     expect(parseControlArg('capture', 1)).toEqual({ ok: false });
   });
 
-  it('trims a question and refuses one that is empty or oversized', () => {
+  it('refuses an oversized question instead of cutting it down, but strips its padding', () => {
     expect(parseControlArg('ask', '  缓存怎么处理  ')).toEqual({ ok: true, value: '缓存怎么处理' });
     expect(parseControlArg('ask', '   ')).toEqual({ ok: false });
     expect(parseControlArg('ask', 'x'.repeat(ASK_MAX_CHARS))).toEqual({
