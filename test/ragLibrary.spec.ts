@@ -81,6 +81,7 @@ function harness(
   manifest.files = [...(opts.files ?? [])];
   const texts = { ...(opts.texts ?? {}) };
   const throws = { ...(opts.throws ?? {}) };
+  let decline = !!opts.ingestNull;
   const stamps = new Map<string, FakeStamp>();
   const ingested: { text: string; ref: string }[] = [];
   const extracted: string[] = [];
@@ -103,7 +104,7 @@ function harness(
     },
     ingest: async (req) => {
       ingested.push({ text: req.text, ref: req.ref });
-      return opts.ingestNull ? null : { added: 3, total: 3 };
+      return decline ? null : { added: 3, total: 3 };
     },
   });
   /** pretend the file was rewritten with identical bytes: newer mtime, same size */
@@ -113,7 +114,7 @@ function harness(
     texts[path] = body;
     stamps.set(path, { mtimeMs: (stamps.get(path)?.mtimeMs ?? 1_000) + 1_000, size: body.length });
   };
-  return { lib, manifest, ingested, logs, texts, throws, extracted, summarized, touch, rewrite };
+  return { lib, manifest, ingested, logs, texts, throws, extracted, summarized, touch, rewrite, setDecline: (v: boolean) => { decline = v; } };
 }
 
 let root: string;
@@ -240,10 +241,9 @@ describe('ingestLibraryFiles', () => {
     expect(ingested.map((i) => i.ref)).toEqual(['good.md']);
   });
 
-  it('counts a silent partial ingest (null result) as imported with 0 chunks', async () => {
+  it('counts a declined ingest (null result) as skipped, with nothing claimed', async () => {
     const { lib } = harness({ texts: { '/a.md': 'abc' }, ingestNull: true });
-    expect(counts(await lib.ingestFiles(['/a.md']))).toEqual(
-      result({ imported: 1, chars: 3 }));
+    expect(counts(await lib.ingestFiles(['/a.md']))).toEqual(result({ skipped: 1 }));
   });
 
   it('writes the manifest entry with ref, basename and the injected clock', async () => {
@@ -404,15 +404,29 @@ describe('per-file outcome list', () => {
     });
   });
 
-  it('flags a file the index silently declined, so 0 chunks is not a mystery', async () => {
-    const { lib } = harness({ texts: { '/a.md': 'abc' }, ingestNull: true });
+  it('reports a file the index declined as skipped, and records nothing about it', async () => {
+    const { lib, manifest } = harness({ texts: { '/a.md': 'abc' }, ingestNull: true });
     const out = await lib.ingestFiles(['/a.md']);
     expect(out.items[0]).toMatchObject({
       name: 'a.md',
-      status: 'imported',
+      status: 'skipped',
       reason: 'index-declined',
       chunks: 0,
     });
+    expect(counts(out)).toEqual(result({ skipped: 1 }));
+    expect(manifest.upserted).toEqual([]);
+  });
+
+  it('retries a declined file once the index is ready instead of calling it unchanged', async () => {
+    const h = harness({ texts: { '/a.md': 'abc' }, ingestNull: true });
+    const first = await h.lib.ingestFiles(['/a.md']);
+    expect(first.items[0]).toMatchObject({ status: 'skipped', reason: 'index-declined' });
+    // the embedding model finishes downloading — the same untouched file must go in now
+    h.setDecline(false);
+    const second = await h.lib.ingestFiles(['/a.md']);
+    expect(second.items[0]).toMatchObject({ status: 'imported', chunks: 3 });
+    expect(counts(second)).toEqual(result({ imported: 1, chars: 3, chunks: 3 }));
+    expect(h.manifest.list()).toHaveLength(1);
   });
 
   it('reports the ref and chunk count of a document that went in', async () => {
@@ -488,6 +502,6 @@ describe('analysis scope', () => {
     const { lib, summarized } = harness({ texts: { '/a.md': 'abc' }, ingestNull: true });
     const out = await lib.ingestFiles(['/a.md']);
     expect(summarized).toEqual([]);
-    expect(out.items[0]).toMatchObject({ status: 'imported', reason: 'index-declined', summaries: 0 });
+    expect(out.items[0]).toMatchObject({ status: 'skipped', reason: 'index-declined' });
   });
 });

@@ -149,7 +149,17 @@ export function createLibraryImporter(deps: LibraryDeps) {
         }
         const ref = libraryRefFor(filePath, deps.manifest, root);
         const res = await deps.ingest({ text, source: 'doc', ref, replace: true });
-        const chunks = res?.added ?? 0;
+        if (!res) {
+          // The index took nothing — the embedding model is still downloading,
+          // RAG is off, or the ingestor threw. Storing a hash for that would
+          // make every later attempt report 未变化 and the library would stay
+          // empty for good, so the manifest is left untouched and the next
+          // import retries this file.
+          out.skipped++;
+          settle({ name, ref, status: 'skipped', reason: 'index-declined', chunks: 0 });
+          continue;
+        }
+        const chunks = res.added;
         out.imported++;
         out.chars += text.length;
         out.chunks += chunks;
@@ -163,23 +173,19 @@ export function createLibraryImporter(deps: LibraryDeps) {
           ...fresh,
           status: prev ? 'reimported' : 'imported',
           chunks,
-          qaCount: res?.qa ?? 0,
+          qaCount: res.qa ?? 0,
         };
         deps.manifest.upsert(entry);
         known.set(filePath, entry);
-        // Section analysis only makes sense for a document that actually went
-        // into the index: a declined ingest means no embedder, so no summaries.
         let summaries = 0;
-        if (res && deps.summarize) {
+        if (deps.summarize) {
           try {
             summaries = (await deps.summarize({ ref, text, name })) ?? 0;
           } catch (e) {
             log(`[knowledge-files] section analysis failed ${filePath}: ${(e as Error).message}`);
           }
         }
-        // null = the index declined the text (model not ready): a row with 0
-        // chunks that would otherwise look like a successful import
-        settle({ name, ref, status: 'imported', chunks, summaries, reason: res ? undefined : 'index-declined' });
+        settle({ name, ref, status: 'imported', chunks, summaries });
       } catch (e) {
         const detail = (e as Error).message;
         log(`[knowledge-files] import failed ${filePath}: ${detail}`);
