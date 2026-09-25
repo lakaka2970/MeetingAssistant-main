@@ -157,7 +157,7 @@ export function buildStatePayload(src: Omit<StateMessage, 'type'>): StateMessage
   return { type: 'st', ...src };
 }
 
-/** shallow compare so a repeated state costs no send (R: `st` is lossy) */
+/** shallow compare so a repeated state costs no send (`st` only fires on change) */
 export function sameState(a: StateMessage, b: StateMessage): boolean {
   return (
     a.capturing === b.capturing &&

@@ -98,7 +98,7 @@ export class CompanionBridge {
   private lastError = '';
   /** ⑦ attached by the main process; no deps means no control, and no `st` */
   private control: CompanionControlDeps | null = null;
-  /** last `st` we put on the wire — the push is lossy, so repeats are noise */
+  /** last `st` sent, so a desktop that idles on one state costs no traffic */
   private lastState: StateMessage | null = null;
   /** latest text per speaker, waiting for the flush tick */
   private partials = new Map<string, string>();
@@ -240,10 +240,10 @@ export class CompanionBridge {
     return !!this.server && this.server.authenticatedCount > 0;
   }
 
-  private push(msg: CompanionMessage, lossy = false): void {
-    if (!this.server || this.server.authenticatedCount === 0) return;
-    if (lossy) this.server.broadcastLossy(msg);
-    else this.server.broadcastJson(msg);
+  /** @returns how many phones actually took it (0 when none is connected) */
+  private push(msg: CompanionMessage, lossy = false): number {
+    if (!this.server || this.server.authenticatedCount === 0) return 0;
+    return lossy ? this.server.broadcastLossy(msg) : this.server.broadcastJson(msg);
   }
 
   /** transcript: partials coalesce, final lines always go out */
@@ -389,17 +389,21 @@ export class CompanionBridge {
   }
 
   /**
-   * Echo the desktop's live state to the phones, but only when it moved: `st`
-   * rides the lossy channel, and a phone that is behind should miss a repeated
-   * state, not a transcript.
+   * Echo the desktop's live state to the phones, but only when it moved.
+   *
+   * Reliable, not lossy: this few-dozen-byte message is the confirmation that a
+   * command landed (R9), and the dedupe below has no per-client view — a
+   * snapshot skipped because one phone was behind would never be resent, and
+   * that phone's ladder highlight would stay wrong until something else moved.
    */
   publishState(): void {
     const deps = this.control;
-    if (!deps || !this.server) return;
+    if (!deps || !this.server || !this.caps.control) return;
     const next = buildStatePayload(deps.state());
     if (this.lastState && sameState(this.lastState, next)) return;
     this.lastState = next;
-    this.push(next, true);
+    // Nothing was listening — the next phone in still has to be told.
+    if (!this.push(next)) this.lastState = null;
   }
 
   /**
