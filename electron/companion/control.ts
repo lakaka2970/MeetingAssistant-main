@@ -9,7 +9,7 @@
  *
  * Pure: no network, no Electron, no fs.
  */
-import type { AnswerExpertise, AnswerRichness } from '../../shared/answerStyle';
+import { EXPERTISE_STEPS, RICHNESS_STEPS } from '../../shared/answerStyle';
 import type { CompanionControlItems, StoredTurn } from '../../shared/protocol';
 import type { HistoryMessage, StateMessage } from './protocol';
 
@@ -25,9 +25,9 @@ const CONTROL_OPS: readonly ControlOp[] = [
   'history',
 ];
 
-/** the two style ladders, exactly as the settings file accepts them */
-const RICHNESS_STEPS: readonly AnswerRichness[] = ['concise', 'standard', 'detailed'];
-const EXPERTISE_STEPS: readonly AnswerExpertise[] = ['casual', 'professional', 'technical'];
+/** the two style ladders, shared with the prompt builder and the settings file */
+const RICHNESS_LADDER: readonly string[] = RICHNESS_STEPS;
+const EXPERTISE_LADDER: readonly string[] = EXPERTISE_STEPS;
 
 /** a typed question, not a lecture — beyond this the phone meant to send less */
 export const ASK_MAX_CHARS = 500;
@@ -73,7 +73,7 @@ export function parseControlArg(op: ControlOp, arg: unknown): ArgParse {
   switch (op) {
     case 'richness':
     case 'expertise': {
-      const ladder: readonly string[] = op === 'richness' ? RICHNESS_STEPS : EXPERTISE_STEPS;
+      const ladder: readonly string[] = op === 'richness' ? RICHNESS_LADDER : EXPERTISE_LADDER;
       return typeof arg === 'string' && ladder.includes(arg) ? { ok: true, value: arg } : { ok: false };
     }
     case 'capture':

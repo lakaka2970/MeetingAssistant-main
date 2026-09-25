@@ -20,7 +20,7 @@ import type {
   SettingsPatch,
   UiLang,
 } from '../shared/protocol';
-import { DEFAULT_EXPERTISE, DEFAULT_RICHNESS } from '../shared/answerStyle';
+import { DEFAULT_EXPERTISE, DEFAULT_RICHNESS, isExpertise, isRichness } from '../shared/answerStyle';
 import { PROMPT_OVERRIDE_MAX_CHARS, clampText, resolveActivePersona, sanitizePersonas } from '../shared/personas';
 import {
   COMPANION_CONTROL_GRANTS,
@@ -267,11 +267,21 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
     if (RETIRED_PRESET_IDS[id]) byKind[kind] = RETIRED_PRESET_IDS[id];
   }
   const llm = withRetiredModels({ ...defaults.llm, ...raw.llm });
+  // The ladder and the persona library arrive from the same untrusted place as
+  // every other stored key, but their readers are main, not the renderer: an
+  // off-ladder rung throws inside the prompt builder on every answer, and an
+  // untrimmed library blows the byte-stable prefix the patch path guards.
+  const richness = raw.llm?.answerRichness;
+  const expertise = raw.llm?.answerExpertise;
+  const personas = raw.llm?.personas;
   return {
     version: 2,
     onboarding: { ...defaults.onboarding, ...raw.onboarding, schemaVersion: 1 },
     llm: {
       ...llm,
+      answerRichness: isRichness(richness) ? richness : defaults.llm.answerRichness,
+      answerExpertise: isExpertise(expertise) ? expertise : defaults.llm.answerExpertise,
+      personas: personas === undefined ? llm.personas : sanitizePersonas(personas),
       routing: {
         ...dr,
         ...raw.llm?.routing,

@@ -20,6 +20,14 @@ import {
   RAIL_SPLIT_MIN,
 } from '../shared/protocol';
 import { DEFAULT_SEARCH_MAX_RESULTS } from '../shared/searchProviders';
+import {
+  DEFAULT_EXPERTISE,
+  DEFAULT_RICHNESS,
+  buildStyleDirectives,
+  type AnswerExpertise,
+  type AnswerRichness,
+} from '../shared/answerStyle';
+import { sanitizePersonas } from '../shared/personas';
 
 const fakeCipher: SecretCipher = {
   available: () => true,
@@ -997,3 +1005,60 @@ describe('companion remote-control grants (⑦ dual-screen)', () => {
     expect(s.getPublic().companion.allowItems).toEqual({ ...ALL_ON, ask: false, capture: false });
   });
 });
+
+/**
+ * The ladder and the persona library are validated on the way *in* from the
+ * patch, but settings.json is also readable and writable by hand: a value the
+ * ladder does not have used to survive the merge and throw inside
+ * buildStyleDirectives, which fails every answer with no visible cause.
+ */
+describe('style ladder and persona library read from disk', () => {
+  it('drops a rung the ladder does not have', () => {
+    writeFileSync(
+      file,
+      JSON.stringify({ version: 2, llm: { answerRichness: 'ultra', answerExpertise: 7 } }),
+      'utf8',
+    );
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.data.llm.answerRichness).toBe(DEFAULT_RICHNESS);
+    expect(s.data.llm.answerExpertise).toBe(DEFAULT_EXPERTISE);
+    // the consumer of these two is the byte-stable prompt prefix; an off-ladder
+    // value made buildStyleDirectives throw on every answer
+    expect(() =>
+      buildStyleDirectives(
+        s.data.llm.answerRichness as AnswerRichness,
+        s.data.llm.answerExpertise as AnswerExpertise,
+      ),
+    ).not.toThrow();
+  });
+
+  it('keeps a rung the user actually chose', () => {
+    writeFileSync(
+      file,
+      JSON.stringify({ version: 2, llm: { answerRichness: 'detailed', answerExpertise: 'technical' } }),
+      'utf8',
+    );
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.data.llm.answerRichness).toBe('detailed');
+    expect(s.data.llm.answerExpertise).toBe('technical');
+  });
+
+  it('trims a persona library that arrived from disk the same way a patch is trimmed', () => {
+    const raw = Array.from({ length: 40 }, (_, i) => ({
+      id: `p${i}`,
+      name: `N${i}`.repeat(200),
+      text: 'x'.repeat(10_000),
+    }));
+    writeFileSync(file, JSON.stringify({ version: 2, llm: { personas: raw } }), 'utf8');
+    const s = new SettingsStore(file, fakeCipher);
+    const kept = s.data.llm.personas ?? [];
+    expect(kept.length).toBeLessThan(raw.length);
+    expect(kept).toEqual(sanitizePersonas(raw));
+  });
+
+  it('reads a persona library that is not an array as empty', () => {
+    writeFileSync(file, JSON.stringify({ version: 2, llm: { personas: '全员人设' } }), 'utf8');
+    expect(new SettingsStore(file, fakeCipher).data.llm.personas).toEqual([]);
+  });
+});
+

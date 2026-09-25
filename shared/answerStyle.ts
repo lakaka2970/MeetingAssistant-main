@@ -5,8 +5,25 @@
  * here may vary per question; it varies only when the user moves the ladder.
  */
 
-export type AnswerRichness = 'concise' | 'standard' | 'detailed';
-export type AnswerExpertise = 'casual' | 'professional' | 'technical';
+/** the rungs, in the order the UI shows them */
+export const RICHNESS_STEPS = ['concise', 'standard', 'detailed'] as const;
+export const EXPERTISE_STEPS = ['casual', 'professional', 'technical'] as const;
+
+export type AnswerRichness = (typeof RICHNESS_STEPS)[number];
+export type AnswerExpertise = (typeof EXPERTISE_STEPS)[number];
+
+/**
+ * Is this a rung at all? settings.json is hand-editable, and the only reader of
+ * these two is {@link buildStyleDirectives}, which throws on a name it does not
+ * have — so the check belongs on the way in, not in the prompt builder.
+ */
+export function isRichness(value: unknown): value is AnswerRichness {
+  return (RICHNESS_STEPS as readonly string[]).includes(value as string);
+}
+
+export function isExpertise(value: unknown): value is AnswerExpertise {
+  return (EXPERTISE_STEPS as readonly string[]).includes(value as string);
+}
 
 /** the v1.0.0 behaviour: teleprompter default, no extra register directive */
 export const DEFAULT_RICHNESS: AnswerRichness = 'standard';
