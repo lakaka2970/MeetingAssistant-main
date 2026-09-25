@@ -192,4 +192,57 @@ describe('RagIngestor — a failed replace keeps the previous index', () => {
     ).rejects.toThrow('embed worker gone');
     expect(store.allRecords().map((r) => r.text)).toEqual(['旧内容第一段', '旧内容第二段']);
   });
+
+  it("leaves the old prepared answers when only their own embed fails", async () => {
+    // The pairs are purged with the body, so an embedding failure on the
+    // questions alone used to land between "deleted the user's 题库" and "stored
+    // nothing". Embedding first is what makes the replace atomic.
+    const store = new VectorStore('test');
+    const body = `问：你为什么离开上一家公司？
+答：团队解散，我想找更稳定的技术团队。`;
+    const first = new RagIngestor(store, asClient(fakeEmbedder()));
+    await first.ingest({ source: 'doc', ref: 'a.md', text: body, replace: true });
+    expect(qaRecords(store)).toHaveLength(1);
+
+    const emb = fakeEmbedder();
+    const ing = new RagIngestor(
+      store,
+      asClient({
+        ...emb,
+        embed: async (texts: string[]) => {
+          if (texts[0] === '你为什么离开上一家公司') throw new Error('embed worker gone');
+          return emb.embed(texts);
+        },
+      }),
+    );
+    await expect(
+      ing.ingest({ source: 'doc', ref: 'a.md', text: body, replace: true }),
+    ).rejects.toThrow('embed worker gone');
+    expect(qaRecords(store).map((r) => (r.metadata as { question: string }).question)).toEqual([
+      '你为什么离开上一家公司',
+    ]);
+  });
+
+  it("leaves a session's old facts when the new batch cannot embed", async () => {
+    const store = new VectorStore('test');
+    const ok = new RagIngestor(store, asClient(fakeEmbedder()));
+    await ok.ingestFacts('A', ['事实一', '事实二']);
+
+    const broken = new RagIngestor(
+      store,
+      asClient({
+        ...fakeEmbedder(),
+        embed: async () => {
+          throw new Error('embed worker gone');
+        },
+      }),
+    );
+    await expect(broken.ingestFacts('A', ['新事实'])).rejects.toThrow('embed worker gone');
+    expect(
+      store
+        .allRecords()
+        .filter((r) => r.source === 'fact')
+        .map((r) => r.text),
+    ).toEqual(['事实一', '事实二']);
+  });
 });

@@ -166,6 +166,30 @@ describe('RagIngestor.ingestDocSummaries', () => {
     expect(sectionRecords(store).map((r) => r.ref)).toEqual(['deck.pptx#s1']);
   });
 
+  it('keeps the old summaries when the re-analysis cannot embed its new ones', async () => {
+    // Same rule as the document body: a worker that dies halfway must leave the
+    // previous section summaries retrievable, not a document with no coverage.
+    const store = new VectorStore('test');
+    const ing = new RagIngestor(store, asClient(fakeEmbedder()));
+    await ing.ingestDocSummaries({ docRef: 'deck.pptx', text: deck });
+    const before = sectionRecords(store).map((r) => r.ref);
+    expect(before).toEqual(['deck.pptx#s1', 'deck.pptx#s2']);
+
+    const broken = new RagIngestor(
+      store,
+      asClient({
+        ...fakeEmbedder(),
+        embed: async () => {
+          throw new Error('embed worker gone');
+        },
+      }),
+    );
+    await expect(
+      broken.ingestDocSummaries({ docRef: 'deck.pptx', text: `## 第1页\n换了一版正文` }),
+    ).rejects.toThrow('embed worker gone');
+    expect(sectionRecords(store).map((r) => r.ref)).toEqual(before);
+  });
+
   it('leaves the document body records and other documents alone', async () => {
     const store = new VectorStore('test');
     const ing = new RagIngestor(store, asClient(fakeEmbedder()));
