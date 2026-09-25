@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import { AnswerStylePopover, type AnswerStylePick } from './prompt/AnswerStylePopover';
+import { PanelAlphaPopover } from './PanelAlphaPopover';
 import type { AnswerExpertise, AnswerRichness } from '../../shared/answerStyle';
 import type { AnswerPersona } from '../../shared/personas';
 
@@ -48,6 +49,9 @@ export function TitleBar({
   onQuit,
   onPickAnswerStyle,
   onManagePersonas,
+  panelAlpha,
+  onLivePanelAlpha,
+  onCommitPanelAlpha,
 }: {
   capturing: boolean;
   asrReady: boolean;
@@ -90,6 +94,10 @@ export function TitleBar({
   };
   onPickAnswerStyle: (pick: AnswerStylePick) => void;
   onManagePersonas: () => void;
+  /** ⑧ ◐ popover: current backdrop multiplier + live preview / persist hooks */
+  panelAlpha: number;
+  onLivePanelAlpha: (v: number) => void;
+  onCommitPanelAlpha: (v: number) => void;
 }) {
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -218,6 +226,12 @@ export function TitleBar({
           activePersonaId={answerStyle.activePersonaId}
           onPick={onPickAnswerStyle}
           onManagePersonas={onManagePersonas}
+        />
+        {/* ◐ 面板透明度 — fade the overlay back into the shared screen */}
+        <PanelAlphaPopover
+          alpha={panelAlpha}
+          onLive={onLivePanelAlpha}
+          onCommit={onCommitPanelAlpha}
         />
         {icon('📚', t.knowledge.title, onOpenKnowledge)}
         {icon('⚙', t.titlebar.settingsTitle, onOpenSettings)}

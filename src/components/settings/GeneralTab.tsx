@@ -1,4 +1,5 @@
 import type { FontScale, ThemeMode, UiLang } from '../../../shared/protocol';
+import { PANEL_ALPHA_MAX, PANEL_ALPHA_MIN } from '../../../shared/protocol';
 import type { SettingsDraft } from './useSettingsDraft';
 
 /** everything that is not a model: appearance, hotkeys, audio, companion, help */
@@ -55,6 +56,21 @@ export function GeneralTab({
         </select>
       </div>
 
+      <div className="settings-row">
+        <label>{t.settings.panelAlphaLabel}</label>
+        <span className="alpha-row">
+          <input
+            className="alpha-range"
+            type="range"
+            min={PANEL_ALPHA_MIN * 100}
+            max={PANEL_ALPHA_MAX * 100}
+            step={1}
+            value={Math.round(d.panelAlpha * 100)}
+            onChange={(e) => d.setPanelAlpha(Number(e.target.value) / 100)}
+          />
+          <span className="alpha-value">{Math.round(d.panelAlpha * 100)}%</span>
+        </span>
+      </div>
       <div className="settings-row">
         <label>{t.settings.hotkeyToggle}</label>
         <input value={d.hotkey} onChange={(e) => d.setHotkey(e.target.value)} spellCheck={false} />

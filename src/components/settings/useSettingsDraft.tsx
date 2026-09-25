@@ -177,6 +177,9 @@ export function useSettingsDraft(
   const [autoLaunch, setAutoLaunch] = useState(settings.ui.autoLaunch);
   const [fontScale, setFontScale] = useState<FontScale>(settings.ui.fontScale ?? 'medium');
   const [theme, setTheme] = useState<ThemeMode>(settings.ui.theme ?? 'dark');
+  // ⑧ draft only: the ◐ popover in the title bar is the live path, so this row
+  // applies on 保存 like every other setting here
+  const [panelAlpha, setPanelAlpha] = useState(settings.ui.panelAlpha);
   const [uiLang, setUiLang] = useState<UiLang>(settings.ui.lang);
   const [themDeviceId, setThemDeviceId] = useState(settings.audio.themDeviceId ?? '');
   const [micDeviceId, setMicDeviceId] = useState(settings.audio.micDeviceId ?? '');
@@ -453,6 +456,7 @@ export function useSettingsDraft(
           hotkeyAnswer: hotkeyAnswer.trim(),
           fontScale,
           theme,
+          panelAlpha,
           lang: uiLang,
           autoLaunch,
         },
@@ -760,6 +764,8 @@ export function useSettingsDraft(
     setFontScale,
     theme,
     setTheme,
+    panelAlpha,
+    setPanelAlpha,
     uiLang,
     setUiLang,
     themDeviceId,

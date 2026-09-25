@@ -16,7 +16,7 @@ import {
   reindexSegments,
   type TranscriptSegment,
 } from '../shared/transcript';
-import { RAIL_SPLIT_DEFAULT } from '../shared/protocol';
+import { PANEL_ALPHA_DEFAULT, RAIL_SPLIT_DEFAULT } from '../shared/protocol';
 import { heuristic } from '../shared/questionGate';
 import { captureKindForPlatform } from '../shared/platform';
 import { deriveServiceHealth } from '../shared/healthState';
@@ -529,6 +529,9 @@ export function App() {
     const ui = settings?.ui;
     if (!ui) return;
     document.documentElement.dataset.fontScale = ui.fontScale ?? 'medium';
+    // ⑧ the slider writes this same property live while dragging; this effect
+    // is what restores it after a reload or a settings save
+    document.documentElement.style.setProperty('--panel-alpha', String(ui.panelAlpha));
     const apply = () => {
       const mode = ui.theme ?? 'dark';
       const dark =
@@ -788,6 +791,14 @@ export function App() {
   /** ②: the answer-history fold is a preference, not per-session state */
   const persistHistoryOpen = useCallback(async (open: boolean) => {
     const updated = await window.mc.setSettings({ ui: { answerHistoryOpen: open } });
+    setSettings(updated);
+  }, []);
+  /** ⑧ ◐ slider: preview every frame on the root style, persist once per drag */
+  const livePanelAlpha = useCallback((v: number) => {
+    document.documentElement.style.setProperty('--panel-alpha', String(v));
+  }, []);
+  const commitPanelAlpha = useCallback(async (v: number) => {
+    const updated = await window.mc.setSettings({ ui: { panelAlpha: v } });
     setSettings(updated);
   }, []);
   /** how many phones are receiving right now — polled only while 双屏 is on */
@@ -1065,6 +1076,9 @@ export function App() {
         onManagePersonas={() =>
           setOpenPanel({ view: 'settings', tab: 'general', section: 'personas' })
         }
+        panelAlpha={settings?.ui.panelAlpha ?? PANEL_ALPHA_DEFAULT}
+        onLivePanelAlpha={livePanelAlpha}
+        onCommitPanelAlpha={(v) => void commitPanelAlpha(v)}
         onStartStop={() => (capturing ? void stopCapture() : void startCapture())}
         onSelectThem={(id) => void selectThemInput(id)}
         onSelectMic={(id) => void selectMic(id)}

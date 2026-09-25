@@ -22,7 +22,13 @@ import type {
 } from '../shared/protocol';
 import { DEFAULT_EXPERTISE, DEFAULT_RICHNESS } from '../shared/answerStyle';
 import { PROMPT_OVERRIDE_MAX_CHARS, clampText, resolveActivePersona, sanitizePersonas } from '../shared/personas';
-import { COMPANION_CONTROL_GRANTS, clampRailSplit, RAIL_SPLIT_DEFAULT } from '../shared/protocol';
+import {
+  COMPANION_CONTROL_GRANTS,
+  clampPanelAlpha,
+  clampRailSplit,
+  PANEL_ALPHA_DEFAULT,
+  RAIL_SPLIT_DEFAULT,
+} from '../shared/protocol';
 import { defaultHotkeysForPlatform } from '../shared/platform';
 import {
   findPresetById,
@@ -113,6 +119,9 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       hotkeyShot: hotkeys.shot,
       hotkeyAnswer: hotkeys.answer,
       railSplit: RAIL_SPLIT_DEFAULT,
+      // ⑧ 1 = each theme's own backdrop alpha, so the new slider ships
+      // untouched-looking and only fades the panel once the user drags it
+      panelAlpha: PANEL_ALPHA_DEFAULT,
       // v1.0.1 ②: the focus card is the point of the main view, so the history
       // list starts folded and the user opens it when they want to browse
       answerHistoryOpen: false,
@@ -745,6 +754,9 @@ export class SettingsStore {
         // clamped here so a hand-edited settings.json cannot produce a rail
         // that swallows the answer column
         railSplit: clampRailSplit(d.ui.railSplit),
+        // ⑧ clamped on the wire for the same reason: a hand-edited file must
+        // not be able to fade the overlay past the point it stays usable
+        panelAlpha: clampPanelAlpha(d.ui.panelAlpha),
         // optional on disk but always a boolean on the wire, so the renderer
         // needs no ?? dance before toggling the history list
         answerHistoryOpen: !!d.ui.answerHistoryOpen,

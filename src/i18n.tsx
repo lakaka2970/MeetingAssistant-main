@@ -89,6 +89,11 @@ const zh = {
       detailed: '详尽：分层展开 3-5 个要点，约 90-150 秒念完',
     },
   },
+  panelAlpha: {
+    buttonTitle: '面板透明度：拖动即时生效，让背景透出后面的桌面',
+    label: '面板不透明度',
+    hint: '只有背景会变透，文字、图标和按钮保持清晰。100% 就是默认观感。',
+  },
   promptLab: {
     personaEntry: '应答人设库',
     personaEntryHint: '提前写好几套「我是谁、我怎么说话」，会前用 🎚 选一套启用。',
@@ -716,6 +721,7 @@ const zh = {
     themeLight: '浅色',
     themeSystem: '跟随系统',
     fontScaleLabel: '答案字号（只影响提词卡答案正文）',
+    panelAlphaLabel: '面板不透明度（会中用标题栏 ◐ 即时拖，此处改完需点保存）',
     fontSmall: '小（13px）',
     fontMedium: '中（16px，默认）',
     fontLarge: '大（19px）',
@@ -830,6 +836,11 @@ const en: Dict = {
       standard: 'Standard: the conclusion plus 2-3 points — about 30-60 s to read aloud',
       detailed: 'Detailed: 3-5 layered points — about 90-150 s to read aloud',
     },
+  },
+  panelAlpha: {
+    buttonTitle: 'Panel transparency: drag to let the desktop show through, applies live',
+    label: 'Panel opacity',
+    hint: 'Only the backdrop fades — text, icons and buttons stay crisp. 100% is the default look.',
   },
   promptLab: {
     personaEntry: 'Answer personas',
@@ -1465,6 +1476,7 @@ const en: Dict = {
     themeLight: 'Light',
     themeSystem: 'Follow system',
     fontScaleLabel: 'Answer font size (prompt-card answer text only)',
+    panelAlphaLabel: 'Panel opacity (◐ in the title bar adjusts live; this row applies on Save)',
     fontSmall: 'Small (13px)',
     fontMedium: 'Medium (16px, default)',
     fontLarge: 'Large (19px)',

@@ -176,6 +176,22 @@ export function clampRailSplit(v: number | undefined): number {
 }
 
 /**
+ * ⑧ v1.0.1 panel transparency bounds. The value multiplies each theme's own
+ * base backdrop alpha (dark 0.8 / light 0.93), so 1 is exactly what the app
+ * looked like before the slider existed and nothing shifts on upgrade. The
+ * floor keeps the overlay readable and clickable rather than letting it fade
+ * into the desktop behind it.
+ */
+export const PANEL_ALPHA_MIN = 0.3;
+export const PANEL_ALPHA_MAX = 1;
+export const PANEL_ALPHA_DEFAULT = 1;
+
+export function clampPanelAlpha(v: number | undefined): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return PANEL_ALPHA_DEFAULT;
+  return Math.min(PANEL_ALPHA_MAX, Math.max(PANEL_ALPHA_MIN, v));
+}
+
+/**
  * ⑦ v1.0.1 dual-screen: the narrow set of things a paired phone may change on
  * this machine. Keys mirror the remote `ControlOp` names one-to-one — a control
  * the phone cannot name is a control it cannot use, which is the whole point of
@@ -326,6 +342,11 @@ export interface SettingsFile {
      * launches; the rail's click-to-expand overlay is unaffected.
      */
     railSplit?: number;
+    /**
+     * ⑧ v1.0.1 panel backdrop multiplier (0.3–1, drag-to-set). 1 = each
+     * theme's own backdrop alpha unchanged, i.e. the pre-slider look.
+     */
+    panelAlpha?: number;
     /** answer-history list: absent/false = collapsed (v1.0.1 default) */
     answerHistoryOpen?: boolean;
     /** answer-body font size (small=13px / medium=16px / large=19px) */
@@ -539,6 +560,8 @@ export interface PublicSettings {
     hotkeyAnswer: string;
     /** glance-rail fraction, already clamped by getPublic() */
     railSplit: number;
+    /** ⑧ panel backdrop multiplier, already clamped by getPublic() */
+    panelAlpha: number;
     /** v1.0.1 ②: is the answer-history list unfolded under the focus card? */
     answerHistoryOpen: boolean;
     fontScale: FontScale;
@@ -672,6 +695,7 @@ export interface SettingsPatch {
     hotkeyShot?: string;
     hotkeyAnswer?: string;
     railSplit?: number;
+    panelAlpha?: number;
     answerHistoryOpen?: boolean;
     fontScale?: FontScale;
     theme?: ThemeMode;

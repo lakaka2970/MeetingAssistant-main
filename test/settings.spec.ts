@@ -11,7 +11,14 @@ import {
   type SecretCipher,
 } from '../electron/settings';
 import type { SettingsFile } from '../shared/protocol';
-import { RAIL_SPLIT_DEFAULT, RAIL_SPLIT_MAX, RAIL_SPLIT_MIN } from '../shared/protocol';
+import {
+  PANEL_ALPHA_DEFAULT,
+  PANEL_ALPHA_MAX,
+  PANEL_ALPHA_MIN,
+  RAIL_SPLIT_DEFAULT,
+  RAIL_SPLIT_MAX,
+  RAIL_SPLIT_MIN,
+} from '../shared/protocol';
 import { DEFAULT_SEARCH_MAX_RESULTS } from '../shared/searchProviders';
 
 const fakeCipher: SecretCipher = {
@@ -328,6 +335,52 @@ describe('SettingsStore', () => {
     });
   });
 
+  describe('ui.panelAlpha (⑧ panel transparency slider)', () => {
+    it('ships at the ceiling so adding the slider changes nothing on upgrade', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      expect(s.getPublic().ui.panelAlpha).toBe(PANEL_ALPHA_DEFAULT);
+    });
+
+    it('fills the default when the stored file predates the field', () => {
+      writeFileSync(
+        file,
+        JSON.stringify({ version: 2, ui: { theme: 'light', fontScale: 'medium' } }),
+        'utf8',
+      );
+      const s = new SettingsStore(file, fakeCipher);
+      expect(s.getPublic().ui.panelAlpha).toBe(PANEL_ALPHA_DEFAULT);
+      expect(s.getPublic().ui.theme).toBe('light');
+    });
+
+    it('clamps a drag past either end into the readable band', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ ui: { panelAlpha: 0 } });
+      expect(s.getPublic().ui.panelAlpha).toBe(PANEL_ALPHA_MIN);
+      s.applyPatch({ ui: { panelAlpha: 5 } });
+      expect(s.getPublic().ui.panelAlpha).toBe(PANEL_ALPHA_MAX);
+    });
+
+    it('falls back to the default on garbage instead of emitting a NaN alpha', () => {
+      writeFileSync(file, JSON.stringify({ version: 2, ui: { panelAlpha: 'see-through' } }), 'utf8');
+      expect(new SettingsStore(file, fakeCipher).getPublic().ui.panelAlpha).toBe(PANEL_ALPHA_DEFAULT);
+    });
+
+    it('round-trips a mid-range value through disk', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ ui: { panelAlpha: 0.55 } });
+      expect(new SettingsStore(file, fakeCipher).getPublic().ui.panelAlpha).toBe(0.55);
+    });
+
+    it('a patch to panelAlpha leaves its ui siblings alone', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      s.applyPatch({ ui: { panelAlpha: 0.42 } });
+      const ui = s.getPublic().ui;
+      expect(ui.panelAlpha).toBe(0.42);
+      expect(ui.theme).toBe('dark');
+      expect(ui.railSplit).toBe(RAIL_SPLIT_DEFAULT);
+    });
+  });
+
   it('defaults asr backend to local streaming Fun-ASR-Nano', () => {
     const s = new SettingsStore(file, fakeCipher);
     expect(s.data.asr.backend).toBe('local-realtime');
@@ -492,15 +545,17 @@ describe('migrateSettingsV1ToV2 (pure)', () => {
     expect(v2.vision.proxyUrl).toBe('127.0.0.1:7897');
     expect(v2.asr.backend).toBe('cloud-realtime');
     expect(v2.asr.realtime?.baseUrl).toBe(V1_FILE.asr.realtime.baseUrl);
-    // Phase 4 added two ui fields and v1.0.1 the history switch. Everything the
-    // user had configured survives untouched; the new ones arrive with their OFF
-    // defaults, so upgrading can never silently register an existing profile
-    // for auto-start or unfold the history list.
+    // Phase 4 added two ui fields and v1.0.1 the history switch plus the
+    // transparency slider. Everything the user had configured survives
+    // untouched; the new ones arrive with their OFF defaults, so upgrading can
+    // never silently register an existing profile for auto-start, unfold the
+    // history list, or fade the panel the user never asked for.
     expect(v2.ui).toEqual({
       ...V1_FILE.ui,
       autoLaunch: false,
       trayNoticeShown: false,
       railSplit: RAIL_SPLIT_DEFAULT,
+      panelAlpha: PANEL_ALPHA_DEFAULT,
       answerHistoryOpen: false,
     });
     expect(v2.audio).toEqual({ ...V1_FILE.audio, captureBackend: 'webaudio' });

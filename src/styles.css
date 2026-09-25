@@ -13,7 +13,14 @@
   /* answer-body font size (right pane only; ui.fontScale) */
   --answer-font-size: 16px;
 
-  --app-bg: rgba(22, 26, 34, 0.8);
+  /* ⑧ ui.panelAlpha (0.3–1) multiplies each theme's own backdrop alpha, so 1
+     is byte-for-byte the pre-slider look. Only the backdrop fades — text,
+     borders and icons stay full-strength — and because the main window is a
+     transparent frameless overlay, what shows through is the desktop. */
+  --panel-alpha: 1;
+  --app-bg-rgb: 22, 26, 34;
+  --app-bg-alpha: 0.8;
+  --app-bg: rgba(var(--app-bg-rgb), calc(var(--app-bg-alpha) * var(--panel-alpha)));
   --app-border: rgba(255, 255, 255, 0.1);
   --text: #e8eaf0;
   --text-body: #e3e8f2;
@@ -88,7 +95,10 @@
 }
 
 :root[data-theme='light'] {
-  --app-bg: rgba(246, 248, 251, 0.93);
+  /* --app-bg itself stays composed once in :root so the ⑧ slider drives both
+     themes; only the primitives differ here */
+  --app-bg-rgb: 246, 248, 251;
+  --app-bg-alpha: 0.93;
   --app-border: rgba(0, 0, 0, 0.16);
   --text: #1f2633;
   --text-body: #1c2434;
@@ -377,6 +387,40 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+/* ---------- ⑧ panel transparency slider (◐ popover + 设置 → 通用) ---------- */
+.alpha-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.alpha-range {
+  width: 132px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.alpha-value {
+  width: 38px;
+  font-size: 12px;
+  text-align: right;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* the generic settings-field box would pad a range into a slab */
+.settings-row .alpha-range {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.settings-row .alpha-range:focus {
+  border: none;
 }
 
 .style-pop-label {
