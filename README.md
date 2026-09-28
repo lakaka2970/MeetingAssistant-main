@@ -543,6 +543,10 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 
 应用内同样有这段文字：主界面「帮助与教程 → 13. 免责声明」，首次运行的配置向导在「完成」页也会显示一行短版。以上四点的法律基础是 [Apache License 2.0](LICENSE) 第 15、16 条（按现状提供、不提供担保、不赔偿损害）。
 
+## 🙏 参考项目与致谢
+
+本工具是参考 [JWM0203/MeetingCopilot](https://github.com/JWM0203/MeetingCopilot)（"Real-time meeting & interview copilot for Windows and macOS"，TypeScript，Apache License 2.0）**改进和开发**出来的：会议 / 面试副驾的整体形态与思路来自该项目，本仓库在其基础上继续开发。v1.0.1 里的转录泡泡框与悬停作答、知识库主流格式导入与本地节摘要、简历 / JD 人设与提示词编辑、手机侧远程控制、面板透明度等，都是本仓库自己的实现与改动。感谢上游项目。
+
 ## 📄 开源许可
 
 [Apache License 2.0](LICENSE)
@@ -701,6 +705,8 @@ and not where a school, employer or exam board bans assistive tools. Sections 15
 License 2.0 (provided "as is", no warranty, no damages) are the legal basis for all four points. The same
 text ships inside the app: "Help & guides → 13. Disclaimer", plus one short line on the wizard's final
 step.
+
+**Acknowledgements**: this tool was **developed and improved with reference to** [JWM0203/MeetingCopilot](https://github.com/JWM0203/MeetingCopilot) — "Real-time meeting & interview copilot for Windows and macOS" (TypeScript, Apache License 2.0), which is where the overall shape of a meeting / interview copilot comes from; this repository continues from there. The v1.0.1 work listed above — the bubble transcript rail with hover-to-answer, mainstream-format knowledge import with local section summaries, resume / JD personas and the prompt editor, phone-side remote control, and panel transparency — is this repository's own implementation. Thanks to the upstream project.
 
 **License**: [Apache-2.0](LICENSE). The installers are not code-signed (`v1.0.1`) — download only from
 this project's Releases page.
