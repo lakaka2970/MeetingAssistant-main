@@ -91,6 +91,7 @@ export function CompleteStep({
       </section>
 
       <p className="setup-footnote">{t.complete.tip}</p>
+      <p className="setup-note">{t.complete.disclaimer}</p>
 
       <div className="key-actions" style={{ marginTop: 18 }}>
         <button className="btn btn-primary" disabled={busy} onClick={onEnter}>

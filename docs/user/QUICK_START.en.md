@@ -4,6 +4,8 @@ For people who downloaded an installer. No Node.js, no Python, no commands.
 
 中文版：[QUICK_START.zh-CN.md](QUICK_START.zh-CN.md)
 
+Disclaimer: this tool is a personal technical experiment and open-source research build, and its author takes no profit from it; transcripts and answers are AI-generated and can be wrong, so any consequence of using it is borne by the user. The four points are in the "⚠️ Disclaimer" section of [README.md](../../README.md), and in-app under "Help & guides → 13. Disclaimer".
+
 ---
 
 ## What you need

@@ -1,4 +1,5 @@
 import { createContext, useContext, type ReactNode } from 'react';
+import { DISCLAIMER } from '../shared/disclaimer';
 import type { ProviderTestCode, UiLang } from '../shared/protocol';
 
 /**
@@ -515,8 +516,12 @@ const zh = {
           '本地优先的会议 / 面试助手：转写与回答分别连接你自己配置的服务商，没有账号、没有服务器、没有遥测。',
           '设置、会话、简历等数据保存在本机的用户数据目录，卸载默认不会删除。',
           '以 Apache License 2.0 开源，可自由使用、修改和再分发。',
-          '本工具面向个人学习与辅助用途，能否在会议 / 面试中使用请自行确认所在地法律与对方规则。',
+          '完整免责与合规说明见「13. 免责声明」。',
         ],
+      },
+      disclaimer: {
+        title: DISCLAIMER.zh.title,
+        lines: DISCLAIMER.zh.lines,
       },
     },
   },
@@ -1265,8 +1270,12 @@ const en: Dict = {
           'A local-first meeting and interview copilot: transcription and answers each talk to the provider you configured. No accounts, no server, no telemetry.',
           'Settings, sessions and imported material live in the per-user data folder on this machine and survive an uninstall by default.',
           'Open source under the Apache License 2.0 — free to use, modify and redistribute.',
-          'Intended for personal learning and assistive use; whether you may use it in a meeting or interview is up to your local law and the other party.',
+          'See "13. Disclaimer" for the full terms on liability and compliance.',
         ],
+      },
+      disclaimer: {
+        title: DISCLAIMER.en.title,
+        lines: DISCLAIMER.en.lines,
       },
     },
   },

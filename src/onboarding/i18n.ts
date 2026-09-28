@@ -9,6 +9,7 @@
  * The Chinese copy is the required product copy (Phase 2 spec §C) and uses
  * full-width punctuation throughout.
  */
+import { DISCLAIMER } from '../../shared/disclaimer';
 import type { ProviderTestCode, UiLang } from '../../shared/protocol';
 import type { ApiKeyWarning } from '../../shared/keyInput';
 
@@ -229,6 +230,7 @@ const zh = {
     micLabel: '麦克风',
     llmSkipped: '暂未配置（可稍后在设置中添加）',
     tip: '进入主界面后点击「▶ 开始」采集系统声音；在提词卡可以导入简历与岗位 JD，让回答更贴合你。',
+    disclaimer: DISCLAIMER.zh.short,
     enter: '进入 MeetingAssistant',
     importMaterial: '导入简历或背景材料',
     applying: '正在应用配置…',
@@ -470,6 +472,7 @@ const en: SetupDict = {
     micLabel: 'Microphone',
     llmSkipped: 'Not configured (you can add it later in Settings)',
     tip: 'In the main window click "▶ Start" to capture system audio; import your resume and the job description on the prompt card for answers tailored to you.',
+    disclaimer: DISCLAIMER.en.short,
     enter: 'Open MeetingAssistant',
     importMaterial: 'Import a resume or background material',
     applying: 'Applying your configuration…',

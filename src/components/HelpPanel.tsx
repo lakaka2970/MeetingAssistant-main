@@ -265,6 +265,8 @@ export function HelpPanel({
           </div>
         ),
       )}
+
+      {topic('disclaimer', topics.disclaimer.title, topics.disclaimer.lines)}
     </OverlayShell>
   );
 }

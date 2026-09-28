@@ -534,6 +534,15 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 | [RELEASE_NOTES_v1.0.1.md](docs/user/RELEASE_NOTES_v1.0.1.md) | **当前版本**说明：升级必读的三个默认行为变更、新增内容、已知问题 |
 | [RELEASE_NOTES_v1.0.0.md](docs/user/RELEASE_NOTES_v1.0.0.md) | 上一版（首个正式版）说明与已知问题 |
 
+## ⚠️ 免责声明
+
+1. **试验性质** — 本仓库是个人技术实验与开源研究产物，不是商业产品：没有服务等级承诺，没有合规审计，也不面向任何受监管场景。
+2. **不通过本工具获取利益** — 软件本身免费、开源、不含内购或分成；调用大模型与语音识别产生的接口费用由你自己的 API Key 结算，与本仓库及其作者无关。
+3. **使用后果由使用者承担** — 转录与回答均由 AI 生成，可能不准确、不完整甚至完全错误。任何因使用本工具导致的后果——面试 / 会议中的判断失误、纪律或法律风险、数据外泄、账号与费用损失——由使用者本人承担，作者不承担责任。
+4. **自行确认合规** — 请在对方知情同意、且遵守所在机构规定的前提下使用；学校、公司或考试主办方明令禁止辅助工具的场景不要使用。
+
+应用内同样有这段文字：主界面「帮助与教程 → 13. 免责声明」，首次运行的配置向导在「完成」页也会显示一行短版。以上四点的法律基础是 [Apache License 2.0](LICENSE) 第 15、16 条（按现状提供、不提供担保、不赔偿损害）。
+
 ## 📄 开源许可
 
 [Apache License 2.0](LICENSE)
@@ -678,6 +687,20 @@ walkthrough: [QUICK_START.en.md](docs/user/QUICK_START.en.md). Key guides:
 
 **Supported providers**: DeepSeek, Alibaba Cloud DashScope (CN/INTL), MiMo, Zhipu, Groq, Gemini,
 Ollama, plus any OpenAI-compatible endpoint — see `shared/providerCatalog.ts` (single source of truth).
+
+**Disclaimer**: (1) *experimental by nature* — this repository is a personal technical experiment and
+open-source research build, not a commercial product: no service-level commitment, no compliance audit,
+and it is not meant for regulated settings. (2) *no profit is taken from this tool* — the software is
+free and open source with nothing to buy and nothing to share, and LLM / speech-recognition API costs are
+billed to your own key, unrelated to this repository or its author. (3) *consequences belong to the user*
+— transcripts and answers are AI-generated and may be inaccurate, incomplete or simply wrong, so any
+result of using this tool (a misjudgement in an interview or meeting, disciplinary or legal risk, leaked
+data, account or billing loss) is borne by the person using it; the author accepts no liability.
+(4) *check your own compliance* — use it where the other party is aware and your organisation allows it,
+and not where a school, employer or exam board bans assistive tools. Sections 15 and 16 of the Apache
+License 2.0 (provided "as is", no warranty, no damages) are the legal basis for all four points. The same
+text ships inside the app: "Help & guides → 13. Disclaimer", plus one short line on the wizard's final
+step.
 
 **License**: [Apache-2.0](LICENSE). The installers are not code-signed (`v1.0.1`) — download only from
 this project's Releases page.
