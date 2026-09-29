@@ -36,7 +36,7 @@ v1.0.1 的功能没有变化。这一版处理的是"在我电脑上好好的，
 **双屏（手机显示）的配对地址**
 
 - 手机不再可能被指向一块**虚拟网卡**。此前判断只看 VMware 一类名字，Tailscale、ZeroTier、WireGuard、AnyConnect、Pulse、蓝牙网络共享这些隧道网卡会被当成真实网卡，而且常常排在 Wi-Fi 前面——于是电脑显示的地址看着完全正常，手机却永远连不上。
-- 选地址的探测从"只问 8.8.8.8"改成**同时问 8.8.8.8 / 223.5.5.5 / 1.1.1.1**，任一有结果即可。公司网络封了 UDP 53、或连的是一个没有外网的 AP 时，以前会静默退化成"按网卡枚举顺序取第一个"，现在不会。
+- 选地址的探测从"只问 8.8.8.8"改成**同时问 8.8.8.8 / 223.5.5.5 / 1.1.1.1**，任一有结果即可。这一步不发任何数据包，只是问操作系统"去这个地址会走哪块网卡"；当 VPN 接管了默认路由、或某个目的地址在这台机器上根本没有路由时，多个目的地址能给出更可信的答案。
 - 每次选定都会写一行日志：`[companion] pairing address: 10.206.243.63 (WLAN, probe)`。**括号里的网卡名和方式**是排查这类问题唯一的线索，出问题时先看这一行。
 
 **手机连上之后不再中途重新弹警告**
@@ -51,7 +51,7 @@ v1.0.1 的功能没有变化。这一版处理的是"在我电脑上好好的，
 
 **发给云端的请求不再无限等待**
 
-- Node 的 fetch **没有默认超时**。当 DNS 被虚拟网卡劫持、或默认路由指向一个已经停掉的 VMware NAT 时，请求既不失败也不返回，界面就一直转圈，要等操作系统自己放弃（约 21 秒）。现在远程服务商有 **15 秒首字节超时**——只等"响应开始"，一旦开始返回就不再掐，**长回答不会被截断**。
+- Node 的 fetch **没有默认超时**。当 DNS 被虚拟网卡劫持、或默认路由指向一个已经停掉的 VMware NAT 时，请求既不失败也不返回，界面就一直转圈，要等操作系统自己放弃（约 21 秒）。现在远程服务商有 **15 秒首字节超时**——只等"响应开始"，一旦开始返回就不再掐，**长回答不会被截断**。云端语音识别每次要上传整句音频，预算放宽到 **45 秒**，免得把"上行慢"变成新错误。
 - 本机地址（`127.0.0.1` / `localhost` / `::1`，也就是 Ollama 与本地 ASR）**不受这个超时影响**：本地模型冷加载本来就要几十秒到几分钟，掐掉它比原来的挂起更糟。
 - 「是否需要回答」的分类请求失败时，以前静默按"需要回答"处理且不留痕迹（表现是"这台电脑配错了但助手什么都答"）；现在会打一行 `[gate]` 日志，行为不变。
 
@@ -104,7 +104,7 @@ Nothing about v1.0.1's features changed. This release is about "it works on my m
 **The pairing address**
 
 - A phone can no longer be pointed at a virtual adapter. The old check only recognised VMware-style names, so Tailscale, ZeroTier, WireGuard, AnyConnect, Pulse and Bluetooth PAN counted as real and often enumerated before the Wi-Fi card — the PC showed a perfectly plausible URL that no phone could reach.
-- The route probe now asks **8.8.8.8, 223.5.5.5 and 1.1.1.1 in parallel** instead of only 8.8.8.8, so a network that blocks UDP 53 or has no upstream no longer silently degrades to "first adapter in the table".
+- The route probe now asks **8.8.8.8, 223.5.5.5 and 1.1.1.1 in parallel** instead of only 8.8.8.8. Nothing is sent — a UDP connect only asks the operating system which interface a destination would leave by — so several destinations give a more trustworthy answer where a VPN has taken the default route or one destination simply has no route.
 - Every choice logs one line: `[companion] pairing address: 10.206.243.63 (WLAN, probe)`. The **adapter name and the reason in brackets** are the only clue for this class of problem.
 
 **No more re-accepting the certificate mid-meeting**
@@ -119,7 +119,7 @@ Nothing about v1.0.1's features changed. This release is about "it works on my m
 
 **Cloud requests no longer wait forever**
 
-- Node's fetch has **no default timeout**. When DNS resolves through a virtual adapter or the default route points at a stopped VMware NAT, a request neither fails nor answers and the UI just spins until the OS gives up (~21 s). Remote providers now get a **15 s first-byte deadline** that is cleared the moment the response starts — **a long answer is never cut short**.
+- Node's fetch has **no default timeout**. When DNS resolves through a virtual adapter or the default route points at a stopped VMware NAT, a request neither fails nor answers and the UI just spins until the OS gives up (~21 s). Remote providers now get a **15 s first-byte deadline** that is cleared the moment the response starts — **a long answer is never cut short**. Cloud ASR uploads a whole utterance per call, so its budget is **45 s** rather than letting a slow uplink become a new error.
 - Loopback base URLs (`127.0.0.1` / `localhost` / `::1`, i.e. Ollama and the local ASR sidecar) are **exempt**: a cold model load legitimately takes tens of seconds to minutes, and killing that would be worse than the hang this fixes.
 - A failed "does this need an answer" classifier call used to fall back silently, which looked like "this machine is misconfigured but the assistant answers everything". Behaviour is unchanged; it now logs one `[gate]` line.
 

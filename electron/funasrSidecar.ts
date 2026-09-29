@@ -120,8 +120,13 @@ export function parseLocalWsPort(url: string | undefined): number | null {
   return m[1] ? parseInt(m[1], 10) : 80;
 }
 
-/** A python traceback that says the socket could not be bound, not that the env is broken. */
-const PORT_UNUSABLE = /10048|address already in use|only one usage|permission denied|eacces|cannot assign requested address/i;
+/**
+ * A traceback that says the socket could not be bound — not that the env is
+ * broken. Deliberately narrow: python says "Permission denied" for a model file
+ * it cannot read too, and sending that user to the port setting is a dead end.
+ */
+const PORT_UNUSABLE =
+  /10048|10013|address already in use|only one usage|cannot assign requested address|bind on address|failed to bind/i;
 
 /**
  * Why the engine process died.

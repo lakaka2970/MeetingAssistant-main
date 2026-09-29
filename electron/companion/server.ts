@@ -36,7 +36,9 @@ import type { PairingManager } from './pairing';
  * how many apps the user closes — so "均被占用" is a dead end on exactly the
  * machines most likely to hit it.
  */
-export function describeBindFailures(attempts: { port: number; code?: string }[]): string {
+export function describeBindFailures(
+  attempts: { port: number; code?: string; message?: string }[],
+): string {
   const first = attempts[0]?.port ?? '?';
   const last = attempts.at(-1)?.port ?? first;
   const codes = [...new Set(attempts.map((a) => a.code).filter(Boolean))] as string[];
@@ -46,7 +48,12 @@ export function describeBindFailures(attempts: { port: number; code?: string }[]
   if (codes.length === 1 && codes[0] === 'EADDRINUSE') {
     return `端口 ${first}–${last} 均被占用，请在 设置 → 双屏 换一个端口`;
   }
-  return `端口 ${first}–${last} 无法监听（${codes.length > 0 ? codes.join('/') : '未知原因'}）`;
+  // anything else: the codes alone are not enough to act on, so keep the
+  // underlying text (a missing cert file fails here, not with a port code).
+  // The first attempt is the one that matters — the walk starts on the port the
+  // user configured, and every later one is just a neighbour of it.
+  const detail = attempts[0]?.message ?? '未知原因';
+  return `端口 ${first}–${last} 无法监听（${codes.length > 0 ? codes.join('/') : '无错误码'}：${detail}）`;
 }
 
 /** A phone that connected but never spoke our protocol gets cut off this fast. */
@@ -278,7 +285,7 @@ export class CompanionServer {
   async start(): Promise<void> {
     const base = this.opts.port ?? 18765;
     const fallback = this.opts.portFallback ?? 5;
-    const attempts: { port: number; code?: string }[] = [];
+    const attempts: { port: number; code?: string; message?: string }[] = [];
     for (let offset = 0; offset <= fallback; offset += 1) {
       const candidate = base + offset;
       try {
@@ -287,7 +294,8 @@ export class CompanionServer {
         this.startHeartbeat();
         return;
       } catch (e) {
-        attempts.push({ port: candidate, code: (e as NodeJS.ErrnoException)?.code });
+        const err = e as NodeJS.ErrnoException;
+        attempts.push({ port: candidate, code: err?.code, message: err?.message });
       }
     }
     throw new Error(describeBindFailures(attempts));

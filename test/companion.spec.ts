@@ -468,6 +468,16 @@ describe('companion certificate', () => {
     expect(readFileSync(again![0], 'utf8')).toBe(pem);
   }, 30_000);
 
+  it('does not let a longer address satisfy a shorter one', () => {
+    // `san.includes('IP Address:' + ip)` is a substring test, so 10.0.0.5 used
+    // to be reported as covered by a cert that only holds 10.0.0.55 — and since
+    // reuse is now decided by the single advertised address, that false positive
+    // means shipping a certificate the phone will reject.
+    const made = ensureCertificate(dir, { san: ['10.0.0.55'], mustCover: ['10.0.0.55'] });
+    expect(certCovers(made![0], ['10.0.0.5'])).toBe(false);
+    expect(certCovers(made![0], ['10.0.0.55'])).toBe(true);
+  }, 30_000);
+
   it('treats an unparseable cert as not covering', () => {
     const bogus = join(dir, 'bogus.crt');
     writeFileSync(bogus, 'garbage', 'utf8');

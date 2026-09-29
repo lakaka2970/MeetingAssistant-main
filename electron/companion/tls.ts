@@ -41,14 +41,15 @@ const VALID_DAYS = 365;
 
 /**
  * Adapters a phone on the same Wi-Fi can never reach: host-only VM NICs,
- * tunnel/VPN adapters and Bluetooth PAN. A VPN adapter is the dangerous one —
- * it holds a plausible 10.x address, so the URL looks right while no device on
- * the LAN can open it. Matched by name because `os.networkInterfaces()` gives
- * us nothing else; the ranges that prove unreachable whatever the adapter is
- * called are handled separately by {@link isSelfAssigned}.
+ * tunnel/VPN adapters, Bluetooth PAN, and the two Windows-generated names that
+ * carry an internet connection share (Wi-Fi Direct, and `本地连接* N` /
+ * `Local Area Connection* N` — note the star, because the same name without it
+ * is a real Ethernet card). Matched by name because `os.networkInterfaces()`
+ * gives us nothing else; the ranges that prove unreachable whatever the adapter
+ * is called are handled separately by {@link isSelfAssigned}.
  */
 const VIRTUAL_ADAPTER =
-  /vmware|vmnet|virtualbox|vethernet|hyper-v|loopback|tap|wsl|tailscale|zerotier|wireguard|wg[0-9]|tun[0-9]|anyconnect|cisco.*vpn|pulse.*secure|juniper|globalprotect|openvpn|nordvpn|mullvad|protonvpn|expressvpn|surfshark|windscribe|checkpoint|sonicwall|sangfor|easyconnect|atrust|inode|bluetooth|network bridge|hotspot/i;
+  /vmware|vmnet|virtualbox|vethernet|hyper-v|loopback|tap|wsl|tailscale|zerotier|wireguard|wintun|wg[0-9]|tun[0-9]|anyconnect|cisco.*vpn|pulse.*secure|juniper|globalprotect|openvpn|nordvpn|mullvad|protonvpn|expressvpn|surfshark|windscribe|checkpoint|sonicwall|sangfor|easyconnect|atrust|inode|bluetooth|蓝牙|wi-?fi direct|network bridge|网络桥|虚拟|本地连接\s*\*|local area connection\s*\*/i;
 
 /**
  * Addresses a host was given without a DHCP server agreeing to it: link-local
@@ -131,11 +132,11 @@ let probedAt = 0;
 let loggedChoice = '';
 
 /**
- * Destinations for the source-address probe. One is not enough: a corporate LAN
- * that blocks UDP 53 to the internet, or a Wi-Fi with no upstream, makes the
- * probe answer nothing and silently degrades the whole feature to adapter
- * enumeration. These three are resolved by the OS routing table only — no
- * packet leaves this machine and no DNS name is looked up.
+ * Destinations for the source-address probe. A UDP connect sends nothing — it
+ * only asks the routing table which interface a destination would leave by — so
+ * one destination answers for the whole default route. Asking three costs
+ * nothing and covers the machines where policy routing or a VPN sends one of
+ * those destinations somewhere the phone cannot reach.
  */
 const PROBE_TARGETS: readonly [number, string][] = [
   [53, '8.8.8.8'],
@@ -198,7 +199,9 @@ function probeSourceAddress(): Promise<string | null> {
  * only clue that separates a working pairing from a phone that spins forever.
  */
 export async function refreshLanIp(): Promise<string> {
-  if (probedIp === null || Date.now() - probedAt >= PROBE_TTL_MS) {
+  // "no route" is a cached answer too: without this the panel re-opened three
+  // sockets every second on a machine that has no route at all.
+  if (Date.now() - probedAt >= PROBE_TTL_MS) {
     probedIp = await probeSourceAddress();
     probedAt = Date.now();
   }
@@ -272,7 +275,11 @@ export function certCovers(certPath: string, ips: string[]): boolean {
     const san = cert.subjectAltName ?? '';
     // malformed by construction (the pre-fix encoding) — must be replaced
     if (/invalid/i.test(san)) return false;
-    return ips.every((ip) => san.includes(`IP Address:${ip}`)) && san.includes('DNS:localhost');
+    // bounded match: a plain substring test lets 10.0.0.5 be satisfied by a
+    // cert holding 10.0.0.55, and reuse is now decided by one address only
+    const covered = (ip: string): boolean =>
+      new RegExp(`IP Address:${ip.replace(/\./g, '\\.')}(?![\\d.])`).test(san);
+    return ips.every((ip) => covered(ip)) && san.includes('DNS:localhost');
   } catch {
     return false;
   }
@@ -287,8 +294,8 @@ export interface CertRequest {
 
 /**
  * Reuse the stored key when there is one. RSA-2048 costs ~1 s on the main
- * thread, and a re-issue can now happen mid-meeting (the DHCP lease moved);
- * the key is not what changed, so regenerating it buys nothing and stalls ASR.
+ * thread, and a re-issue is exactly what happens when the lease moves — the key
+ * is not what changed, so regenerating it buys nothing and stalls the meeting.
  */
 function loadOrGenerateKeys(
   keyPath: string,

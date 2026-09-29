@@ -38,11 +38,14 @@ describe('companion bind failures', () => {
 
   it('reports both codes when the walk saw a mix', () => {
     const msg = describeBindFailures([
-      { port: 18765, code: 'EACCES' },
-      { port: 18766, code: 'EADDRINUSE' },
+      { port: 18765, code: 'EACCES', message: 'permission denied 18765' },
+      { port: 18766, code: 'EADDRINUSE', message: 'address already in use 18766' },
     ]);
     expect(msg).toContain('EACCES');
     expect(msg).toContain('EADDRINUSE');
+    // the underlying text is the only thing that distinguishes a missing cert
+    // file from a real bind conflict, so the mixed branch must not drop it
+    expect(msg).toContain('permission denied 18765');
   });
 
   it('never loses an unknown code', () => {
@@ -82,6 +85,18 @@ describe('local ASR sidecar exit', () => {
     const msg = describeSidecarExit({ ...base, code: 3, stderr: 'some engine detail\nlast line here' });
     expect(msg).toContain('last line here');
     expect(msg).toContain('code 3');
+  });
+
+  it('does not blame the port for a file permission error', () => {
+    // "Permission denied" is what python says for both cases; only one of them
+    // is a port, and sending the user to the port setting would be a dead end.
+    const msg = describeSidecarExit({
+      ...base,
+      code: 1,
+      stderr: "PermissionError: [Errno 13] Permission denied: 'model.bin'",
+    });
+    expect(msg).toContain('conda');
+    expect(msg).not.toContain('10097');
   });
 
   it('still explains a silent exit', () => {

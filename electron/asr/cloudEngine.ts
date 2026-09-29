@@ -17,6 +17,14 @@ export interface CloudAsrConfig {
   apiKey: string;
 }
 
+/**
+ * A segment is a whole sentence of base64 WAV — megabytes on a hotel uplink —
+ * and the fetch deadline covers the upload, not just the server thinking. The
+ * LLM text budget would cut off transcriptions that are merely slow to send,
+ * which is the worst possible moment to fail.
+ */
+const ASR_FIRST_BYTE_TIMEOUT_MS = 45_000;
+
 export class CloudAsrEngine implements AsrEngine {
   readonly ep = 'cloud';
   readonly loadMs = 0;
@@ -58,7 +66,7 @@ export class CloudAsrEngine implements AsrEngine {
           }),
           signal,
         }),
-      { ms: firstByteTimeoutFor(this.cfg.baseUrl) },
+      { ms: firstByteTimeoutFor(this.cfg.baseUrl) === null ? null : ASR_FIRST_BYTE_TIMEOUT_MS },
     );
     if (!res.ok) {
       const body = await res.text().catch(() => '');

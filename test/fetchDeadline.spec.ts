@@ -47,17 +47,21 @@ describe('firstByteTimeoutFor', () => {
 
 describe('fetchWithFirstByte', () => {
   it('disarms the deadline once the response is in', async () => {
-    let abortedDuringCall = false;
+    let seen: AbortSignal | undefined;
     const res = await fetchWithFirstByte(
       async (signal) => {
+        seen = signal;
         await new Promise((r) => setTimeout(r, 15));
-        abortedDuringCall = signal.aborted;
         return new Response('ok');
       },
       { ms: 60 },
     );
     expect(await res.text()).toBe('ok');
-    expect(abortedDuringCall).toBe(false);
+    // the assertion has to come after the deadline would have fired, or a
+    // missing clearTimeout still passes — and cutting a long stream is the
+    // exact damage this helper must not do
+    await new Promise((r) => setTimeout(r, 140));
+    expect(seen?.aborted).toBe(false);
   });
 
   it('rejects with the deadline reason when nothing answers', async () => {
@@ -83,10 +87,13 @@ describe('fetchWithFirstByte', () => {
   });
 
   it('waits forever when the policy says no deadline', async () => {
-    const res = await fetchWithFirstByte(async () => {
-      await new Promise((r) => setTimeout(r, 30));
-      return new Response('slow but fine');
-    });
+    const res = await fetchWithFirstByte(
+      async () => {
+        await new Promise((r) => setTimeout(r, 60));
+        return new Response('slow but fine');
+      },
+      { ms: firstByteTimeoutFor('http://127.0.0.1:11434/v1') },
+    );
     expect(await res.text()).toBe('slow but fine');
   });
 });
