@@ -155,11 +155,14 @@ export class CompanionBridge {
     // still "works" except the phone's screen keeps dimming.
     let downgrade = '';
     if (s.useHttps) {
-      // Key generation is synchronous and costs ~1 s the first time only;
-      // afterwards the stored cert is reused until the LAN address moves. Dedup
-      // the candidate addresses because `certCovers` requires *every* one.
-      const ips = [...new Set([...lanAddresses(), await refreshLanIp()])];
-      const pair = ensureCertificate(this.userDataDir, ips);
+      // The SAN takes every address this machine has, so typing one in by hand
+      // still works; but only the advertised address decides whether the stored
+      // cert gets re-issued, and a re-issue reuses the private key — key
+      // generation costs ~1 s on the main thread. `certCovers` requires *every*
+      // address it is given, so dedup the candidates.
+      const advertised = await refreshLanIp();
+      const san = [...new Set([...lanAddresses(), advertised])];
+      const pair = ensureCertificate(this.userDataDir, { san, mustCover: [advertised] });
       if (pair) tls = { cert: pair[0], key: pair[1] };
       else downgrade = '无法生成本地 HTTPS 证书，已改用明文 HTTP（手机将无法保持常亮）';
     }

@@ -39,8 +39,26 @@ const VALID_DAYS = 365;
  *    and it did so silently, because the URL looked perfectly plausible.
  */
 
-/** Adapters a phone on the same Wi-Fi can never reach. */
-const VIRTUAL_ADAPTER = /vmware|vmnet|virtualbox|vethernet|hyper-v|loopback|tap|wsl/i;
+/**
+ * Adapters a phone on the same Wi-Fi can never reach: host-only VM NICs,
+ * tunnel/VPN adapters and Bluetooth PAN. A VPN adapter is the dangerous one —
+ * it holds a plausible 10.x address, so the URL looks right while no device on
+ * the LAN can open it. Matched by name because `os.networkInterfaces()` gives
+ * us nothing else; the ranges that prove unreachable whatever the adapter is
+ * called are handled separately by {@link isSelfAssigned}.
+ */
+const VIRTUAL_ADAPTER =
+  /vmware|vmnet|virtualbox|vethernet|hyper-v|loopback|tap|wsl|tailscale|zerotier|wireguard|wg[0-9]|tun[0-9]|anyconnect|cisco.*vpn|pulse.*secure|juniper|globalprotect|openvpn|nordvpn|mullvad|protonvpn|expressvpn|surfshark|windscribe|checkpoint|sonicwall|sangfor|easyconnect|atrust|inode|bluetooth|network bridge|hotspot/i;
+
+/**
+ * Addresses a host was given without a DHCP server agreeing to it: link-local
+ * (APIPA) and the RFC 6598 CGNAT range Tailscale-style meshes live in. Not
+ * wrong, but they lose to any real lease, and a phone usually cannot route to
+ * them either.
+ */
+function isSelfAssigned(ip: string): boolean {
+  return ip.startsWith('169.254.') || /^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\./.test(ip);
+}
 
 /** How long a probe answer is reused before the panel asks again. */
 const PROBE_TTL_MS = 5_000;
@@ -54,38 +72,86 @@ export interface LanIpFacts {
   interfaces: NodeJS.Dict<NetworkInterfaceInfo[]>;
 }
 
+export interface LanIpChoice {
+  /** the address to advertise */
+  ip: string;
+  /** adapter it came from, or null when it is loopback */
+  adapter: string | null;
+  /** how it was chosen, for the log line and the diagnostics panel */
+  via: 'probe' | 'enumeration' | 'self-assigned' | 'virtual' | 'none';
+}
+
 /**
  * Choose the address to advertise from what this machine looks like right now.
+ *
  * A probe answer only counts when it belongs to a real (non-virtual) adapter —
  * VMware's NAT adapter can own the default route, and that address is exactly
  * as unreachable from a phone as the fallback would be.
  */
-export function pickLanIp(facts: LanIpFacts): string {
-  const real: string[] = [];
-  const linkLocal: string[] = [];
-  const virtual: string[] = [];
+export function lanIpSource(facts: LanIpFacts): LanIpChoice {
+  const real: { ip: string; name: string }[] = [];
+  const selfAssigned: { ip: string; name: string }[] = [];
+  const virtual: { ip: string; name: string }[] = [];
   for (const [name, list] of Object.entries(facts.interfaces)) {
     for (const info of list ?? []) {
       if (info.family !== 'IPv4' || info.internal) continue;
-      if (VIRTUAL_ADAPTER.test(name)) virtual.push(info.address);
-      else if (info.address.startsWith('169.254.')) linkLocal.push(info.address);
-      else real.push(info.address);
+      const entry = { ip: info.address, name };
+      if (VIRTUAL_ADAPTER.test(name)) virtual.push(entry);
+      else if (isSelfAssigned(info.address)) selfAssigned.push(entry);
+      else real.push(entry);
     }
   }
   const { probed } = facts;
-  if (probed && real.includes(probed)) return probed;
-  if (real.length > 0) return real[0];
-  if (linkLocal.length > 0) return linkLocal[0];
-  if (probed && virtual.includes(probed)) return probed;
-  return virtual[0] ?? '127.0.0.1';
+  const hit = (list: { ip: string; name: string }[]) => list.find((e) => e.ip === probed);
+  if (probed) {
+    const onReal = hit(real);
+    if (onReal) return { ip: onReal.ip, adapter: onReal.name, via: 'probe' };
+  }
+  if (real.length > 0) return { ip: real[0].ip, adapter: real[0].name, via: 'enumeration' };
+  if (selfAssigned.length > 0)
+    return {
+      ip: selfAssigned[0].ip,
+      adapter: selfAssigned[0].name,
+      via: 'self-assigned',
+    };
+  if (probed) {
+    const onVirtual = hit(virtual);
+    if (onVirtual) return { ip: onVirtual.ip, adapter: onVirtual.name, via: 'virtual' };
+  }
+  if (virtual.length > 0) return { ip: virtual[0].ip, adapter: virtual[0].name, via: 'virtual' };
+  return { ip: '127.0.0.1', adapter: null, via: 'none' };
+}
+
+export function pickLanIp(facts: LanIpFacts): string {
+  return lanIpSource(facts).ip;
 }
 
 let probedIp: string | null = null;
 let probedAt = 0;
+let loggedChoice = '';
 
-function probeSourceAddress(): Promise<string | null> {
+/**
+ * Destinations for the source-address probe. One is not enough: a corporate LAN
+ * that blocks UDP 53 to the internet, or a Wi-Fi with no upstream, makes the
+ * probe answer nothing and silently degrades the whole feature to adapter
+ * enumeration. These three are resolved by the OS routing table only — no
+ * packet leaves this machine and no DNS name is looked up.
+ */
+const PROBE_TARGETS: readonly [number, string][] = [
+  [53, '8.8.8.8'],
+  [53, '223.5.5.5'],
+  [53, '1.1.1.1'],
+];
+
+/**
+ * Resolves with the source address, rejects when this destination told us
+ * nothing — so `Promise.any` skips it and tries the next target instead of
+ * accepting the first fast failure.
+ */
+function probeOne(port: number, host: string): Promise<string> {
   const sock = createSocket('udp4');
-  return new Promise<string | null>((resolve) => {
+  return new Promise<string>((resolve, reject) => {
+    const probeFailed = new Error(`no route via ${host}`);
     let settled = false;
     const finish = (value: string | null): void => {
       if (settled) return;
@@ -95,7 +161,8 @@ function probeSourceAddress(): Promise<string | null> {
       } catch {
         /* already closed */
       }
-      resolve(value);
+      if (value) resolve(value);
+      else reject(probeFailed);
     };
     sock.once('connect', () => {
       try {
@@ -107,7 +174,7 @@ function probeSourceAddress(): Promise<string | null> {
     });
     sock.once('error', () => finish(null));
     try {
-      sock.connect(53, '8.8.8.8');
+      sock.connect(port, host);
     } catch {
       finish(null);
     }
@@ -115,18 +182,33 @@ function probeSourceAddress(): Promise<string | null> {
   });
 }
 
+/** First adapter the OS would route through, across {@link PROBE_TARGETS}. */
+function probeSourceAddress(): Promise<string | null> {
+  return Promise.any(PROBE_TARGETS.map(([port, host]) => probeOne(port, host))).catch(() => null);
+}
+
 /**
  * The address to show the user, re-probing at most once per {@link PROBE_TTL_MS}.
  * Cheap enough to await on every panel refresh, and self-healing: when the
  * cached answer leaves the interface table (Wi-Fi off, cable unplugged) it stops
  * being trusted without waiting for the next probe.
+ *
+ * The choice is logged whenever it changes, because every one of these paths
+ * produces a URL that looks fine — "which adapter did we pick and why" is the
+ * only clue that separates a working pairing from a phone that spins forever.
  */
 export async function refreshLanIp(): Promise<string> {
   if (probedIp === null || Date.now() - probedAt >= PROBE_TTL_MS) {
     probedIp = await probeSourceAddress();
     probedAt = Date.now();
   }
-  return pickLanIp({ probed: probedIp, interfaces: networkInterfaces() });
+  const choice = lanIpSource({ probed: probedIp, interfaces: networkInterfaces() });
+  const line = `${choice.ip} (${choice.adapter ?? 'no adapter'}, ${choice.via})`;
+  if (line !== loggedChoice) {
+    loggedChoice = line;
+    console.log(`[companion] pairing address: ${line}`);
+  }
+  return choice.ip;
 }
 
 /** Every non-internal IPv4 on this machine — all of them go into the SAN. */
@@ -140,16 +222,6 @@ export function lanAddresses(): string[] {
     }
   }
   return out;
-}
-
-/** True when `ip` is one of this machine's own addresses (loopback included). */
-export function isLocalAddress(ip: string): boolean {
-  return (
-    ip === '127.0.0.1' ||
-    ip === '::1' ||
-    ip === 'localhost' ||
-    lanAddresses().includes(ip)
-  );
 }
 
 /**
@@ -206,17 +278,51 @@ export function certCovers(certPath: string, ips: string[]): boolean {
   }
 }
 
+export interface CertRequest {
+  /** every address to bake into the SAN, so a manually typed one still works */
+  san: string[];
+  /** the address the phone is being told to open; only this decides reuse */
+  mustCover: string[];
+}
+
 /**
- * Ensure a usable cert exists covering `ips`, regenerating when the addresses
- * moved. Returns [certPath, keyPath], or null when HTTPS is unavailable.
+ * Reuse the stored key when there is one. RSA-2048 costs ~1 s on the main
+ * thread, and a re-issue can now happen mid-meeting (the DHCP lease moved);
+ * the key is not what changed, so regenerating it buys nothing and stalls ASR.
  */
-export function ensureCertificate(dir: string, ips: string[]): [string, string] | null {
+function loadOrGenerateKeys(
+  keyPath: string,
+): { keys: { privateKey: forge.pki.rsa.PrivateKey; publicKey: forge.pki.rsa.PublicKey }; generated: boolean } {
+  if (existsSync(keyPath)) {
+    try {
+      const privateKey = forge.pki.privateKeyFromPem(readFileSync(keyPath, 'utf8'));
+      return {
+        keys: { privateKey, publicKey: forge.pki.rsa.setPublicKey(privateKey.n, privateKey.e) },
+        generated: false,
+      };
+    } catch {
+      /* unreadable or not a PEM key pair: make a fresh one below */
+    }
+  }
+  return {
+    keys: forge.pki.rsa.generateKeyPair({ bits: 2048, e: 0x10001 }),
+    generated: true,
+  };
+}
+
+/**
+ * Ensure a usable cert exists. Re-issued only when the address we are actually
+ * advertising is not covered — an adapter appearing or disappearing (start a
+ * VM, plug in a phone over USB) must not throw away the certificate every phone
+ * already trusted.
+ */
+export function ensureCertificate(dir: string, req: CertRequest): [string, string] | null {
   const certPath = `${dir}/${CERT_FILE}`;
   const keyPath = `${dir}/${KEY_FILE}`;
-  if (certCovers(certPath, ips) && existsSync(keyPath)) return [certPath, keyPath];
+  if (certCovers(certPath, req.mustCover) && existsSync(keyPath)) return [certPath, keyPath];
 
   try {
-    const keys = forge.pki.rsa.generateKeyPair({ bits: 2048, e: 0x10001 });
+    const { keys, generated } = loadOrGenerateKeys(keyPath);
     const cert = forge.pki.createCertificate();
     cert.publicKey = keys.publicKey;
     cert.serialNumber = Date.now().toString(16) + Math.floor(Math.random() * 1e6).toString(16);
@@ -224,14 +330,15 @@ export function ensureCertificate(dir: string, ips: string[]): [string, string] 
     // otherwise reject a certificate that is "not yet valid"
     cert.validity.notBefore = new Date(Date.now() - 5 * 60_000);
     cert.validity.notAfter = new Date(Date.now() + VALID_DAYS * 86_400_000);
-    const subject = [{ name: 'commonName', value: ips[0] ?? hostname() }];
+    const sanList = [...new Set([...req.mustCover, ...req.san])];
+    const subject = [{ name: 'commonName', value: sanList[0] ?? hostname() }];
     cert.setSubject(subject);
     // self-signed: issuer is the subject
     cert.setIssuer(subject);
     const altNames: { type: number; value?: string; ip?: string }[] = [
       { type: 2, value: 'localhost' },
       sanName('127.0.0.1'),
-      ...ips.map(sanName),
+      ...sanList.map(sanName),
     ];
     const host = hostname();
     if (host) altNames.push({ type: 2, value: host });
@@ -246,7 +353,7 @@ export function ensureCertificate(dir: string, ips: string[]): [string, string] 
     cert.sign(keys.privateKey, forge.md.sha256.create());
 
     mkdirSync(dir, { recursive: true });
-    writeFileSync(keyPath, forge.pki.privateKeyToPem(keys.privateKey), { mode: 0o600 });
+    if (generated) writeFileSync(keyPath, forge.pki.privateKeyToPem(keys.privateKey), { mode: 0o600 });
     writeFileSync(certPath, forge.pki.certificateToPem(cert), 'utf8');
     return [certPath, keyPath];
   } catch {

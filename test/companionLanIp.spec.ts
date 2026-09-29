@@ -69,7 +69,24 @@ describe('pickLanIp', () => {
     expect(pickLanIp({ probed: '192.168.206.1', interfaces: vmOnly })).toBe('192.168.206.1');
   });
 
-  it('ends at loopback when the machine has no IPv4 at all', () => {    const down: NodeJS.Dict<NetworkInterfaceInfo[]> = {
+  it('treats VPN and PAN adapters as unreachable too', () => {
+    // A tunnel adapter often holds a plausible 10.x address; a phone on the
+    // Wi-Fi cannot reach it any better than it can reach a VMnet host route.
+    const withVpn: NodeJS.Dict<NetworkInterfaceInfo[]> = {
+      Tailscale: [v4('100.64.1.9')],
+      'ZeroTier One': [v4('192.168.191.3')],
+      'Cisco AnyConnect Secure Mobility Client Virtual Miniport Adapter for Windows x64': [
+        v4('10.0.0.5'),
+      ],
+      'Bluetooth Network Connection': [v4('10.31.1.2')],
+      WLAN: [v4('10.206.243.63')],
+    };
+    expect(pickLanIp({ probed: null, interfaces: withVpn })).toBe('10.206.243.63');
+    expect(pickLanIp({ probed: '10.0.0.5', interfaces: withVpn })).toBe('10.206.243.63');
+  });
+
+  it('ends at loopback when the machine has no IPv4 at all', () => {
+    const down: NodeJS.Dict<NetworkInterfaceInfo[]> = {
       WLAN: [],
       'Loopback Pseudo-Interface 1': [v4('127.0.0.1', true)],
     };

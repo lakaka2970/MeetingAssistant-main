@@ -360,7 +360,7 @@ describe('companion certificate', () => {
 
   it('covers every address it was asked for and no others', () => {
     const ips = ['192.168.10.231', '10.0.0.5'];
-    const made = ensureCertificate(dir, ips);
+    const made = ensureCertificate(dir, { san: ips, mustCover: ips });
     expect(made).not.toBeNull();
     const [cert] = made!;
     expect(certCovers(cert, ips)).toBe(true);
@@ -378,7 +378,7 @@ describe('companion certificate', () => {
     // which (unlike ERR_CERT_AUTHORITY_INVALID) offers no "proceed" link at all.
     // The phone therefore could not open the page with no way past the screen.
     const ips = ['192.168.10.231', '10.0.0.5'];
-    const made = ensureCertificate(dir, ips);
+    const made = ensureCertificate(dir, { san: ips, mustCover: ips });
     expect(made).not.toBeNull();
     const san = new X509Certificate(readFileSync(made![0], 'utf8')).subjectAltName ?? '';
     expect(san).not.toMatch(/invalid/i);
@@ -387,7 +387,7 @@ describe('companion certificate', () => {
   }, 30_000);
 
   it('marks the cert as a TLS server cert, not a CA', () => {
-    const made = ensureCertificate(dir, ['192.168.10.231']);
+    const made = ensureCertificate(dir, { san: ['192.168.10.231'], mustCover: ['192.168.10.231'] });
     expect(made).not.toBeNull();
     // read back with forge here: this asserts what was written, and Node's
     // keyUsage getter is unreliable (it reports ABSENT for a present extension)
@@ -400,6 +400,33 @@ describe('companion certificate', () => {
     expect(ku!.keyEncipherment).toBe(true);
     expect((cert.getExtension('basicConstraints') as { cA?: boolean }).cA).toBe(false);
   }, 30_000);
+
+  it('keeps the stored cert when only unrelated adapters moved', () => {
+    // The churn this is here for: starting a VM brings VMnet up with a new
+    // address. Re-issuing because of that throws away the certificate every
+    // phone already trusted, so each one re-shows the security warning in the
+    // middle of a meeting. Only the advertised address decides.
+    const advertised = '192.168.10.231';
+    const first = ensureCertificate(dir, { san: [advertised], mustCover: [advertised] });
+    const pem = readFileSync(first![0], 'utf8');
+    const again = ensureCertificate(dir, {
+      san: [advertised, '192.168.206.1'],
+      mustCover: [advertised],
+    });
+    expect(readFileSync(again![0], 'utf8')).toBe(pem);
+  }, 30_000);
+
+  it('re-issues for a new advertised address but keeps the same private key', () => {
+    const old = ensureCertificate(dir, { san: ['192.168.10.231'], mustCover: ['192.168.10.231'] });
+    const keyPem = readFileSync(old![1], 'utf8');
+    const oldCertPem = readFileSync(old![0], 'utf8');
+    const next = ensureCertificate(dir, { san: ['192.168.10.99'], mustCover: ['192.168.10.99'] });
+    expect(readFileSync(next![0], 'utf8')).not.toBe(oldCertPem);
+    expect(certCovers(next![0], ['192.168.10.99'])).toBe(true);
+    // RSA generation costs ~1 s on the main thread; reusing the key makes the
+    // re-issue cheap enough to do mid-meeting.
+    expect(readFileSync(next![1], 'utf8')).toBe(keyPem);
+  }, 60_000);
 
   it('rejects a legacy malformed cert so it gets regenerated on next boot', () => {
     // The upgrade path: anyone who already has a pre-fix certificate on disk
@@ -431,10 +458,11 @@ describe('companion certificate', () => {
 
   it('reuses a still-valid cert instead of regenerating on every boot', () => {
     const ips = ['192.168.10.231'];
-    const first = ensureCertificate(dir, ips);
+    const req = { san: ips, mustCover: ips };
+    const first = ensureCertificate(dir, req);
     expect(first).not.toBeNull();
     const pem = readFileSync(first![0], 'utf8');
-    const again = ensureCertificate(dir, ips);
+    const again = ensureCertificate(dir, req);
     // key generation costs ~1s on the main thread, so a churn bug is a real
     // stall on every launch, not just wasted work
     expect(readFileSync(again![0], 'utf8')).toBe(pem);
