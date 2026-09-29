@@ -334,7 +334,7 @@ macOS 暂无安装包，需从源码运行（系统声音需 BlackHole 虚拟音
 
 其余新增（气泡导轨、可折叠历史回答、🎚 回答风格与应答人设、◐ 面板透明度、逐文件导入进度与节摘要、
 做题模式）都不改变默认观感：**装完新版本什么都不设置时，发给模型的提示词与 v1.0.0 逐字节相同**（有测试钉住）。
-完整版本说明：[RELEASE_NOTES_v1.0.1.md](docs/user/RELEASE_NOTES_v1.0.1.md)。
+完整版本说明：[RELEASE_NOTES_v1.0.2.md](docs/user/RELEASE_NOTES_v1.0.2.md)（v1.0.2 是连接可靠性补丁，功能与 v1.0.1 相同）。
 
 ## 📱 单屏 / 双屏
 
@@ -531,8 +531,9 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 | [INSTALL_MACOS.en.md](docs/user/INSTALL_MACOS.en.md) | macOS 从源码安装与 BlackHole 音频路由 |
 | [docs/windows/SETUP.md](docs/windows/SETUP.md) / [zh-CN](docs/windows/SETUP.zh-CN.md) | Windows 平台完整配置（Python / 本地 ASR） |
 | [docs/macos/SETUP.md](docs/macos/SETUP.md) | macOS 平台完整配置 |
-| [RELEASE_NOTES_v1.0.1.md](docs/user/RELEASE_NOTES_v1.0.1.md) | **当前版本**说明：升级必读的三个默认行为变更、新增内容、已知问题 |
-| [RELEASE_NOTES_v1.0.0.md](docs/user/RELEASE_NOTES_v1.0.0.md) | 上一版（首个正式版）说明与已知问题 |
+| [RELEASE_NOTES_v1.0.2.md](docs/user/RELEASE_NOTES_v1.0.2.md) | **当前版本**说明：换台机器就连不上的四类修复（虚拟网卡配对地址、证书重签、系统保留端口、出站请求挂起） |
+| [RELEASE_NOTES_v1.0.1.md](docs/user/RELEASE_NOTES_v1.0.1.md) | 上一版说明：升级必读的三个默认行为变更、新增内容、已知问题 |
+| [RELEASE_NOTES_v1.0.0.md](docs/user/RELEASE_NOTES_v1.0.0.md) | 首个正式版说明与已知问题 |
 
 ## ⚠️ 免责声明
 
@@ -708,5 +709,5 @@ step.
 
 **Acknowledgements**: this tool was **developed and improved with reference to** [JWM0203/MeetingCopilot](https://github.com/JWM0203/MeetingCopilot) — "Real-time meeting & interview copilot for Windows and macOS" (TypeScript, Apache License 2.0), which is where the overall shape of a meeting / interview copilot comes from; this repository continues from there. The v1.0.1 work listed above — the bubble transcript rail with hover-to-answer, mainstream-format knowledge import with local section summaries, resume / JD personas and the prompt editor, phone-side remote control, and panel transparency — is this repository's own implementation. Thanks to the upstream project.
 
-**License**: [Apache-2.0](LICENSE). The installers are not code-signed (`v1.0.1`) — download only from
+**License**: [Apache-2.0](LICENSE). The installers are not code-signed (`v1.0.2`) — download only from
 this project's Releases page.
