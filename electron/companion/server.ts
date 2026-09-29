@@ -27,8 +27,31 @@ import {
 import { CmdRateLimiter, acceptCommand, type ControlCommand } from './control';
 import type { PairingManager } from './pairing';
 
+/**
+ * Turn the codes collected while walking base..base+fallback into the one
+ * reason that is actually true.
+ *
+ * Windows reserves whole port ranges for the hypervisor (`netsh interface ipv4
+ * show excludedportrange`), and a bind inside one fails with EACCES no matter
+ * how many apps the user closes — so "均被占用" is a dead end on exactly the
+ * machines most likely to hit it.
+ */
+export function describeBindFailures(attempts: { port: number; code?: string }[]): string {
+  const first = attempts[0]?.port ?? '?';
+  const last = attempts.at(-1)?.port ?? first;
+  const codes = [...new Set(attempts.map((a) => a.code).filter(Boolean))] as string[];
+  if (codes.length === 1 && codes[0] === 'EACCES') {
+    return `端口 ${first}–${last} 被系统保留（Hyper-V / WSL / 沙盒平台常见），请在 设置 → 双屏 换一个端口，例如 19765`;
+  }
+  if (codes.length === 1 && codes[0] === 'EADDRINUSE') {
+    return `端口 ${first}–${last} 均被占用，请在 设置 → 双屏 换一个端口`;
+  }
+  return `端口 ${first}–${last} 无法监听（${codes.length > 0 ? codes.join('/') : '未知原因'}）`;
+}
+
 /** A phone that connected but never spoke our protocol gets cut off this fast. */
 export const HANDSHAKE_TIMEOUT_MS = 15_000;
+
 /**
  * Once a peer proves it is a real client, allow long enough to read a 6-digit
  * code off the PC and type it on glass. 15 s would make pairing look broken.
@@ -255,7 +278,7 @@ export class CompanionServer {
   async start(): Promise<void> {
     const base = this.opts.port ?? 18765;
     const fallback = this.opts.portFallback ?? 5;
-    let lastError: unknown = null;
+    const attempts: { port: number; code?: string }[] = [];
     for (let offset = 0; offset <= fallback; offset += 1) {
       const candidate = base + offset;
       try {
@@ -264,12 +287,10 @@ export class CompanionServer {
         this.startHeartbeat();
         return;
       } catch (e) {
-        lastError = e;
+        attempts.push({ port: candidate, code: (e as NodeJS.ErrnoException)?.code });
       }
     }
-    throw new Error(
-      `端口 ${base}–${base + fallback} 均被占用（${(lastError as Error)?.message ?? '未知原因'}）`,
-    );
+    throw new Error(describeBindFailures(attempts));
   }
 
   private bind(port: number): Promise<void> {

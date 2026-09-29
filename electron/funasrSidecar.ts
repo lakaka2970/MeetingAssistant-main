@@ -120,6 +120,31 @@ export function parseLocalWsPort(url: string | undefined): number | null {
   return m[1] ? parseInt(m[1], 10) : 80;
 }
 
+/** A python traceback that says the socket could not be bound, not that the env is broken. */
+const PORT_UNUSABLE = /10048|address already in use|only one usage|permission denied|eacces|cannot assign requested address/i;
+
+/**
+ * Why the engine process died.
+ *
+ * Every exit used to say "check the conda env", which on a Hyper-V/WSL machine
+ * is wrong often enough to matter: Windows reserves port ranges (10000–10139 is
+ * a common one, right where the sidecar lives), and python then dies on bind
+ * while the user is sent to reinstall an environment that was fine.
+ */
+export function describeSidecarExit(o: {
+  port: number;
+  code: number | null;
+  stderr: string;
+  envName: string;
+}): string {
+  const last = o.stderr.trim().split('\n').filter(Boolean).pop() ?? '';
+  if (last && PORT_UNUSABLE.test(last)) {
+    return `local ASR port ${o.port} is not usable (occupied, or reserved by Hyper-V/WSL) — change it in Settings → Speech recognition`;
+  }
+  const detail = last ? `; last output: ${last}` : '';
+  return `the local ASR engine exited (code ${o.code})${detail}; check the conda env "${o.envName}"`;
+}
+
 function portOpen(port: number, timeoutMs = 600): Promise<boolean> {
   return new Promise((resolve) => {
     const sock = connect({ port, host: '127.0.0.1' });
@@ -186,6 +211,7 @@ export class FunasrSidecar {
       this.proc = proc;
       this.modelArg = modelArg;
       let settled = false;
+      let stderrTail = '';
       const settle = (fn: () => void) => {
         if (settled) return;
         settled = true;
@@ -208,13 +234,19 @@ export class FunasrSidecar {
         process.stdout.write(`[sidecar] ${s}`);
         if (s.includes(isMoss ? 'MOSS_ASR_READY' : 'FUNASR_READY')) settle(resolve);
       });
-      proc.stderr?.on('data', (d: Buffer) => process.stderr.write(d));
+      proc.stderr?.on('data', (d: Buffer) => {
+        // keep the tail: it is the only record of why python gave up
+        stderrTail = (stderrTail + d.toString()).slice(-4000);
+        process.stderr.write(d);
+      });
       proc.on('exit', (code) => {
         this.proc = null;
         this.modelArg = null;
         const envName = isMoss ? 'moss-asr' : 'funasr';
         settle(() =>
-          reject(new Error(`the local ASR engine exited (code ${code}); check the conda env "${envName}"`)),
+          reject(
+            new Error(describeSidecarExit({ port, code, stderr: stderrTail, envName })),
+          ),
         );
       });
       proc.on('error', (e) => settle(() => reject(e)));
