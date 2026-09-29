@@ -548,6 +548,15 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 
 本工具是参考 [JWM0203/MeetingCopilot](https://github.com/JWM0203/MeetingCopilot)（"Real-time meeting & interview copilot for Windows and macOS"，TypeScript，Apache License 2.0）**改进和开发**出来的：会议 / 面试副驾的整体形态与思路来自该项目，本仓库在其基础上继续开发。v1.0.1 里的转录泡泡框与悬停作答、知识库主流格式导入与本地节摘要、简历 / JD 人设与提示词编辑、手机侧远程控制、面板透明度等，都是本仓库自己的实现与改动。感谢上游项目。
 
+## 🔄 版本与更新检查
+
+托盘菜单里的 **检查更新** 会向 GitHub 查一次最新版本，结果**直接写在那一行菜单上**：`检查更新 · 已是最新` / `检查更新 · 发现新版本 v1.0.3`（此时下面多一行 **打开下载页面**）。**本程序不会自己下载、安装或重启任何东西**——它只告诉你有没有新版，页面由你自己点、安装包由你自己装。
+
+- **默认不联网检查**。可选的「启动后自动检查一次」在 设置 → 通用 → 更新检查，**默认关闭**，打开后也是每天最多一次。这个请求会暴露给 GitHub 的信息只有：你这台机器的 IP、当前版本号、以及一个标识本应用的 User-Agent；不发送任何文件、路径或会话内容。
+- 连不上 `api.github.com` 时，同一个设置页可以填一个 **https** 开头的镜像基址；检查失败会在托盘上显示 `检查更新 · 检查失败`，日志里是 `[update] 检查失败：<原因>`。
+- 未发布的 **draft** release 查不到，只有你 Publish 之后才会出现在结果里。
+- **从 v1.0.1 升上来的人**：更新检查这个功能本身要随新版本发出去才生效，所以 v1.0.1 用户第一次仍需**手动**下载覆盖安装（设置与会话都在 `%APPDATA%\MeetingAssistant\`，不会被清掉）。
+
 ## 📄 开源许可
 
 [Apache License 2.0](LICENSE)
@@ -708,6 +717,8 @@ text ships inside the app: "Help & guides → 13. Disclaimer", plus one short li
 step.
 
 **Acknowledgements**: this tool was **developed and improved with reference to** [JWM0203/MeetingCopilot](https://github.com/JWM0203/MeetingCopilot) — "Real-time meeting & interview copilot for Windows and macOS" (TypeScript, Apache License 2.0), which is where the overall shape of a meeting / interview copilot comes from; this repository continues from there. The v1.0.1 work listed above — the bubble transcript rail with hover-to-answer, mainstream-format knowledge import with local section summaries, resume / JD personas and the prompt editor, phone-side remote control, and panel transparency — is this repository's own implementation. Thanks to the upstream project.
+
+**Updates**: **Check for updates** in the tray menu asks GitHub for the latest release and writes the answer into that same menu line — `Check for updates · up to date` or `… · v1.0.3 available`, which then adds **Open download page**. The app never downloads, installs or restarts itself; you open the page and install it yourself. The launch-time check is **off by default** (Settings → General → Update checks) and, once enabled, runs at most once a day; that single request reveals only this machine's IP, the version in use and an app User-Agent — no files, paths or session content. A mirror base URL (https only) can be set where api.github.com is unreachable, and a failed check says so in the menu plus `[update] check failed: …` in the log. Draft releases are invisible until published, and anyone on v1.0.1 must still install the next version by hand once, because the checker only exists from the release that ships it.
 
 **License**: [Apache-2.0](LICENSE). The installers are not code-signed (`v1.0.2`) — download only from
 this project's Releases page.
