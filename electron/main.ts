@@ -126,13 +126,19 @@ import {
   type StoredTurn,
 } from '../shared/protocol';
 import { mainStrings } from './uiStrings';
+import { checkForUpdate } from './updateCheck';
+import { shouldAutoCheck, type UpdateCheck } from '../shared/updateCheck';
 
 const MODEL_ID = 'onnx-community/whisper-large-v3-turbo-ONNX';
 
 /** tray 「检查更新」 (Phase 4). A real updater is Phase 5; until then the honest
  * answer is the releases page, opened through the same allowlist as every other
- * documentation link. */
+ * documentation link. The tray's download entry uses this when a check could not
+ * reach GitHub — the page is still the only way to download. */
 const RELEASES_URL = 'https://github.com/lakaka2970/MeetingAssistant-main/releases/latest';
+
+/** the last update check this session, shown in the tray menu */
+let lastUpdateCheck: UpdateCheck | null = null;
 
 /**
  * Transcripts and questions are the most sensitive bytes this app touches —
@@ -428,7 +434,34 @@ function bootstrap(): void {
   }
 
   function trayState(): TrayMenuState {
-    return { windowVisible: !!win?.isVisible(), capturing };
+    return { windowVisible: !!win?.isVisible(), capturing, update: lastUpdateCheck };
+  }
+
+  /**
+   * Ask GitHub for the latest release and let the tray show what came back.
+   * Nothing is downloaded and nothing is run — this is a notice, and the click
+   * that follows opens a page in the browser like every other link here.
+   */
+  async function runUpdateCheck(): Promise<void> {
+    const result = await checkForUpdate(app.getVersion(), settings.data.update?.apiBase ?? '');
+    lastUpdateCheck = result;
+    // the stamp is what makes the daily cap survive a restart; it is main's own
+    // bookkeeping, so no patch path exposes it to the renderer
+    settings.data.update = { ...settings.data.update, lastCheckedAt: result.at };
+    settings.save();
+    if (result.state === 'available') console.log(`[update] v${result.version} 可下载`);
+    else if (result.state === 'latest') console.log(`[update] 已是最新（v${result.version}）`);
+    else console.warn(`[update] 检查失败：${result.reason}`);
+    refreshTray();
+  }
+
+  /** the opt-in path: only ever fires once a day, and only when asked for */
+  function maybeAutoCheckForUpdate(): void {
+    const u = settings.data.update;
+    if (!shouldAutoCheck({ enabled: u?.autoCheck ?? false, now: Date.now(), lastAt: u?.lastCheckedAt })) {
+      return;
+    }
+    void runUpdateCheck();
   }
 
   /** rebuild the tray menu — call after anything the menu shows has changed */
@@ -459,7 +492,14 @@ function bootstrap(): void {
       return;
     }
     if (command === 'check-updates') {
-      void openExternalUrl(RELEASES_URL);
+      void runUpdateCheck();
+      return;
+    }
+    if (command === 'open-release-page') {
+      // the exact release when we know it, the releases page otherwise
+      const url =
+        lastUpdateCheck?.state === 'available' ? lastUpdateCheck.url : RELEASES_URL;
+      void openExternalUrl(url);
       return;
     }
     if (isRendererCommand(command)) {
@@ -838,6 +878,7 @@ function bootstrap(): void {
     // the tray belongs to the running app, not to the first-run wizard: an
     // unconfigured machine that closes the wizard must still quit (Phase 2)
     ensureTray();
+    maybeAutoCheckForUpdate();
   }
 
   /** normal boot: warm the ASR worker, bind hotkeys, show the overlay */

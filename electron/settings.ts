@@ -189,6 +189,14 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       allowControl: true,
       allowItems: { ...COMPANION_CONTROL_GRANTS },
     },
+    update: {
+      // The one unsolicited outbound request the app can make, so it starts off:
+      // README promises no telemetry, and a check the user never asked for would
+      // contradict it. The tray item works regardless of this flag.
+      autoCheck: false,
+      apiBase: '',
+      lastCheckedAt: 0,
+    },
   };
 }
 
@@ -320,6 +328,7 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
       // revoke the ones it never mentions
       allowItems: { ...COMPANION_CONTROL_GRANTS, ...raw.companion?.allowItems },
     },
+    update: { ...defaults.update, ...raw.update },
   };
 }
 
@@ -654,6 +663,9 @@ export class SettingsStore {
         };
       }
     }
+    if (patch.update) {
+      this.data.update = { ...this.data.update, ...stripUndefined(patch.update) };
+    }
     this.save();
   }
 
@@ -860,6 +872,10 @@ export class SettingsStore {
           ask: d.companion?.allowItems?.ask !== false,
           history: d.companion?.allowItems?.history !== false,
         },
+      },
+      update: {
+        autoCheck: !!d.update?.autoCheck,
+        apiBase: (d.update?.apiBase ?? '').trim(),
       },
     };
   }

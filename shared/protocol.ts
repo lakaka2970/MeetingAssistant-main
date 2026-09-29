@@ -473,6 +473,14 @@ export interface SettingsFile {
     /** per-item grants, effective only while `allowControl` is on */
     allowItems?: CompanionControlItems;
   };
+  update?: {
+    /** ask GitHub for the latest release once a day after launch */
+    autoCheck?: boolean;
+    /** replace the API host when api.github.com is unreachable from here */
+    apiBase?: string;
+    /** when a check last ran, so the daily cap survives a restart */
+    lastCheckedAt?: number;
+  };
 }
 
 /** What the renderer is allowed to see (no secrets). */
@@ -625,6 +633,11 @@ export interface PublicSettings {
     allowControl: boolean;
     allowItems: CompanionControlItems;
   };
+  update: {
+    autoCheck: boolean;
+    /** '' means the GitHub API default; a mirror base URL replaces it */
+    apiBase: string;
+  };
 }
 
 /** renderer -> main settings update. Plaintext apiKey in transit only.
@@ -744,6 +757,10 @@ export interface SettingsPatch {
     allowControl?: boolean;
     /** one item at a time must never clear its siblings (see applyPatch) */
     allowItems?: Partial<CompanionControlItems>;
+  };
+  update?: {
+    autoCheck?: boolean;
+    apiBase?: string;
   };
 }
 

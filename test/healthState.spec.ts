@@ -94,6 +94,7 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
       allowControl: true,
       allowItems: { ...COMPANION_CONTROL_GRANTS },
     },
+    update: { autoCheck: false, apiBase: '' },
     ...over,
   };
 }

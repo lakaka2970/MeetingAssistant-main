@@ -22,6 +22,10 @@ const labels: TrayMenuLabels = {
   serviceStatus: 'status',
   help: 'help',
   checkUpdates: 'updates',
+  updateLatest: 'up to date',
+  updateAvailable: (v: string) => `v${v} available`,
+  updateFailed: 'check failed',
+  openReleasePage: 'download',
   quit: 'quit',
   capturing: 'transcribing',
 };
@@ -93,6 +97,47 @@ describe('tray menu model', () => {
     expect(isRendererCommand('toggle-window')).toBe(false);
     expect(isRendererCommand('check-updates')).toBe(false);
     expect(isRendererCommand('quit')).toBe(false);
+  });
+});
+
+describe('tray update state', () => {
+  const ids = (s: ReturnType<typeof state>) =>
+    buildTrayMenu(s, labels).filter((e) => e.kind === 'command').map((e) => e.id);
+
+  it('offers a plain 检查更新 until a check has happened', () => {
+    expect(ids(state())).not.toContain('open-release-page');
+    const entry = buildTrayMenu(state(), labels).find((e) => e.id === 'check-updates');
+    expect(entry?.label).toBe('updates');
+  });
+
+  it('adds a download entry and names the version once one is available', () => {
+    const withUpdate = state({
+      update: { at: 1, state: 'available', version: '1.9.0', url: 'https://example/1' },
+    });
+    expect(ids(withUpdate)).toContain('open-release-page');
+    const entry = buildTrayMenu(withUpdate, labels).find((e) => e.id === 'check-updates');
+    expect(entry?.label).toContain('updates');
+    expect(entry?.label).toContain('v1.9.0 available');
+  });
+
+  it('reports up-to-date without a download entry, and keeps the page after a failure', () => {
+    const latest = state({ update: { at: 1, state: 'latest', version: '1.0.2' } });
+    expect(buildTrayMenu(latest, labels).find((e) => e.id === 'check-updates')!.label).toBe(
+      'updates · up to date',
+    );
+    expect(ids(latest)).not.toContain('open-release-page');
+
+    // a failed check still offers the page: that is what this item did before
+    // any check existed, and the page remains the only way to download
+    const failed = state({ update: { at: 1, state: 'failed', reason: 'timeout' } });
+    expect(buildTrayMenu(failed, labels).find((e) => e.id === 'check-updates')!.label).toContain(
+      'check failed',
+    );
+    expect(ids(failed)).toContain('open-release-page');
+  });
+
+  it('is handled by main, not the renderer', () => {
+    expect(isRendererCommand('open-release-page')).toBe(false);
   });
 });
 

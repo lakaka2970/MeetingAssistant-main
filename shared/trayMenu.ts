@@ -13,6 +13,8 @@
  * but the Menu.buildFromTemplate plumbing (electron/tray.ts).
  */
 
+import type { UpdateCheck } from './updateCheck';
+
 /** every action the tray menu can trigger */
 export type TrayCommand =
   | 'toggle-window'
@@ -22,6 +24,7 @@ export type TrayCommand =
   | 'open-health'
   | 'open-help'
   | 'check-updates'
+  | 'open-release-page'
   | 'quit';
 
 /**
@@ -59,6 +62,12 @@ export interface TrayMenuLabels {
   serviceStatus: string;
   help: string;
   checkUpdates: string;
+  /** appended to 检查更新 once a check has answered */
+  updateLatest: string;
+  updateAvailable: (version: string) => string;
+  updateFailed: string;
+  /** only in the menu while a newer release is known */
+  openReleasePage: string;
   quit: string;
   /** tooltip suffix while transcription is running */
   capturing: string;
@@ -68,6 +77,8 @@ export interface TrayMenuLabels {
 export interface TrayMenuState {
   windowVisible: boolean;
   capturing: boolean;
+  /** the last update check, or nothing until one has run this session */
+  update?: UpdateCheck | null;
 }
 
 export interface TrayMenuEntry {
@@ -78,6 +89,22 @@ export interface TrayMenuEntry {
 }
 
 const SEPARATOR: TrayMenuEntry = { id: 'separator', label: '', kind: 'separator' };
+
+/**
+ * 检查更新 carries its own result. A separate status line above it would be a
+ * menu entry the user cannot click and wonders about; the outcome of the action
+ * belongs on the action.
+ */
+function checkUpdatesLabel(labels: TrayMenuLabels, update?: UpdateCheck | null): string {
+  if (!update) return labels.checkUpdates;
+  const suffix =
+    update.state === 'available'
+      ? labels.updateAvailable(update.version)
+      : update.state === 'latest'
+        ? labels.updateLatest
+        : labels.updateFailed;
+  return `${labels.checkUpdates} · ${suffix}`;
+}
 
 /**
  * The menu, top to bottom. 显示/隐藏窗口 and 开始/停止转写 are single toggle
@@ -104,7 +131,19 @@ export function buildTrayMenu(state: TrayMenuState, labels: TrayMenuLabels): Tra
     { id: 'open-health', label: labels.serviceStatus, kind: 'command' },
     { id: 'open-help', label: labels.help, kind: 'command' },
     SEPARATOR,
-    { id: 'check-updates', label: labels.checkUpdates, kind: 'command' },
+    { id: 'check-updates', label: checkUpdatesLabel(labels, state.update), kind: 'command' },
+    // While a newer release is known this opens that release; after a failed
+    // check it opens the releases page anyway, because that is what the tray
+    // item did before any check existed and the page is still the only way down.
+    ...(state.update?.state === 'available' || state.update?.state === 'failed'
+      ? [
+          {
+            id: 'open-release-page' as const,
+            label: labels.openReleasePage,
+            kind: 'command' as const,
+          },
+        ]
+      : []),
     SEPARATOR,
     { id: 'quit', label: labels.quit, kind: 'command' },
   ];
