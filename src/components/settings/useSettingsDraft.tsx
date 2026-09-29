@@ -190,6 +190,9 @@ export function useSettingsDraft(
   const [saving, setSaving] = useState(false);
   /** weak-crypto confirmation is pending; nothing has been sent to main yet */
   const [confirmWeak, setConfirmWeak] = useState(false);
+  // ---- 更新检查 (只提示，不下载不安装) ----
+  const [uAuto, setUAuto] = useState(settings.update.autoCheck);
+  const [uBase, setUBase] = useState(settings.update.apiBase);
   // ---- LAN companion (手机显示) ----
   const [cOn, setCOn] = useState(settings.companion.enabled);
   const [cHttps, setCHttps] = useState(settings.companion.useHttps);
@@ -495,6 +498,7 @@ export function useSettingsDraft(
           // and this form always holds all six values
           allowItems: cCtlItems,
         },
+        update: { autoCheck: uAuto, apiBase: uBase.trim() },
       };
       const next = await window.mc.setSettings(patch);
       llmKey.reset();
@@ -778,6 +782,10 @@ export function useSettingsDraft(
     saving,
     confirmWeak,
     setConfirmWeak,
+    uAuto,
+    setUAuto,
+    uBase,
+    setUBase,
     cOn,
     setCOn,
     cHttps,

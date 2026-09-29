@@ -384,6 +384,29 @@ export function GeneralTab({
           <span className="settings-inline-hint">{t.settings.rerunWizardHint}</span>
         </div>
       )}
+
+      <div className="settings-section">{t.settings.updateSection}</div>
+      <div className="settings-row">
+        <label>
+          <input
+            type="checkbox"
+            checked={d.uAuto}
+            onChange={(e) => d.setUAuto(e.target.checked)}
+          />{' '}
+          {t.settings.updateAuto}
+        </label>
+        <span className="settings-inline-hint">{t.settings.updateAutoHint}</span>
+      </div>
+      <div className="settings-row">
+        <label>{t.settings.updateMirror}</label>
+        <input
+          type="text"
+          value={d.uBase}
+          onChange={(e) => d.setUBase(e.target.value)}
+          placeholder="https://api.github.com"
+        />
+        <span className="settings-inline-hint">{t.settings.updateMirrorHint}</span>
+      </div>
     </>
   );
 }

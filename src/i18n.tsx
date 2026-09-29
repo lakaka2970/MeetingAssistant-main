@@ -517,6 +517,7 @@ const zh = {
           '设置、会话、简历等数据保存在本机的用户数据目录，卸载默认不会删除。',
           '以 Apache License 2.0 开源，可自由使用、修改和再分发。',
           '完整免责与合规说明见「13. 免责声明」。',
+          '托盘菜单的「检查更新」只问一次 GitHub 有没有新版本，并把结果显示在那行菜单上；它不会下载、不会安装、也不会自动重启。启动后的自动检查默认关闭，可在 设置 → 通用 → 更新检查 打开。',
         ],
       },
       disclaimer: {
@@ -673,6 +674,12 @@ const zh = {
     companionDevices: '已配对设备',
     rerunWizard: '重新运行配置向导',
     rerunWizardHint: '重新打开配置向导；主窗口会保持运行。',
+    updateSection: '更新检查',
+    updateAuto: '启动后自动检查一次（每天最多一次）',
+    updateAutoHint:
+      '这会向 GitHub 发一个请求：对方能看到这台机器的 IP 和当前版本号，此外没有任何内容上传；不会下载或安装任何东西，也不自动重启。默认关闭，随时可在托盘菜单点「检查更新」手动查一次。',
+    updateMirror: '接口地址（可留空）',
+    updateMirrorHint: '连不上 api.github.com 时填一个可访问的镜像基址，必须以 https:// 开头。',
     helpHint: '常见问题、各服务商 Key 教程与排查步骤，全部在本机离线可读。',
     textSection: '文本大模型（回答/翻译）',
     baseUrl: 'Base URL',
@@ -1271,6 +1278,7 @@ const en: Dict = {
           'Settings, sessions and imported material live in the per-user data folder on this machine and survive an uninstall by default.',
           'Open source under the Apache License 2.0 — free to use, modify and redistribute.',
           'See "13. Disclaimer" for the full terms on liability and compliance.',
+          'The tray menu’s "Check for updates" asks GitHub once whether a newer release exists and prints the answer on that menu line; it never downloads, installs or restarts anything. The launch-time check is off by default — Settings → General → Update checks turns it on.',
         ],
       },
       disclaimer: {
@@ -1433,6 +1441,13 @@ const en: Dict = {
     companionDevices: 'Paired devices',
     rerunWizard: 'Run the setup wizard again',
     rerunWizardHint: 'Reopens the setup wizard; the main window keeps running.',
+    updateSection: 'Update checks',
+    updateAuto: 'Check once after launch (at most once a day)',
+    updateAutoHint:
+      'That sends one request to GitHub: they see this machine\u2019s IP and the version in use, and nothing else is uploaded. Nothing is downloaded, installed or restarted. Off by default — the tray menu can always check on demand.',
+    updateMirror: 'API base (optional)',
+    updateMirrorHint:
+      'If api.github.com is unreachable from here, put a mirror base address here; it must start with https://.',
     helpHint: 'Common problems, per-provider key guides and fixes — all readable offline.',
     textSection: 'Text LLM (answers / translation)',
     baseUrl: 'Base URL',
