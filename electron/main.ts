@@ -2194,6 +2194,12 @@ function bootstrap(): void {
         if (out.ms > GATE_TIMEOUT_MS) console.warn(`[gate] slow classifier ${out.ms}ms`);
         return out;
       } catch (e) {
+        // The fallback is deliberate — a classifier that cannot be reached must
+        // not swallow the user's question — but it used to be invisible, so a
+        // misconfigured key looked like "the assistant answers everything".
+        console.warn(
+          `[gate] 分类请求失败：${(e as Error)?.message ?? String(e)}；按「需要回答」处理`,
+        );
         return { requestId, verdict: 'answer', via: 'heuristic', ms: Date.now() - t0 } as LlmGateResult;
       } finally {
         clearTimeout(timer);

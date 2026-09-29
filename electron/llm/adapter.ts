@@ -5,6 +5,7 @@
  */
 
 import { buildThinkingParams, type ThinkingLevel, type ThinkingStyle } from '../../shared/thinking';
+import { fetchWithFirstByte, firstByteTimeoutFor } from '../fetchDeadline';
 
 export interface LlmConfig {
   baseUrl: string; // e.g. https://api.deepseek.com/v1
@@ -134,21 +135,25 @@ export async function chatOnce(
   opts?: { maxTokens?: number; temperature?: number; signal?: AbortSignal },
 ): Promise<{ text: string; usage?: ChatUsage }> {
   const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      stream: false,
-      temperature: opts?.temperature ?? 0.5,
-      ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-    }),
-    signal: opts?.signal,
-  });
+  const res = await fetchWithFirstByte(
+    (signal) =>
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.model,
+          messages,
+          stream: false,
+          temperature: opts?.temperature ?? 0.5,
+          ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+        }),
+        signal,
+      }),
+    { ms: firstByteTimeoutFor(config.baseUrl), signal: opts?.signal },
+  );
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`LLM HTTP ${res.status}: ${body.slice(0, 300)}`);
@@ -172,23 +177,27 @@ export async function chatStream(
   opts?: ChatStreamOpts,
 ): Promise<ChatResult> {
   const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      stream: true,
-      temperature: opts?.temperature ?? 0.5,
-      ...(opts?.thinking
-        ? buildThinkingParams(opts.thinking.style, opts.thinking.level)
-        : {}),
-    }),
-    signal,
-  });
+  const res = await fetchWithFirstByte(
+    (signal) =>
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.model,
+          messages,
+          stream: true,
+          temperature: opts?.temperature ?? 0.5,
+          ...(opts?.thinking
+            ? buildThinkingParams(opts.thinking.style, opts.thinking.level)
+            : {}),
+        }),
+        signal,
+      }),
+    { ms: firstByteTimeoutFor(config.baseUrl), signal },
+  );
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');

@@ -8,6 +8,7 @@
  * proxy). The local VAD stays the gate: only speech leaves the machine.
  */
 import { encodeWav } from './wav';
+import { fetchWithFirstByte, firstByteTimeoutFor } from '../fetchDeadline';
 import type { AsrEngine, TranscribeResult } from './engine';
 
 export interface CloudAsrConfig {
@@ -40,15 +41,25 @@ export class CloudAsrEngine implements AsrEngine {
     const b64 = Buffer.from(encodeWav(pcm, 16000)).toString('base64');
     const url = `${this.cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`;
     const t0 = Date.now();
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.cfg.apiKey}` },
-      body: JSON.stringify({
-        model: this.cfg.model,
-        messages: [{ role: 'user', content: [{ type: 'input_audio', input_audio: { data: b64, format: 'wav' } }] }],
-        stream: false,
-      }),
-    });
+    const res = await fetchWithFirstByte(
+      (signal) =>
+        fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.cfg.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: this.cfg.model,
+            messages: [
+              { role: 'user', content: [{ type: 'input_audio', input_audio: { data: b64, format: 'wav' } }] },
+            ],
+            stream: false,
+          }),
+          signal,
+        }),
+      { ms: firstByteTimeoutFor(this.cfg.baseUrl) },
+    );
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`cloud ASR HTTP ${res.status}: ${body.slice(0, 200)}`);
