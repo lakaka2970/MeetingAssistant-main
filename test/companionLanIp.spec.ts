@@ -1,0 +1,78 @@
+/**
+ * Which address the phone is told to open.
+ *
+ * The fixture is this project's own developer machine, measured with
+ * `os.networkInterfaces()`: VMware's two host-only adapters enumerate BEFORE
+ * WLAN, and Hyper-V's WSL adapter after it. That ordering is the whole bug —
+ * when the route probe yields nothing usable, "the first address on this
+ * machine" is a 192.168.182.1 no phone on the Wi-Fi can ever reach.
+ */
+import { describe, expect, it } from 'vitest';
+import type { NetworkInterfaceInfo } from 'node:os';
+import { pickLanIp } from '../electron/companion/tls';
+
+function v4(address: string, internal = false): NetworkInterfaceInfo {
+  return { address, netmask: '255.255.255.0', family: 'IPv4', mac: '00:00:00:00:00:00', internal, cidr: null };
+}
+
+/** measured on a machine with VMware Workstation + WSL installed */
+const WITH_VMWARE: NodeJS.Dict<NetworkInterfaceInfo[]> = {
+  'VMware Network Adapter VMnet1': [v4('192.168.182.1')],
+  'VMware Network Adapter VMnet8': [v4('192.168.206.1')],
+  WLAN: [v4('10.206.243.63')],
+  'vEthernet (WSLCore)': [v4('172.21.48.1')],
+  'Loopback Pseudo-Interface 1': [v4('127.0.0.1', true)],
+};
+
+describe('pickLanIp', () => {
+  it('skips virtual adapters when the probe gave nothing', () => {
+    expect(pickLanIp({ probed: null, interfaces: WITH_VMWARE })).toBe('10.206.243.63');
+  });
+
+  it('does not trust a probe that landed on a virtual adapter', () => {
+    // VMware's NAT adapter can own the default route; a phone still cannot
+    // reach it, so the probe answer is wrong here and must be discarded.
+    expect(pickLanIp({ probed: '192.168.206.1', interfaces: WITH_VMWARE })).toBe('10.206.243.63');
+  });
+
+  it('keeps a probe answer that is one of our own real adapters', () => {
+    expect(pickLanIp({ probed: '10.206.243.63', interfaces: WITH_VMWARE })).toBe('10.206.243.63');
+  });
+
+  it('ignores a probe answer that is not this machine at all', () => {
+    expect(pickLanIp({ probed: '203.0.113.9', interfaces: WITH_VMWARE })).toBe('10.206.243.63');
+  });
+
+  it('prefers a link-local address over a virtual one', () => {
+    const noLease: NodeJS.Dict<NetworkInterfaceInfo[]> = {
+      'VMware Network Adapter VMnet1': [v4('192.168.182.1')],
+      WLAN: [v4('169.254.44.7')],
+    };
+    expect(pickLanIp({ probed: null, interfaces: noLease })).toBe('169.254.44.7');
+  });
+
+  it('falls back to the virtual adapter rather than loopback when that is all there is', () => {
+    const vmOnly: NodeJS.Dict<NetworkInterfaceInfo[]> = {
+      'VMware Network Adapter VMnet8': [v4('192.168.206.1')],
+      'Loopback Pseudo-Interface 1': [v4('127.0.0.1', true)],
+    };
+    expect(pickLanIp({ probed: null, interfaces: vmOnly })).toBe('192.168.206.1');
+  });
+
+  it('keeps a virtual probe answer when there is nothing else to say', () => {
+    const vmOnly: NodeJS.Dict<NetworkInterfaceInfo[]> = {
+      'VMware Network Adapter VMnet1': [v4('192.168.182.1')],
+      'VMware Network Adapter VMnet8': [v4('192.168.206.1')],
+    };
+    // In a VM-only world the default route really does leave VMnet8, and the
+    // first adapter in the table is not the one the user can reach.
+    expect(pickLanIp({ probed: '192.168.206.1', interfaces: vmOnly })).toBe('192.168.206.1');
+  });
+
+  it('ends at loopback when the machine has no IPv4 at all', () => {    const down: NodeJS.Dict<NetworkInterfaceInfo[]> = {
+      WLAN: [],
+      'Loopback Pseudo-Interface 1': [v4('127.0.0.1', true)],
+    };
+    expect(pickLanIp({ probed: null, interfaces: down })).toBe('127.0.0.1');
+  });
+});

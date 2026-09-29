@@ -39,7 +39,7 @@ import { COMPANION_CONTROL_GRANTS } from '../../shared/protocol';
 import { getResourceRoot } from '../resourcePaths';
 import { CompanionServer } from './server';
 import { PairingManager } from './pairing';
-import { ensureCertificate, primaryLanIp, lanAddresses } from './tls';
+import { ensureCertificate, refreshLanIp, lanAddresses } from './tls';
 import { buildFrame, type CompanionCaps, type CompanionMessage, type StateMessage } from './protocol';
 import {
   buildHistoryPayload,
@@ -158,7 +158,7 @@ export class CompanionBridge {
       // Key generation is synchronous and costs ~1 s the first time only;
       // afterwards the stored cert is reused until the LAN address moves. Dedup
       // the candidate addresses because `certCovers` requires *every* one.
-      const ips = [...new Set([...lanAddresses(), primaryLanIp()])];
+      const ips = [...new Set([...lanAddresses(), await refreshLanIp()])];
       const pair = ensureCertificate(this.userDataDir, ips);
       if (pair) tls = { cert: pair[0], key: pair[1] };
       else downgrade = '无法生成本地 HTTPS 证书，已改用明文 HTTP（手机将无法保持常亮）';
@@ -516,7 +516,7 @@ export class CompanionBridge {
 
   async state(): Promise<CompanionState> {
     const s = this.settings();
-    const ip = primaryLanIp();
+    const ip = await refreshLanIp();
     const port = this.server?.port ?? s.port;
     const https = !!this.server?.https;
     const url = `${https ? 'https' : 'http'}://${ip}:${port}/`;

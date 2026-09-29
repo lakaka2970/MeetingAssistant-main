@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createSocket } from 'node:dgram';
 import { X509Certificate } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
-import { hostname, networkInterfaces } from 'node:os';
+import { hostname, networkInterfaces, type NetworkInterfaceInfo } from 'node:os';
 import * as forge from 'node-forge';
 
 export const CERT_FILE = 'companion-server.crt';
@@ -27,28 +27,106 @@ const VALID_DAYS = 365;
 /**
  * The address the phone should be pointed at.
  *
- * A UDP "connect" sends nothing — it only asks the OS to pick a source address
- * for that destination, so the answer is available synchronously and is the
- * interface with the default route. Enumerating interfaces instead risks
- * advertising a WSL/vEthernet/hotspot adapter the phone cannot reach. (A TCP
- * connect would work too but its bind is not synchronous in Node.)
+ * Two facts drove this design, both measured rather than assumed:
+ *
+ *  - A UDP "connect" asks the OS which source address the default route would
+ *    use, but in Node 24 (Electron 41) reading `socket.address()` synchronously
+ *    right after `connect()` throws EBADF. The answer only exists on the
+ *    'connect' event, so the probe is asynchronous and cached.
+ *  - `os.networkInterfaces()` enumerates VMware's host-only adapters before the
+ *    Wi-Fi card. Advertising "the first address on this machine" therefore
+ *    pointed phones at 192.168.182.1, which no device on the WLAN can reach —
+ *    and it did so silently, because the URL looked perfectly plausible.
  */
-export function primaryLanIp(): string {
-  const sock = createSocket('udp4');
-  try {
-    sock.connect(53, '8.8.8.8');
-    const bound = sock.address() as AddressInfo;
-    if (bound?.address && bound.address !== '0.0.0.0') return bound.address;
-  } catch {
-    // no route (airplane mode, no adapter): fall through to enumeration
-  } finally {
-    try {
-      sock.close();
-    } catch {
-      /* already closed */
+
+/** Adapters a phone on the same Wi-Fi can never reach. */
+const VIRTUAL_ADAPTER = /vmware|vmnet|virtualbox|vethernet|hyper-v|loopback|tap|wsl/i;
+
+/** How long a probe answer is reused before the panel asks again. */
+const PROBE_TTL_MS = 5_000;
+
+/** An adapter that is down never fires 'connect'; do not hold the panel open. */
+const PROBE_TIMEOUT_MS = 250;
+
+export interface LanIpFacts {
+  /** source address the OS picked for the default route, null when unknown */
+  probed: string | null;
+  interfaces: NodeJS.Dict<NetworkInterfaceInfo[]>;
+}
+
+/**
+ * Choose the address to advertise from what this machine looks like right now.
+ * A probe answer only counts when it belongs to a real (non-virtual) adapter —
+ * VMware's NAT adapter can own the default route, and that address is exactly
+ * as unreachable from a phone as the fallback would be.
+ */
+export function pickLanIp(facts: LanIpFacts): string {
+  const real: string[] = [];
+  const linkLocal: string[] = [];
+  const virtual: string[] = [];
+  for (const [name, list] of Object.entries(facts.interfaces)) {
+    for (const info of list ?? []) {
+      if (info.family !== 'IPv4' || info.internal) continue;
+      if (VIRTUAL_ADAPTER.test(name)) virtual.push(info.address);
+      else if (info.address.startsWith('169.254.')) linkLocal.push(info.address);
+      else real.push(info.address);
     }
   }
-  return lanAddresses()[0] ?? '127.0.0.1';
+  const { probed } = facts;
+  if (probed && real.includes(probed)) return probed;
+  if (real.length > 0) return real[0];
+  if (linkLocal.length > 0) return linkLocal[0];
+  if (probed && virtual.includes(probed)) return probed;
+  return virtual[0] ?? '127.0.0.1';
+}
+
+let probedIp: string | null = null;
+let probedAt = 0;
+
+function probeSourceAddress(): Promise<string | null> {
+  const sock = createSocket('udp4');
+  return new Promise<string | null>((resolve) => {
+    let settled = false;
+    const finish = (value: string | null): void => {
+      if (settled) return;
+      settled = true;
+      try {
+        sock.close();
+      } catch {
+        /* already closed */
+      }
+      resolve(value);
+    };
+    sock.once('connect', () => {
+      try {
+        const bound = sock.address() as AddressInfo;
+        finish(bound?.address && bound.address !== '0.0.0.0' ? bound.address : null);
+      } catch {
+        finish(null);
+      }
+    });
+    sock.once('error', () => finish(null));
+    try {
+      sock.connect(53, '8.8.8.8');
+    } catch {
+      finish(null);
+    }
+    setTimeout(() => finish(null), PROBE_TIMEOUT_MS).unref?.();
+  });
+}
+
+/**
+ * The address to show the user, re-probing at most once per {@link PROBE_TTL_MS}.
+ * Cheap enough to await on every panel refresh, and self-healing: when the
+ * cached answer leaves the interface table (Wi-Fi off, cable unplugged) it stops
+ * being trusted without waiting for the next probe.
+ */
+export async function refreshLanIp(): Promise<string> {
+  if (probedIp === null || Date.now() - probedAt >= PROBE_TTL_MS) {
+    probedIp = await probeSourceAddress();
+    probedAt = Date.now();
+  }
+  return pickLanIp({ probed: probedIp, interfaces: networkInterfaces() });
 }
 
 /** Every non-internal IPv4 on this machine — all of them go into the SAN. */
