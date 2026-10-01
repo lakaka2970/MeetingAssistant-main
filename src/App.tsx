@@ -18,7 +18,7 @@ import {
 } from '../shared/transcript';
 import { PANEL_ALPHA_DEFAULT, RAIL_SPLIT_DEFAULT } from '../shared/protocol';
 import { heuristic } from '../shared/questionGate';
-import { captureKindForPlatform } from '../shared/platform';
+import { themSourceFor } from '../shared/platform';
 import { deriveServiceHealth } from '../shared/healthState';
 import { LoopbackCapture } from './audio/loopbackCapture';
 import { MicCapture, listMics } from './audio/micCapture';
@@ -616,22 +616,42 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [continuous, lastSeg?.id, lastSeg?.endTs]);
 
-  // Windows: Electron system loopback (or the optional native WASAPI module).
-  // macOS/Linux: selected ordinary input (typically a virtual audio device).
+  // Who records 对方: the main process (Windows WASAPI module, Linux PipeWire
+  // monitor tap), the renderer's getDisplayMedia loopback (Windows Web Audio),
+  // or a plain input device (macOS always, Linux when the tap is unavailable).
+  const themSource = useCallback(
+    () =>
+      themSourceFor({
+        platform: window.mc.platform,
+        captureBackend: settingsRef.current?.audio.captureBackend,
+        mainLoopbackAvailable:
+          (settingsRef.current?.systemLoopback.available ?? false) && !nativeFallbackRef.current,
+      }),
+    [],
+  );
+
   const startCapture = useCallback(async () => {
-    const inputMode = captureKindForPlatform(window.mc.platform) === 'input';
-    const cap = inputMode ? themInputRef.current! : loopbackRef.current!;
+    const source = themSource();
+    const cap = source === 'input-device' ? themInputRef.current! : loopbackRef.current!;
     if (cap.running || nativeActiveRef.current) return;
     try {
-      if (inputMode) {
+      if (source === 'input-device') {
+        const deviceId = settingsRef.current?.audio.themDeviceId;
+        // Linux has no loopback API at all, so an empty pick here would mean
+        // recording the local microphone as if it were the remote party —
+        // wrong channel, and wrong audio in the transcript. Refuse instead.
+        if (window.mc.platform === 'linux' && !deviceId) {
+          setAsr((s) => ({ ...s, lastError: tRef.current.app.linuxNoLoopback }));
+          return;
+        }
         await themInputRef.current!.start(
-          settingsRef.current?.audio.themDeviceId,
+          deviceId,
           (buf, ts) => window.mc.sendPcm(buf, ts, 'them'),
           { audioProcessing: false },
         );
         void listMics().then(setMics).catch(() => undefined);
-      } else if (settingsRef.current?.audio.captureBackend === 'native' && !nativeFallbackRef.current) {
-        // upgrade P1.5: main-process WASAPI loopback. Failures push a
+      } else if (source === 'main-process') {
+        // upgrade P1.5: main-process loopback. Failures push a
         // nativeCaptureError → the fallback below starts Web Audio instead.
         nativeActiveRef.current = true;
         window.mc.nativeCaptureStart(settingsRef.current?.audio.themDeviceId);
@@ -653,9 +673,7 @@ export function App() {
       nativeActiveRef.current = false;
     } else {
       const cap =
-        captureKindForPlatform(window.mc.platform) === 'input'
-          ? themInputRef.current!
-          : loopbackRef.current!;
+        themSource() === 'input-device' ? themInputRef.current! : loopbackRef.current!;
       await cap.stop();
     }
     window.mc.captureStopped();
@@ -1054,7 +1072,8 @@ export function App() {
       <TitleBar
         capturing={capturing}
         asrReady={asr.phase === 'ready'}
-        captureKind={captureKindForPlatform(window.mc.platform)}
+        // 系统声音 vs 麦克风输入 — the tap decides the tooltip, not the OS name
+        captureKind={themSource() === 'input-device' ? 'input' : 'loopback'}
         mics={mics}
         themDeviceId={settings?.audio.themDeviceId ?? ''}
         micDeviceId={settings?.audio.micDeviceId ?? ''}

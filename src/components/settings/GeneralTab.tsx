@@ -147,8 +147,29 @@ export function GeneralTab({
         <span className="settings-inline-hint">{t.settings.autoLaunchHint}</span>
       </div>
 
+      {/* Wayland offers no global-shortcut grab, so this pick decides whether
+          the hotkeys that un-hide the window work at all */}
+      {window.mc.platform === 'linux' && (
+        <div className="settings-row">
+          <label>{t.settings.displayBackendLabel}</label>
+          <select
+            value={d.displayBackend}
+            onChange={(e) =>
+              d.setDisplayBackend(e.target.value as 'auto' | 'wayland' | 'x11')
+            }
+          >
+            <option value="x11">{t.settings.displayBackendX11}</option>
+            <option value="wayland">{t.settings.displayBackendWayland}</option>
+            <option value="auto">{t.settings.displayBackendAuto}</option>
+          </select>
+          <span className="settings-inline-hint">
+            {t.settings.displayBackendHint}（{t.settings.displayBackendRestart}）
+          </span>
+        </div>
+      )}
+
       <div className="settings-section">{t.settings.audioSection}</div>
-      {window.mc.platform === 'win32' && (
+      {d.systemLoopback.available && (
         <div className="settings-row">
           <label>{t.settings.captureBackendLabel}</label>
           <select
@@ -156,17 +177,42 @@ export function GeneralTab({
             onChange={(e) => d.setCaptureBackend(e.target.value as 'webaudio' | 'native')}
           >
             <option value="webaudio">{t.settings.captureWebAudio}</option>
-            <option value="native">{t.settings.captureNative}</option>
+            <option value="native">
+              {d.systemLoopback.kind === 'pipewire'
+                ? t.settings.capturePipewire
+                : t.settings.captureNative}
+            </option>
           </select>
-          <span className="settings-inline-hint">{t.settings.captureBackendHint}</span>
+          <span className="settings-inline-hint">
+            {d.systemLoopback.kind === 'pipewire'
+              ? t.settings.capturePipewireHint
+              : t.settings.captureBackendHint}
+          </span>
         </div>
       )}
-      <div className="settings-row">
-        <label>{t.settings.themDevice}</label>
-        <select value={d.themDeviceId} onChange={(e) => d.setThemDeviceId(e.target.value)}>
-          {deviceOptions}
-        </select>
-      </div>
+      {/* Linux taps a system OUTPUT, which enumerateDevices() never lists —
+          Chromium hides sink monitors from getUserMedia here */}
+      {d.systemLoopback.kind === 'pipewire' && d.captureBackend === 'native' ? (
+        <div className="settings-row">
+          <label>{t.settings.themDeviceLinux}</label>
+          <select value={d.themDeviceId} onChange={(e) => d.setThemDeviceId(e.target.value)}>
+            <option value="">{t.settings.themSinkDefault}</option>
+            {d.loopbackSinks.map((sink) => (
+              <option key={sink.deviceId} value={sink.deviceId}>
+                {sink.label || sink.deviceId}
+              </option>
+            ))}
+          </select>
+          <span className="settings-inline-hint">{t.settings.linuxAudioHint}</span>
+        </div>
+      ) : (
+        <div className="settings-row">
+          <label>{t.settings.themDevice}</label>
+          <select value={d.themDeviceId} onChange={(e) => d.setThemDeviceId(e.target.value)}>
+            {deviceOptions}
+          </select>
+        </div>
+      )}
       <div className="settings-row">
         <label>{t.settings.micDevice}</label>
         <select value={d.micDeviceId} onChange={(e) => d.setMicDeviceId(e.target.value)}>

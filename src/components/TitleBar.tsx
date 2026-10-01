@@ -213,7 +213,11 @@ export function TitleBar({
         )}
         {icon(
           '🕶',
-          window.mc.platform === 'darwin' ? t.titlebar.stealthMacTitle : t.titlebar.stealthTitle,
+          window.mc.platform === 'darwin'
+            ? t.titlebar.stealthMacTitle
+            : window.mc.platform === 'linux'
+              ? t.titlebar.stealthLinuxTitle
+              : t.titlebar.stealthTitle,
           onToggleStealth,
           stealth,
         )}

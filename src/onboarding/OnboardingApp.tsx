@@ -205,7 +205,14 @@ export function OnboardingApp() {
         buildPlanPatch(plan, {
           micEnabled,
           micDeviceId,
-          themDeviceId: info?.platform === 'darwin' ? themDeviceId : undefined,
+          // Windows captures the mix by itself; a device pick there would only
+          // shadow the loopback. macOS needs the BlackHole choice and Linux the
+          // output to tap — both are the user's answer to this step.
+          themDeviceId: info && info.platform !== 'win32' ? themDeviceId : undefined,
+          captureBackend:
+            info?.platform === 'linux' && settings?.systemLoopback.available
+              ? 'native'
+              : undefined,
           lang,
         }),
       );
@@ -214,7 +221,7 @@ export function OnboardingApp() {
       setError(t.complete.applyFail((e as Error).message));
       setBusy(false);
     }
-  }, [plan, micEnabled, micDeviceId, themDeviceId, lang, info, t]);
+  }, [plan, micEnabled, micDeviceId, themDeviceId, lang, info, settings, t]);
 
   if (!settings) {
     return (

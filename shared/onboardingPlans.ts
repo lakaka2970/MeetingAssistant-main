@@ -81,8 +81,14 @@ export function planDefinition(plan: OnboardingPlan): PlanDefinition {
 export interface PlanPatchOptions {
   micEnabled: boolean;
   micDeviceId?: string;
-  /** macOS: the input standing in for system audio (BlackHole & co.) */
+  /** macOS: the input standing in for system audio (BlackHole & co.);
+   * Linux: the PipeWire output the main process taps */
   themDeviceId?: string;
+  /**
+   * Linux only: the wizard verified the main-process tap, so ship it as the
+   * capture backend instead of leaving the user on the manual-input default.
+   */
+  captureBackend?: 'webaudio' | 'native';
   lang: UiLang;
 }
 
@@ -99,6 +105,7 @@ export function buildPlanPatch(plan: OnboardingPlan, opts: PlanPatchOptions): Se
       micEnabled: opts.micEnabled,
       ...(opts.micDeviceId !== undefined ? { micDeviceId: opts.micDeviceId } : {}),
       ...(opts.themDeviceId !== undefined ? { themDeviceId: opts.themDeviceId } : {}),
+      ...(opts.captureBackend !== undefined ? { captureBackend: opts.captureBackend } : {}),
     },
   };
   if (def.asr && def.backend) {

@@ -184,6 +184,10 @@ const zh = {
     macHint:
       'macOS 无法直接采集系统声音。请先安装 BlackHole 等虚拟音频设备，并在下面把它选为对方音频输入。',
     macDevice: '对方音频输入',
+    tapTitle: '测试系统声音（PipeWire 监听）',
+    tapHint:
+      '应用会在主进程监听系统输出设备，无需创建虚拟声卡。播放任意有声音的内容后点击「开始检测」；若列表里有多个输出设备（例如同时接了 HDMI），选中你实际在听的那个。',
+    tapDevice: '监听的系统输出',
     micTitle: '麦克风（可选）',
     micOff: '暂不启用',
     micOn: '启用麦克风',
@@ -424,6 +428,10 @@ const en: SetupDict = {
     macHint:
       'macOS cannot capture system audio directly. Install a virtual audio device such as BlackHole and select it below as the other-party input.',
     macDevice: 'Other-party audio input',
+    tapTitle: 'Test system audio (PipeWire tap)',
+    tapHint:
+      'The app taps the system output device from the main process — no virtual sound card needed. Play anything with sound and press Start; if several outputs are listed (say, speakers plus HDMI), pick the one you are actually listening to.',
+    tapDevice: 'System output to tap',
     micTitle: 'Microphone (optional)',
     micOff: 'Leave disabled',
     micOn: 'Enable microphone',

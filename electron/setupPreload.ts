@@ -17,6 +17,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AppInfo,
   IPC,
+  LoopbackSinksView,
   OnboardingCompletePayload,
   OnboardingProgressPatch,
   OnboardingState,
@@ -42,6 +43,11 @@ const CH = {
   clipboardReadText: 'app:clipboard-read',
   appGetInfo: 'app:get-info',
   providerTest: 'provider:test',
+  nativeCaptureStart: 'native:capture-start',
+  nativeCaptureStop: 'native:capture-stop',
+  nativeCaptureError: 'native:capture-error',
+  nativeCaptureLevel: 'native:capture-level',
+  loopbackSinks: 'native:loopback-sinks',
 } as const satisfies Pick<
   typeof IPC,
   | 'onboardingGet'
@@ -53,6 +59,11 @@ const CH = {
   | 'clipboardReadText'
   | 'appGetInfo'
   | 'providerTest'
+  | 'nativeCaptureStart'
+  | 'nativeCaptureStop'
+  | 'nativeCaptureError'
+  | 'nativeCaptureLevel'
+  | 'loopbackSinks'
 >;
 
 export interface McSetupApi {
@@ -74,6 +85,16 @@ export interface McSetupApi {
   /** 「保存并测试连接」: one real provider round-trip, run only when the user
    * asks for it. The candidate key goes main-side and stays there. */
   providerTest(req: ProviderTestRequest): Promise<ProviderTestResult>;
+  /**
+   * Main-process system audio (Linux PipeWire tap). The wizard has to meter the
+   * capture it is about to configure — getDisplayMedia, which works for the
+   * Windows branch here, cannot reach the meeting audio on Linux at all.
+   */
+  nativeCaptureStart(deviceId?: string): void;
+  nativeCaptureStop(): void;
+  onNativeCaptureLevel(cb: (rms: number) => void): () => void;
+  onNativeCaptureError(cb: (message: string) => void): () => void;
+  loopbackSinks(): Promise<LoopbackSinksView>;
 }
 
 const api: McSetupApi = {
@@ -87,6 +108,19 @@ const api: McSetupApi = {
   readClipboardText: () => ipcRenderer.invoke(CH.clipboardReadText),
   getAppInfo: () => ipcRenderer.invoke(CH.appGetInfo),
   providerTest: (req) => ipcRenderer.invoke(CH.providerTest, req),
+  nativeCaptureStart: (deviceId) => ipcRenderer.send(CH.nativeCaptureStart, deviceId),
+  nativeCaptureStop: () => ipcRenderer.send(CH.nativeCaptureStop),
+  onNativeCaptureLevel: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, rms: number) => cb(Number(rms) || 0);
+    ipcRenderer.on(CH.nativeCaptureLevel, listener);
+    return () => ipcRenderer.removeListener(CH.nativeCaptureLevel, listener);
+  },
+  onNativeCaptureError: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, message: string) => cb(message);
+    ipcRenderer.on(CH.nativeCaptureError, listener);
+    return () => ipcRenderer.removeListener(CH.nativeCaptureError, listener);
+  },
+  loopbackSinks: () => ipcRenderer.invoke(CH.loopbackSinks),
 };
 
 contextBridge.exposeInMainWorld('mcSetup', api);

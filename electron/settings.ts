@@ -130,13 +130,21 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       theme: 'dark',
       // opt-in only: a meeting copilot has no business starting itself
       autoLaunch: false,
+      // Linux ships on XWayland: native Wayland offers no global shortcut grab,
+      // and the hotkey is how a hidden window is summoned back. See
+      // shared/platform.ts linuxOzonePlatform.
+      displayBackend: platform === 'linux' ? ('x11' as const) : ('auto' as const),
       trayNoticeShown: false,
     },
     audio: {
       micEnabled: false,
       // upgrade P1.5: the renderer Web Audio pipeline stays the default; the
       // napi-rs native loopback is an opt-in (artifact may not be built)
-      captureBackend: 'webaudio' as const,
+      // Linux defaults to the main-process PipeWire tap: it is the only route to
+      // system audio there (no display-media loopback token, no monitor device
+      // for getUserMedia). Windows keeps 'webaudio' because its getDisplayMedia
+      // loopback needs no extra package; macOS has no tap at all.
+      captureBackend: (platform === 'linux' ? 'native' : 'webaudio') as 'webaudio' | 'native',
     },
     // upgrade P0: RAG on by default but fully lazy — the embed worker only
     // spawns on first ingest/search, so a disabled/offline machine pays nothing
@@ -815,6 +823,7 @@ export class SettingsStore {
         // both are optional on disk (files written before Phase 4 lack them)
         // but always booleans on the wire, so the UI needs no ?? dance
         autoLaunch: !!d.ui.autoLaunch,
+        displayBackend: d.ui.displayBackend ?? 'auto',
         trayNoticeShown: !!d.ui.trayNoticeShown,
       },
       audio: {
@@ -823,6 +832,10 @@ export class SettingsStore {
         micDeviceId: d.audio.micDeviceId,
         captureBackend: d.audio.captureBackend ?? 'webaudio',
       },
+      // same placeholder-and-overwrite pattern as `knowledge` above: whether a
+      // main-process loopback actually exists is a machine question, answered
+      // by main.publicSettings() from the capture it constructed
+      systemLoopback: { kind: 'none', available: false },
       rag: {
         enabled: d.rag?.enabled !== false,
         model: d.rag?.model ?? 'bge-m3',

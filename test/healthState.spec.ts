@@ -67,9 +67,11 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
       theme: 'dark',
       lang: 'zh',
       autoLaunch: false,
+    displayBackend: 'auto',
       trayNoticeShown: false,
     },
     audio: { micEnabled: false, captureBackend: 'webaudio' },
+    systemLoopback: { kind: 'none', available: false },
     rag: { enabled: true, model: 'bge-m3', topK: 3, minScore: 0.2, remoteHost: 'https://hf-mirror.com' },
     webSearch: { enabled: false, providerId: 'tavily', apiKeySet: false, maxResults: 5 },
     exam: {

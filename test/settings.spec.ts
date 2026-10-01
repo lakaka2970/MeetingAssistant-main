@@ -561,12 +561,20 @@ describe('migrateSettingsV1ToV2 (pure)', () => {
     expect(v2.ui).toEqual({
       ...V1_FILE.ui,
       autoLaunch: false,
+      // platform-specific on purpose: a migrated Linux profile gets XWayland so
+      // its global hotkeys work — native Wayland cannot register them at all
+      displayBackend: process.platform === 'linux' ? 'x11' : 'auto',
       trayNoticeShown: false,
       railSplit: RAIL_SPLIT_DEFAULT,
       panelAlpha: PANEL_ALPHA_DEFAULT,
       answerHistoryOpen: false,
     });
-    expect(v2.audio).toEqual({ ...V1_FILE.audio, captureBackend: 'webaudio' });
+    // same platform story as ui.displayBackend: a migrated Linux profile gets
+    // the PipeWire tap, which is its only route to system audio
+    expect(v2.audio).toEqual({
+      ...V1_FILE.audio,
+      captureBackend: process.platform === 'linux' ? 'native' : 'webaudio',
+    });
   });
 
   it('fills a ui.hotkeyAnswer the file never had, from the running platform', () => {

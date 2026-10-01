@@ -5,6 +5,7 @@ import type {
   CompanionControlItems,
   CompanionState,
   FontScale,
+  LinuxDisplayBackend,
   ProviderSlot,
   ProviderTestResult,
   ProviderVerification,
@@ -175,6 +176,10 @@ export function useSettingsDraft(
   /** the hotkeys the last save attempt refused ('' = none) */
   const [hotkeyError, setHotkeyError] = useState('');
   const [autoLaunch, setAutoLaunch] = useState(settings.ui.autoLaunch);
+  /** Linux only — needs a restart, the row says so */
+  const [displayBackend, setDisplayBackend] = useState<LinuxDisplayBackend>(
+    settings.ui.displayBackend ?? 'auto',
+  );
   const [fontScale, setFontScale] = useState<FontScale>(settings.ui.fontScale ?? 'medium');
   const [theme, setTheme] = useState<ThemeMode>(settings.ui.theme ?? 'dark');
   // ⑧ draft only: the ◐ popover in the title bar is the live path, so this row
@@ -243,6 +248,23 @@ export function useSettingsDraft(
     void listMics()
       .then(setDevices)
       .catch(() => setDevices([]));
+  }, []);
+
+  /**
+   * PipeWire outputs the main process can tap. `enumerateDevices()` will never
+   * show these — Chromium hides sink monitors from getUserMedia on Linux — so
+   * the list comes from pw-dump instead, and 「对方音频」 swaps to it as soon as
+   * system-audio capture is what the user picked.
+   */
+  const [loopbackSinks, setLoopbackSinks] = useState<{ deviceId: string; label: string }[]>([]);
+  useEffect(() => {
+    if (window.mc.platform !== 'linux') return;
+    void window.mc
+      .loopbackSinks()
+      .then((v) =>
+        setLoopbackSinks(v.sinks.map((s) => ({ deviceId: s.name, label: s.description }))),
+      )
+      .catch(() => setLoopbackSinks([]));
   }, []);
 
   /**
@@ -462,6 +484,7 @@ export function useSettingsDraft(
           panelAlpha,
           lang: uiLang,
           autoLaunch,
+          displayBackend,
         },
         exam: {
           hotkeyOpen: examHotkeyOpen.trim(),
@@ -764,6 +787,8 @@ export function useSettingsDraft(
     hotkeyError,
     autoLaunch,
     setAutoLaunch,
+    displayBackend,
+    setDisplayBackend,
     fontScale,
     setFontScale,
     theme,
@@ -779,6 +804,9 @@ export function useSettingsDraft(
     captureBackend,
     setCaptureBackend,
     devices,
+    /** PipeWire outputs, shown instead of `devices` for system-audio capture */
+    loopbackSinks,
+    systemLoopback: settings.systemLoopback,
     saving,
     confirmWeak,
     setConfirmWeak,

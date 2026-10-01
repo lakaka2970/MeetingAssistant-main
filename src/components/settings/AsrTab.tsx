@@ -10,6 +10,9 @@ export function AsrTab({ d }: { d: SettingsDraft }) {
       {window.mc.platform === 'darwin' && (
         <div className="settings-hint">{t.settings.macAudioHint}</div>
       )}
+      {window.mc.platform === 'linux' && (
+        <div className="settings-hint">{t.settings.linuxAudioHint}</div>
+      )}
       <div className="settings-row">
         <label>{t.settings.asrBackend}</label>
         <select

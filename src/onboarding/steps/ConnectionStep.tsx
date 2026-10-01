@@ -128,11 +128,20 @@ export function ConnectionStep({
   onThemDeviceId,
 }: ConnectionStepProps) {
   const isMac = platform === 'darwin';
+  /**
+   * Linux reaches the meeting audio through the main process: a PipeWire output
+   * tap. getDisplayMedia has no loopback token here (Windows-only) and
+   * enumerateDevices hides sink monitors, so the wizard has to meter the real
+   * path or it can never honestly say 「已验证」.
+   */
+  const canTap = platform === 'linux' && settings.systemLoopback.available;
   const [state, setState] = useState<AudioState>('idle');
   const [running, setRunning] = useState(false);
   const [level, setLevel] = useState(0);
   const [detail, setDetail] = useState<string | null>(null);
   const [devices, setDevices] = useState<{ deviceId: string; label: string }[]>([]);
+  /** PipeWire outputs — the picker swaps to these whenever the tap is in play */
+  const [sinks, setSinks] = useState<{ deviceId: string; label: string }[]>([]);
   const [micLevel, setMicLevel] = useState(0);
   const [micError, setMicError] = useState<string | null>(null);
   /** slot whose 重新测试 is in flight */
@@ -149,6 +158,8 @@ export function ConnectionStep({
   const micLevelRef = useRef(0);
   const lastLoudRef = useRef(0);
   const runningRef = useRef(false);
+  /** a live main-process tap is torn down by nativeCaptureStop, not cap.stop() */
+  const tapActiveRef = useRef(false);
 
   const refreshDevices = useCallback(() => {
     void listMics()
@@ -159,6 +170,34 @@ export function ConnectionStep({
   useEffect(() => {
     refreshDevices();
   }, [refreshDevices]);
+
+  useEffect(() => {
+    if (!canTap) return;
+    void window.mcSetup
+      .loopbackSinks()
+      .then((v) => setSinks(v.sinks.map((s) => ({ deviceId: s.name, label: s.description }))))
+      .catch(() => setSinks([]));
+  }, [canTap]);
+
+  // the tap lives in main, so its level and its failures arrive over IPC
+  useEffect(() => {
+    if (!canTap) return;
+    return window.mcSetup.onNativeCaptureLevel((rms) => {
+      levelRef.current = Math.max(levelRef.current, rms);
+      if (rms > SILENCE_RMS) lastLoudRef.current = Date.now();
+    });
+  }, [canTap]);
+
+  useEffect(() => {
+    if (!canTap) return;
+    return window.mcSetup.onNativeCaptureError((message) => {
+      tapActiveRef.current = false;
+      setRunning(false);
+      runningRef.current = false;
+      setDetail(message);
+      setState('failed');
+    });
+  }, [canTap]);
 
   // meter/state ticker: the PCM callback only touches refs, React state is
   // refreshed here so a 16 kHz stream cannot flood the reconciler
@@ -179,6 +218,10 @@ export function ConnectionStep({
   const stopTest = useCallback(async () => {
     runningRef.current = false;
     setRunning(false);
+    if (tapActiveRef.current) {
+      tapActiveRef.current = false;
+      window.mcSetup.nativeCaptureStop();
+    }
     const cap = captureRef.current;
     captureRef.current = null;
     await cap?.stop();
@@ -189,6 +232,10 @@ export function ConnectionStep({
   useEffect(() => {
     return () => {
       runningRef.current = false;
+      if (tapActiveRef.current) {
+        tapActiveRef.current = false;
+        window.mcSetup.nativeCaptureStop();
+      }
       void captureRef.current?.stop();
       captureRef.current = null;
       void micRef.current?.stop();
@@ -213,6 +260,15 @@ export function ConnectionStep({
         // no echo cancellation / AGC: we want the raw level of the device
         await cap.start(themDeviceId || undefined, onPcm, { audioProcessing: false });
         captureRef.current = cap;
+      } else if (canTap) {
+        window.mcSetup.nativeCaptureStart(themDeviceId || undefined);
+        tapActiveRef.current = true;
+      } else if (platform === 'linux') {
+        // no pipewire-utils on this box: a monitor source the user made by hand
+        // (pw-loopback / pactl module-loopback) is still a selectable input
+        const cap = new MicCapture();
+        await cap.start(themDeviceId || undefined, onPcm, { audioProcessing: false });
+        captureRef.current = cap;
       } else {
         const cap = new LoopbackCapture();
         await cap.start(onPcm);
@@ -229,7 +285,7 @@ export function ConnectionStep({
       setDetail(msg);
       setState(NO_DEVICE_RE.test(msg) ? 'no-device' : 'failed');
     }
-  }, [isMac, onPcm, refreshDevices, stopTest, themDeviceId]);
+  }, [canTap, isMac, onPcm, platform, refreshDevices, stopTest, themDeviceId]);
 
   // microphone preview: only alive while 「启用麦克风」 is selected
   useEffect(() => {
@@ -350,24 +406,34 @@ export function ConnectionStep({
       <section className="setup-card">
         <div className="key-card-head">
           <div className="setup-card-title">
-            {isMac ? t.connection.macTitle : t.connection.audioTitle}
+            {isMac
+              ? t.connection.macTitle
+              : canTap
+                ? t.connection.tapTitle
+                : t.connection.audioTitle}
           </div>
           <span className={stateTag}>{stateLabel[state]}</span>
         </div>
         <p style={{ color: 'var(--text-body)', fontSize: 13 }}>
-          {isMac ? t.connection.macHint : t.connection.audioIntro}
+          {isMac
+            ? t.connection.macHint
+            : canTap
+              ? t.connection.tapHint
+              : t.connection.audioIntro}
         </p>
 
-        {isMac && (
+        {(isMac || platform === 'linux') && (
           <div className="setup-field">
-            <span className="setup-field-label">{t.connection.macDevice}</span>
+            <span className="setup-field-label">
+              {canTap ? t.connection.tapDevice : t.connection.macDevice}
+            </span>
             <select
               className="setup-select"
               value={themDeviceId}
               onChange={(e) => onThemDeviceId(e.target.value)}
             >
               <option value="">{t.connection.micDefault}</option>
-              {devices.map((d) => (
+              {(canTap ? sinks : devices).map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
                   {d.label || d.deviceId}
                 </option>

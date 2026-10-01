@@ -141,13 +141,25 @@ export function describeSidecarExit(o: {
   code: number | null;
   stderr: string;
   envName: string;
+  platform?: string;
 }): string {
+  const plat = o.platform ?? process.platform;
   const last = o.stderr.trim().split('\n').filter(Boolean).pop() ?? '';
   if (last && PORT_UNUSABLE.test(last)) {
-    return `local ASR port ${o.port} is not usable (occupied, or reserved by Hyper-V/WSL) — change it in Settings → Speech recognition`;
+    const why =
+      plat === 'win32'
+        ? 'occupied, or reserved by Hyper-V/WSL'
+        : 'occupied, or below the unprivileged port range';
+    return `local ASR port ${o.port} is not usable (${why}) — change it in Settings → Speech recognition`;
   }
   const detail = last ? `; last output: ${last}` : '';
-  return `the local ASR engine exited (code ${o.code})${detail}; check the conda env "${o.envName}"`;
+  // "check the conda env" is Windows-only advice: everywhere else the engine is
+  // a plain interpreter whose requirements were never installed
+  const envHint =
+    plat === 'win32'
+      ? `check the conda env "${o.envName}"`
+      : 'install its requirements (`pip install -r requirements-funasr.txt`, or create a .venv next to the app)';
+  return `the local ASR engine exited (code ${o.code})${detail}; ${envHint}`;
 }
 
 function portOpen(port: number, timeoutMs = 600): Promise<boolean> {

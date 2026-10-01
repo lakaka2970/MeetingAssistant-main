@@ -33,6 +33,8 @@ const zh = {
     kbNoText: (name: string) =>
       `「${name}」没有可提取的文本（扫描版 PDF？请换文字版或 .md/.txt）`,
     nativeFallback: (msg: string) => `原生音频采集不可用，已回落到 Web Audio（${msg}）`,
+    linuxNoLoopback:
+      '没有可用的系统音频监听：请安装 pipewire-utils（提供 pw-record），或在 设置→音频设备 里手动选一个监听源。当前未开始采集。',
   },
   titlebar: {
     start: '▶ 开始',
@@ -58,6 +60,10 @@ const zh = {
     stealth: (on: boolean) => `隐身${on ? '开' : '关'}`,
     stealthTitle: '隐身：窗口对录屏/共享/截图不可见',
     stealthMacTitle: '采集保护：macOS 新版 ScreenCaptureKit 仍可能捕获窗口，不能保证完全隐身',
+    // setContentProtection is implemented for Windows and macOS only, so on
+    // Linux the honest answer is that stealth does not hide the overlay
+    stealthLinuxTitle:
+      '隐身（受限）：Linux 上 Electron 不提供内容保护，本窗口仍会出现在录屏与屏幕共享中',
     hudTitle: '延迟 HUD',
     exam: '做题',
     examTitle: '做题模式：小窗悬浮、对录屏不可见，框选屏幕题目 → 查本机题库 → 命中即答，未命中才交给 AI / 网络',
@@ -637,6 +643,20 @@ const zh = {
     captureWebAudio: 'Web Audio（默认，零依赖）',
     captureNative: '原生 WASAPI（实验，需本地编译）',
     captureBackendHint: '原生后端直接在主进程采集系统声音；未编译原生模块时自动回落 Web Audio。',
+    capturePipewire: '系统音频环回（PipeWire）',
+    capturePipewireHint:
+      '主进程监听系统输出设备（需要安装 pipewire-utils）；监听不可用时自动回落到手动选择输入设备。',
+    themDeviceLinux: '对方音频监听（选择监听哪个系统输出）',
+    themSinkDefault: '默认输出设备',
+    linuxAudioHint:
+      'Linux 的「对方音频」是监听一个系统输出（由 pw-record 完成，需安装 pipewire-utils）。监听不可用时请改回 Web Audio，并在这里选择一个确实能收到会议声音的输入设备。',
+    displayBackendLabel: '显示后端（仅 Linux）',
+    displayBackendAuto: '自动',
+    displayBackendWayland: 'Wayland（原生）',
+    displayBackendX11: 'X11 兼容（推荐）',
+    displayBackendHint:
+      'Wayland 会话下全局快捷键通常注册不上（GNOME 不允许跨客户端抓键），X11 兼容模式走 XWayland 可以恢复；改动需重启应用生效。',
+    displayBackendRestart: '需要重启应用',
     audioSection: '音频设备',
     themDevice: '对方音频输入（macOS 需选择 BlackHole 等虚拟设备）',
     micDevice: '麦克风设备',
@@ -788,6 +808,8 @@ const en: Dict = {
     kbNoText: (name: string) =>
       `"${name}" has no extractable text (scanned PDF? Use a text-based file or .md/.txt)`,
     nativeFallback: (msg: string) => `Native audio capture unavailable — fell back to Web Audio (${msg})`,
+    linuxNoLoopback:
+      'No system-audio tap available: install pipewire-utils (which provides pw-record), or pick a monitor source under Settings → Audio devices. Capture was not started.',
   },
   titlebar: {
     start: '▶ Start',
@@ -816,6 +838,8 @@ const en: Dict = {
     stealthTitle: 'Stealth: window is invisible to recording/sharing/screenshots',
     stealthMacTitle:
       'Capture protection: recent macOS ScreenCaptureKit versions may still capture this window; full stealth is not guaranteed',
+    stealthLinuxTitle:
+      'Stealth (limited): Electron has no content protection on Linux, so this window WILL appear in screen recordings and shares',
     hudTitle: 'Latency HUD',
     exam: 'Exam',
     examTitle:
@@ -1401,6 +1425,20 @@ const en: Dict = {
     captureWebAudio: 'Web Audio (default, zero dependencies)',
     captureNative: 'Native WASAPI (experimental, local build required)',
     captureBackendHint: 'The native backend captures system audio in the main process; it falls back to Web Audio automatically when the native module is not built.',
+    capturePipewire: 'System audio loopback (PipeWire)',
+    capturePipewireHint:
+      'The main process taps the system output device (requires pipewire-utils); falls back to a manually chosen input when tapping is unavailable.',
+    themDeviceLinux: 'Other-party audio tap (which system output to listen to)',
+    themSinkDefault: 'Default output device',
+    linuxAudioHint:
+      'On Linux the other-party channel is a tap on a system output (done with pw-record, which needs pipewire-utils). If the tap is unavailable, switch back to Web Audio and pick an input device here that actually receives the meeting audio.',
+    displayBackendLabel: 'Display backend (Linux only)',
+    displayBackendAuto: 'Auto',
+    displayBackendWayland: 'Wayland (native)',
+    displayBackendX11: 'X11 compatibility (recommended)',
+    displayBackendHint:
+      'On a Wayland session global shortcuts usually cannot be registered (GNOME does not let clients grab keys); X11 compatibility runs on XWayland and restores them. Restart the app for this to take effect.',
+    displayBackendRestart: 'Restart required',
     audioSection: 'Audio devices',
     themDevice: 'Other-party audio input (macOS needs a virtual device such as BlackHole)',
     micDevice: 'Microphone device',

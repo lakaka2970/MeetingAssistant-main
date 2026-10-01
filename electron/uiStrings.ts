@@ -48,9 +48,13 @@ const zh = {
   } satisfies TrayMenuLabels,
   trayNoticeTitle: 'MeetingAssistant 仍在运行',
   trayNoticeBody: '窗口已隐藏，可从系统托盘图标重新打开；托盘菜单里也能直接退出。',
+  trayNoticeBodyNoTray:
+    '窗口已隐藏，但本机没有可用托盘（GNOME/Wayland 常见）。请在 设置→通用 把显示后端改为 X11 兼容并重启，否则只能靠全局快捷键唤回窗口。',
   hotkeyFailTitle: '部分热键注册失败',
   hotkeyFailBody: (keys: string) =>
     `以下热键被其他程序占用或格式无效，已停用：${keys}。可在 设置→通用 中修改。`,
+  hotkeyFailLinux:
+    '如果全部热键都失败，通常是 Wayland 会话不允许跨客户端抓键：在 设置→通用 把显示后端改为 X11 兼容并重启。',
   // 截屏问答管线里 renderer 原样展示的三条引导语
   shotNoQuestionWhole: '整屏里没有找到题目，请用框选（Ctrl+Alt+S）圈出题干后重试',
   shotNoQuestionRegion: '截屏里没有识别出题面，请框选题目区域后重试',
@@ -111,9 +115,13 @@ const en: MainDict = {
   trayNoticeTitle: 'MeetingAssistant is still running',
   trayNoticeBody:
     'The window is hidden — reopen it from the tray icon. The tray menu also has Quit.',
+  trayNoticeBodyNoTray:
+    'The window is hidden, but this machine exposes no tray (common on GNOME/Wayland). Switch the display backend to X11 compatibility in Settings → General and restart, or rely on the global hotkey to bring the window back.',
   hotkeyFailTitle: 'Some hotkeys failed to register',
   hotkeyFailBody: (keys: string) =>
     `These hotkeys are already in use or invalid and were disabled: ${keys}. Change them in Settings → General.`,
+  hotkeyFailLinux:
+    'If none of them registered, this is almost certainly a Wayland session, which forbids cross-client key grabs: set the display backend to X11 compatibility in Settings → General and restart.',
   shotNoQuestionWhole:
     'No question found on the full screen — press the hotkey again and drag a box around it (Ctrl+Alt+S).',
   shotNoQuestionRegion:

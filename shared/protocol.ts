@@ -6,6 +6,8 @@ export const PROTOCOL_VERSION = 1;
 
 import type { ProviderCapability, ProviderId } from './providerCatalog';
 export type { ProviderCapability, ProviderId } from './providerCatalog';
+import type { LinuxDisplayBackend } from './platform';
+export type { LinuxDisplayBackend } from './platform';
 import type { ThinkingLevel } from './thinking';
 export type { ThinkingLevel } from './thinking';
 import type { QuestionKind } from './textHeuristics';
@@ -287,7 +289,7 @@ export interface SettingsFile {
   };
   asr: {
     language: AsrLanguage;
-    /** override models dir; default %APPDATA%/MeetingAssistant/models */
+    /** override models dir; default is <userData>/models (see tools/appPaths.mjs) */
     modelsDir?: string;
     /** catalog provider behind the ACTIVE cloud slot; absent for local backends */
     providerId?: ProviderId;
@@ -356,6 +358,8 @@ export interface SettingsFile {
     lang?: UiLang;
     /** start MeetingAssistant with the OS session; DEFAULT OFF, user opt-in only */
     autoLaunch?: boolean;
+    /** Linux only — see shared/platform.ts LinuxDisplayBackend */
+    displayBackend?: LinuxDisplayBackend;
     /** the "still running in the tray" balloon was shown once; never repeated */
     trayNoticeShown?: boolean;
   };
@@ -484,6 +488,25 @@ export interface SettingsFile {
 }
 
 /** What the renderer is allowed to see (no secrets). */
+/** which main-process system-audio capture this platform offers */
+export type SystemLoopbackKind = 'wasapi' | 'pipewire' | 'none';
+
+/** a PipeWire output device the app can tap (Linux only) */
+export interface LoopbackSink {
+  /** PipeWire node serial */
+  id: string;
+  /** node.name — the value stored in audio.themDeviceId */
+  name: string;
+  /** label for Settings */
+  description: string;
+}
+
+export interface LoopbackSinksView {
+  sinks: LoopbackSink[];
+  /** the sink PipeWire is currently playing to — what 「系统音频」 should tap */
+  defaultSink: LoopbackSink | null;
+}
+
 export interface PublicSettings {
   version: 2;
   /**
@@ -576,6 +599,7 @@ export interface PublicSettings {
     theme: ThemeMode;
     lang: UiLang;
     autoLaunch: boolean;
+    displayBackend: LinuxDisplayBackend;
     trayNoticeShown: boolean;
   };
   audio: {
@@ -583,6 +607,15 @@ export interface PublicSettings {
     micEnabled: boolean;
     micDeviceId?: string;
     captureBackend: 'webaudio' | 'native';
+  };
+  /**
+   * Main-process system-audio capture, as the machine reported it at boot.
+   * `none` means the renderer owns the 对方 channel (Windows getDisplayMedia,
+   * macOS/Linux a chosen input device); the Settings selector keys off this.
+   */
+  systemLoopback: {
+    kind: SystemLoopbackKind;
+    available: boolean;
   };
   /** upgrade P0: RAG knowledge layers — public view (no paths, no secrets) */
   rag: {
@@ -714,6 +747,7 @@ export interface SettingsPatch {
     theme?: ThemeMode;
     lang?: UiLang;
     autoLaunch?: boolean;
+    displayBackend?: LinuxDisplayBackend;
     trayNoticeShown?: boolean;
   };
   audio?: { themDeviceId?: string; micEnabled?: boolean; micDeviceId?: string; captureBackend?: 'webaudio' | 'native' };
@@ -1486,6 +1520,11 @@ export const IPC = {
   nativeCaptureStop: 'native:capture-stop',
   /** main -> renderer: string — the native capture failed (fallback cue) */
   nativeCaptureError: 'native:capture-error',
+  /** main -> sender: number — RMS of the last captured frame (0..1), so the
+   * setup wizard can meter a capture that never touches a renderer */
+  nativeCaptureLevel: 'native:capture-level',
+  /** invoke: () => LoopbackSinksView — PipeWire outputs the app can tap (Linux) */
+  loopbackSinks: 'native:loopback-sinks',
   /** main -> renderer: RagStatus — pushed whenever the embed worker state
    * changes (loading/ready/error); ragStatus remains the pull channel */
   ragStatusPush: 'rag:status-push',

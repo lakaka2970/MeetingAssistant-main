@@ -12,6 +12,7 @@ import {
   type LlmAskPayload,
   type LlmEvent,
   type LlmGateResult,
+  type LoopbackSinksView,
   type NotesSaveResult,
   type OnboardingProgressPatch,
   type OnboardingState,
@@ -107,7 +108,7 @@ export interface McApi {
   /** plaintext support report, built locally on request. Contains no keys, no
    * transcripts and no knowledge-base text — safe to paste into an issue. */
   getDiagnostics(): Promise<string>;
-  /** reveal %APPDATA%/MeetingAssistant (settings, sessions, knowledge) */
+  /** reveal the app data folder (settings, sessions, knowledge) */
   openLogsFolder(): Promise<boolean>;
   // ---- upgrade P0: RAG knowledge layers + L2 notes ----
   /** embed-worker + index health (pull) */
@@ -141,6 +142,10 @@ export interface McApi {
   nativeCaptureStart(deviceId?: string): void;
   nativeCaptureStop(): void;
   onNativeCaptureError(cb: (message: string) => void): () => void;
+  /** main -> us: RMS of the last main-process capture frame (0..1) */
+  onNativeCaptureLevel(cb: (rms: number) => void): () => void;
+  /** PipeWire outputs the app can tap on Linux ([] elsewhere) */
+  loopbackSinks(): Promise<LoopbackSinksView>;
   /** raise the 做题模式 small window; that window has its own minimal bridge */
   openExam(): Promise<boolean>;
   // ---- LAN companion (手机显示) ----
@@ -306,6 +311,12 @@ const api: McApi = {
     ipcRenderer.on(IPC.nativeCaptureError, listener);
     return () => ipcRenderer.removeListener(IPC.nativeCaptureError, listener);
   },
+  onNativeCaptureLevel: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, rms: number) => cb(Number(rms) || 0);
+    ipcRenderer.on(IPC.nativeCaptureLevel, listener);
+    return () => ipcRenderer.removeListener(IPC.nativeCaptureLevel, listener);
+  },
+  loopbackSinks: () => ipcRenderer.invoke(IPC.loopbackSinks),
   hide: () => ipcRenderer.send(IPC.winHide),
   quit: () => ipcRenderer.send(IPC.appQuit),
 };

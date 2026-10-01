@@ -14,7 +14,7 @@
  *    shown/hidden, capture started/stopped, UI language switched), because
  *    Electron menus are immutable snapshots once assigned.
  */
-import { Menu, Tray, nativeImage, type MenuItemConstructorOptions } from 'electron';
+import { Menu, Notification, Tray, nativeImage, type MenuItemConstructorOptions } from 'electron';
 import { join } from 'path';
 import {
   buildTrayMenu,
@@ -109,11 +109,22 @@ export class AppTray {
   }
 
   /**
-   * One-shot "the app is still running" balloon after the window is hidden for
-   * the first time. Windows only: `displayBalloon` is a no-op elsewhere, and
-   * macOS users can see the menu-bar icon anyway.
+   * "the app is still running" notice after the window hides, and the only
+   * channel for a hotkey-registration failure. Windows has a tray balloon;
+   * Linux has neither the balloon API nor necessarily a tray at all (a
+   * StatusNotifierHost is optional), so a desktop notification carries the
+   * message — otherwise a hidden window plus dead hotkeys is completely
+   * silent. macOS keeps its menu-bar icon and is left alone.
    */
   notifyHidden(title: string, content: string): void {
+    if (process.platform === 'linux') {
+      try {
+        if (Notification.isSupported()) new Notification({ title, body: content }).show();
+      } catch (e) {
+        console.warn('[tray] notification failed:', (e as Error).message);
+      }
+      return;
+    }
     if (process.platform !== 'win32') return;
     const tray = this.tray;
     if (!tray || tray.isDestroyed()) return;

@@ -15,12 +15,15 @@ import {
   session,
   shell,
 } from 'electron';
-import { mkdirSync, statSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { spawn } from 'child_process';
 import { release } from 'os';
 import { join } from 'path';
 import {
   captureKindForPlatform,
+  linuxOzonePlatform,
   whisperExecutionProvidersForPlatform,
+  type LinuxDisplayBackend,
 } from '../shared/platform';
 import { AsrHost } from './asrHost';
 import {
@@ -46,6 +49,8 @@ import { SpeculativeCache, after, specKey } from './rag/speculative';
 import { SkillsManager } from './skills/manager';
 import { extractMemoFacts, formatFactsHint } from './consistency/facts';
 import { NativeAudioCapture } from './audio/nativeCapture';
+import { applyLinuxAutostart, linuxAutostartEnabled } from './autostartLinux';
+import { LinuxLoopbackCapture, listLinuxLoopbackSinks, pickLoopbackSink } from './audio/linuxLoopback';
 import { decideRoute, isOcrConfigured, ocrDataUrl } from './vision/ocrPrefilter';
 import { formatWebLines, webSearch, webSources, type WebSearchOutcome } from './websearch';
 import { supplementMessages, isNoSupplement } from '../shared/webSupplement';
@@ -110,7 +115,15 @@ import {
   type AnswerRichness,
 } from '../shared/answerStyle';
 import { resolveActivePersona } from '../shared/personas';
-import type { AppInfo, KnowledgeFilesState, KnowledgeImportResult, PublicSettings, UiLang } from '../shared/protocol';
+import type {
+  AppInfo,
+  KnowledgeFilesState,
+  KnowledgeImportResult,
+  LoopbackSinksView,
+  PublicSettings,
+  SystemLoopbackKind,
+  UiLang,
+} from '../shared/protocol';
 import {
   IPC,
   type AsrEvent,
@@ -176,6 +189,69 @@ app.setName('MeetingAssistant');
 // single-instance lock so a test instance never collides with a real one
 if (process.env.MC_USERDATA) app.setPath('userData', process.env.MC_USERDATA);
 
+/**
+ * Linux: the Ozone backend decides whether global shortcuts work at all, and it
+ * is chosen by Chromium before the JS main runs — measured on Electron 41:
+ * neither `app.commandLine.appendSwitch('ozone-platform', …)` nor
+ * `ELECTRON_OZONE_PLATFORM_HINT` set from here has any effect, the process stays
+ * on Wayland. Only the real command line does, so honour the stored preference
+ * by relaunching once with the flag.
+ *
+ * Dev builds are excluded: `electron-vite dev` owns the child process and would
+ * treat the relaunch as a crash. Run `npx electron . --ozone-platform=x11` there.
+ */
+function relaunchForDisplayBackend(stored: LinuxDisplayBackend): boolean {
+  const ozone = linuxOzonePlatform(stored);
+  if (!ozone || !app.isPackaged) return false;
+  if (process.env.XDG_SESSION_TYPE !== 'wayland') return false;
+  if (process.argv.some((a) => a.startsWith('--ozone-platform'))) return false;
+  if (process.env.MC_BACKEND_RELAUNCHED === ozone) return false;
+  console.log(`[main] relaunching with --ozone-platform=${ozone}`);
+  const child = spawn(process.execPath, [...process.argv.slice(1), `--ozone-platform=${ozone}`], {
+    env: { ...process.env, MC_BACKEND_RELAUNCHED: ozone },
+    stdio: 'inherit',
+  });
+  child.unref();
+  return true;
+}
+
+if (process.platform === 'linux') {
+  const stored = readStoredLinuxDisplayBackend();
+  const active = process.argv.find((a) => a.startsWith('--ozone-platform'));
+  const wanted = linuxOzonePlatform(stored);
+  console.log(
+    `[main] linux display backend: ${stored} (${active ?? wanted ?? 'electron default'})`,
+    wanted && !active && !app.isPackaged
+      ? '— dev build, run `npx electron . --ozone-platform=x11` for global hotkeys'
+      : '',
+  );
+  if (relaunchForDisplayBackend(stored)) {
+    // the relaunched instance owns the session — quit before the single-instance
+    // lock, or this process would be the one the user finds in the tray
+    app.exit(0);
+  }
+}
+
+/**
+ * Read straight off disk because the settings store is not constructed yet at
+ * this point (it wants userData plus safeStorage) — same settings.json the store
+ * loads moments later.
+ *
+ * 'x11' when the key is missing: a file from before this setting means the user
+ * ran on native Wayland with no working global shortcut. First run has no file
+ * at all and gets the same answer.
+ */
+function readStoredLinuxDisplayBackend(): LinuxDisplayBackend {
+  try {
+    const text = readFileSync(join(app.getPath('userData'), 'settings.json'), 'utf8');
+    const raw = JSON.parse(text) as { ui?: { displayBackend?: LinuxDisplayBackend } };
+    const stored = raw?.ui?.displayBackend;
+    return stored === 'auto' || stored === 'wayland' || stored === 'x11' ? stored : 'x11';
+  } catch {
+    return 'x11';
+  }
+}
+
 if (!app.requestSingleInstanceLock()) {
   // Never exit silently here. The instance this collides with is stealth by
   // default and has no taskbar entry, so from the user's side there is nothing
@@ -186,6 +262,19 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(() => {
       const zh = app.getLocale().toLowerCase().startsWith('zh');
+      // the tool the user actually has to reach for differs per desktop
+      const procTool =
+        process.platform === 'win32'
+          ? zh
+            ? '任务管理器'
+            : 'Task Manager'
+          : process.platform === 'darwin'
+            ? zh
+              ? '活动监视器'
+              : 'Activity Monitor'
+            : zh
+              ? '系统监视器（或 pkill meeting-assistant）'
+              : 'the system monitor (or pkill meeting-assistant)';
       dialog.showMessageBoxSync({
         type: 'info',
         title: 'MeetingAssistant',
@@ -193,10 +282,10 @@ if (!app.requestSingleInstanceLock()) {
         detail: zh
           ? '窗口默认隐身、且不出现在任务栏，所以你可能完全看不到它。\n\n' +
             '请到系统托盘找 MeetingAssistant 图标 → 右键 → 退出，再重新打开。\n' +
-            '托盘里也没有的话，在任务管理器中结束 MeetingAssistant 进程。'
+            `托盘里也没有的话，在${procTool}中结束 MeetingAssistant 进程。`
           : 'The window is stealth by default and has no taskbar entry, so it may be entirely invisible.\n\n' +
             'Find the MeetingAssistant icon in the system tray → right-click → Quit, then open it again.\n' +
-            'If the tray has no icon either, end the MeetingAssistant process in Task Manager.',
+            `If the tray has no icon either, end the MeetingAssistant process in ${procTool}.`,
         buttons: [zh ? '知道了' : 'OK'],
       });
     })
@@ -304,20 +393,106 @@ function bootstrap(): void {
     if (win && !win.isDestroyed()) win.webContents.send(IPC.llmEvent, ev);
     companion.publishLlm(ev);
   };
+  /** the window that asked for main-process capture — it gets the level meter
+   * and any failure. Not always `win`: the setup wizard runs in its own window
+   * and has to meter the same audio path it will ship the user into. */
+  let captureWatcher: Electron.WebContents | null = null;
+  /** what the tap actually delivered, read by the MC_E2E_LOOPBACK self-check */
+  let e2ePcmFrames = 0;
+  let e2ePcmSamples = 0;
+  let e2eFirstPcmAt = 0;
+  let e2eStartAt = 0;
+  const onCapturedPcm = (pcm: Float32Array, captureTs: number): void => {
+    // copy: the worker owns this Buffer's lifecycle; sendPcm expects an
+    // offset-free ArrayBuffer (1600 f32 samples = 6.4 KB — negligible)
+    asr.sendPcm(pcm.slice().buffer as ArrayBuffer, captureTs, 'them');
+    if (e2ePcmFrames === 0) e2eFirstPcmAt = Date.now();
+    e2ePcmFrames++;
+    e2ePcmSamples += pcm.length;
+    if (!captureWatcher || captureWatcher.isDestroyed()) return;
+    // RMS, not peak: the wizard meters the renderer capture with rmsOf(), and
+    // a peak would read normal room noise as someone speaking
+    let square = 0;
+    for (let i = 0; i < pcm.length; i++) square += pcm[i] * pcm[i];
+    captureWatcher.send(IPC.nativeCaptureLevel, Math.sqrt(square / Math.max(1, pcm.length)));
+  };
+  const onCaptureError = (message: string): void => {
+    console.warn('[system-loopback]', message);
+    const target = captureWatcher && !captureWatcher.isDestroyed() ? captureWatcher : win?.webContents;
+    target?.send(IPC.nativeCaptureError, message);
+  };
+
   /** upgrade P1.5: optional napi-rs loopback — absent artifact = graceful
    * fallback to the renderer Web Audio path (settings.audio.captureBackend) */
   const nativeAudio = new NativeAudioCapture({
     resourceRoot: getResourceRoot(),
-    onPcm: (pcm, captureTs) => {
-      // copy: the worker owns this Buffer's lifecycle; sendPcm expects an
-      // offset-free ArrayBuffer (1600 f32 samples = 6.4 KB — negligible)
-      asr.sendPcm(pcm.slice().buffer as ArrayBuffer, captureTs, 'them');
-    },
-    onError: (message) => {
-      console.warn('[native-audio]', message);
-      win?.webContents.send(IPC.nativeCaptureError, message);
-    },
+    onPcm: onCapturedPcm,
+    onError: onCaptureError,
   });
+
+  /** Linux counterpart: a PipeWire monitor tap. Chromium will not hand a sink
+   * monitor to getUserMedia (measured: enumerateDevices lists only the physical
+   * mic) and Electron's `audio: 'loopback'` token is Windows-only, so a child
+   * pw-record is the only way the meeting audio can be reached here. */
+  const pipewireAudio =
+    process.platform === 'linux'
+      ? new LinuxLoopbackCapture({ onPcm: onCapturedPcm, onError: onCaptureError })
+      : null;
+
+  const systemLoopbackKind: SystemLoopbackKind =
+    process.platform === 'win32' && nativeAudio.available()
+      ? 'wasapi'
+      : process.platform === 'linux' && pipewireAudio?.available()
+        ? 'pipewire'
+        : 'none';
+
+  const systemLoopback = {
+    kind: systemLoopbackKind,
+    get available(): boolean {
+      return this.kind !== 'none';
+    },
+    start(deviceId?: string): Promise<void> {
+      if (process.platform === 'linux') {
+        if (!pipewireAudio) return Promise.reject(new Error('linux loopback unavailable'));
+        return pipewireAudio.start(deviceId ?? '');
+      }
+      return nativeAudio.start('loopback', deviceId);
+    },
+    stop(): void {
+      pipewireAudio?.stop();
+      nativeAudio.stop();
+      captureWatcher = null;
+    },
+  };
+  if (systemLoopbackKind !== 'none') {
+    console.log(`[system-loopback] available: ${systemLoopbackKind}`);
+  }
+
+  /**
+   * env-gated self-check, same convention as the other MC_E2E_* hooks: start the
+   * main-process tap and exit 0 only if samples really reach the ASR host. This
+   * is the one Linux feature that cannot be judged from a window's appearance.
+   */
+  if (process.env.MC_E2E_LOOPBACK === '1') {
+    setTimeout(() => {
+      e2eStartAt = Date.now();
+      systemLoopback
+        .start(process.env.MC_E2E_LOOPBACK_SINK || undefined)
+        .then(() => new Promise((r) => setTimeout(r, 5000)))
+        .then(() => {
+          const firstFrameMs = e2eFirstPcmAt && e2eStartAt ? e2eFirstPcmAt - e2eStartAt : -1;
+          console.log(
+            `[e2e-loopback] frames=${e2ePcmFrames} samples=${e2ePcmSamples} startToFirstPcmMs=${firstFrameMs}`,
+          );
+          systemLoopback.stop();
+          app.exit(e2ePcmSamples > 0 ? 0 : 1);
+        })
+        .catch((e: Error) => {
+          console.log(`[e2e-loopback] FAILED: ${e.message}`);
+          app.exit(1);
+        });
+    }, 1200);
+  }
 
   /** main-process strings in the current UI language */
   const T = () => mainStrings(settings.data.ui.lang, osLang);
@@ -326,6 +501,7 @@ function bootstrap(): void {
   function publicSettings(): PublicSettings {
     const pub = settings.getPublic();
     pub.knowledge = { chars: knowledge.chars };
+    pub.systemLoopback = { kind: systemLoopbackKind, available: systemLoopback.available };
     return pub;
   }
 
@@ -522,12 +698,15 @@ function bootstrap(): void {
     });
   }
 
-  /** one-shot balloon the first time the window disappears (spec §A) */
+  /** one-shot notice the first time the window disappears (spec §A) */
   function noticeWindowHidden(): void {
-    if (!tray.exists || settings.data.ui.trayNoticeShown) return;
+    if (settings.data.ui.trayNoticeShown) return;
+    // On Linux this arrives as a desktop notification, so a shell with no tray
+    // is precisely when the user needs it; the Windows balloon needs a tray.
+    if (!tray.exists && process.platform !== 'linux') return;
     settings.applyPatch({ ui: { trayNoticeShown: true } });
     const t = T();
-    tray.notifyHidden(t.trayNoticeTitle, t.trayNoticeBody);
+    tray.notifyHidden(t.trayNoticeTitle, tray.exists ? t.trayNoticeBody : t.trayNoticeBodyNoTray);
     console.log('[tray] hide notice shown once');
   }
 
@@ -538,7 +717,22 @@ function bootstrap(): void {
    * installed build instead.
    */
   function applyAutoLaunch(enabled: boolean): void {
-    if (process.platform === 'linux') return;
+    if (process.platform === 'linux') {
+      // Electron has no setLoginItemSettings here; the XDG autostart entry is
+      // what the desktop reads. Same packaged guard as everywhere: a dev build
+      // must never register node_modules/electron/dist/electron at login.
+      if (!app.isPackaged) {
+        console.log(`[autolaunch] ${enabled ? 'on' : 'off'} stored; not applied in a dev build`);
+        return;
+      }
+      try {
+        const path = applyLinuxAutostart(enabled);
+        console.log(`[autolaunch] linux ${enabled ? 'wrote' : 'removed'} ${path}`);
+      } catch (e) {
+        console.warn('[autolaunch] could not be applied:', (e as Error).message);
+      }
+      return;
+    }
     if (!app.isPackaged) {
       console.log(`[autolaunch] ${enabled ? 'on' : 'off'} stored; not applied in a dev build`);
       return;
@@ -552,8 +746,17 @@ function bootstrap(): void {
 
   /** the OS is the source of truth; reconcile it with the stored intent once */
   function syncAutoLaunch(): void {
-    if (process.platform === 'linux' || !app.isPackaged) return;
+    if (!app.isPackaged) return;
     const wanted = !!settings.data.ui.autoLaunch;
+    if (process.platform === 'linux') {
+      // the entry file IS the OS state here
+      try {
+        if (linuxAutostartEnabled() !== wanted) applyLinuxAutostart(wanted);
+      } catch (e) {
+        console.warn('[autolaunch] could not be reconciled:', (e as Error).message);
+      }
+      return;
+    }
     try {
       if (app.getLoginItemSettings().openAtLogin !== wanted) applyAutoLaunch(wanted);
     } catch (e) {
@@ -640,7 +843,15 @@ function bootstrap(): void {
     if (failed.length) {
       console.warn(`[main] hotkey registration failed (in use or invalid): ${failed.join(', ')}`);
       const t = T();
-      tray.notifyHidden(t.hotkeyFailTitle, t.hotkeyFailBody(failed.join(', ')));
+      const body =
+        t.hotkeyFailBody(failed.join(', ')) +
+        (process.platform === 'linux' ? ` ${t.hotkeyFailLinux}` : '');
+      tray.notifyHidden(t.hotkeyFailTitle, body);
+    } else {
+      // positive marker: the absence of the warning above is easy to mistake
+      // for "registration never ran", and hotkeys are the only way back to a
+      // hidden window on every platform
+      console.log('[main] hotkeys registered');
     }
   }
 
@@ -2277,22 +2488,41 @@ function bootstrap(): void {
       }, SPEC_DEBOUNCE_MS);
     });
 
-    // ---- upgrade P1.5: optional native loopback capture ----
+    // ---- upgrade P1.5: main-process loopback capture (Windows WASAPI / Linux PipeWire) ----
     ipcMain.on(IPC.nativeCaptureStart, (_e, deviceId?: string) => {
-      if (process.platform !== 'win32') {
-        win?.webContents.send(IPC.nativeCaptureError, 'native loopback is Windows-only');
+      if (!systemLoopback.available) {
+        _e.sender.send(
+          IPC.nativeCaptureError,
+          systemLoopbackKind === 'none' && process.platform === 'linux'
+            ? 'pw-record 不可用（安装 pipewire-utils）或 PipeWire 未运行'
+            : 'native loopback is unavailable on this platform',
+        );
         return;
       }
-      nativeAudio
-        .start('loopback', deviceId)
-        .then(() => console.log('[native-audio] loopback capture started'))
+      captureWatcher = _e.sender;
+      systemLoopback
+        .start(deviceId)
+        .then(() => console.log(`[system-loopback] started (${systemLoopbackKind})`))
         .catch((e: Error) => {
-          console.warn('[native-audio] start failed:', e.message);
-          win?.webContents.send(IPC.nativeCaptureError, e.message);
+          console.warn('[system-loopback] start failed:', e.message);
+          captureWatcher = null;
+          _e.sender.send(IPC.nativeCaptureError, e.message);
         });
     });
     ipcMain.on(IPC.nativeCaptureStop, () => {
-      nativeAudio.stop();
+      systemLoopback.stop();
+    });
+    ipcMain.handle(IPC.loopbackSinks, async (): Promise<LoopbackSinksView> => {
+      if (process.platform !== 'linux') return { sinks: [], defaultSink: null };
+      try {
+        const { sinks, defaultSink } = await listLinuxLoopbackSinks();
+        return {
+          sinks,
+          defaultSink: pickLoopbackSink(sinks, undefined, defaultSink?.id ?? null),
+        };
+      } catch {
+        return { sinks: [], defaultSink: null };
+      }
     });
 
     // ---- region screenshot: capture full screen, let the user drag a region
@@ -2863,7 +3093,7 @@ function bootstrap(): void {
     tray.destroy();
     void asr.stop();
     void sidecar.stop();
-    nativeAudio.stop();
+    systemLoopback.stop();
     void companion.dispose();
     destroyConnectWindow(connectWin);
     connectWin = null;

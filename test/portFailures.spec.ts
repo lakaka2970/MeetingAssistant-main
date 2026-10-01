@@ -64,6 +64,7 @@ describe('local ASR sidecar exit', () => {
   it('blames the port when python could not bind', () => {
     const msg = describeSidecarExit({
       ...base,
+      platform: 'win32',
       code: 1,
       stderr: 'OSError: [Errno 10048] error while attempting to bind on address (\'127.0.0.1\', 10097): only one usage of each socket address',
     });
@@ -74,11 +75,26 @@ describe('local ASR sidecar exit', () => {
   it('keeps the env hint when python itself failed to import', () => {
     const msg = describeSidecarExit({
       ...base,
+      platform: 'win32',
       code: 1,
       stderr: 'ModuleNotFoundError: No module named \'funasr\'',
     });
     expect(msg).toContain('funasr');
     expect(msg).toContain('conda');
+  });
+
+  it('points at requirements.txt instead of conda off Windows', () => {
+    // the conda env is a Windows install detail; elsewhere the interpreter is
+    // plain python whose dependencies were simply never installed
+    const msg = describeSidecarExit({
+      ...base,
+      platform: 'linux',
+      code: 1,
+      stderr: "ModuleNotFoundError: No module named 'numpy'",
+    });
+    expect(msg).not.toContain('conda');
+    expect(msg).toContain('requirements-funasr.txt');
+    expect(msg).toContain('numpy');
   });
 
   it('carries the real last line when nothing matched', () => {
@@ -92,6 +108,7 @@ describe('local ASR sidecar exit', () => {
     // is a port, and sending the user to the port setting would be a dead end.
     const msg = describeSidecarExit({
       ...base,
+      platform: 'win32',
       code: 1,
       stderr: "PermissionError: [Errno 13] Permission denied: 'model.bin'",
     });
@@ -100,8 +117,16 @@ describe('local ASR sidecar exit', () => {
   });
 
   it('still explains a silent exit', () => {
-    const msg = describeSidecarExit({ ...base, code: null, stderr: '' });
+    const msg = describeSidecarExit({ ...base, platform: 'win32', code: null, stderr: '' });
     expect(msg).toContain('conda');
     expect(msg).toContain('code null');
+  });
+
+  it('blames an unusable port differently per platform', () => {
+    const stderr = 'OSError: [Errno 98] address already in use';
+    expect(describeSidecarExit({ ...base, platform: 'win32', code: 1, stderr })).toContain('Hyper-V');
+    const linux = describeSidecarExit({ ...base, platform: 'linux', code: 1, stderr });
+    expect(linux).not.toContain('Hyper-V');
+    expect(linux).toContain('10097');
   });
 });
