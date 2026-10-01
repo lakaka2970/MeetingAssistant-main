@@ -41,7 +41,9 @@ English version: [TROUBLESHOOTING.en.md](TROUBLESHOOTING.en.md)
 4. **引擎起来了吗**：看左下角状态栏。一直显示「模型加载中…」说明引擎还没就绪，点状态栏的服务状态芯片打开「服务状态」面板，看是哪一项没连上。
 5. **重新检测**：也可以 设置 →「重新运行配置向导」，走到第 4 步用带音量条的检测卡片确认。
 
-macOS 没有系统回环采集，必须先装 BlackHole 之类的虚拟音频设备，并在 设置 →「对方音频输入」里选中它，详见 [docs/macos/SETUP.zh-CN.md](../macos/SETUP.zh-CN.md)。
+macOS 没有系统回环采集，必须先装 BlackHole 之类的虚拟音频设备，并在 设置 →「对方音频输入」里选中它，详见 [docs/macos/SETUP.md](../macos/SETUP.md)。
+
+Linux 采集的是 PipeWire 输出设备的监听（monitor）：默认跟随你当前的默认输出，多个输出设备（扬声器 / HDMI）时在 设置 →「对方音频监听」里选你实际在听的那个。采集依赖系统里的 `pw-record`（`pipewire-utils` 包）与 `wpctl`（`wireplumber` 包），缺失时后端会显示为不可用，详见 [docs/linux/SETUP.zh-CN.md](../linux/SETUP.zh-CN.md)。
 
 ## 三、转写出字，但 AI 不回答
 

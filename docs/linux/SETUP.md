@@ -1,0 +1,160 @@
+# Linux Setup Guide
+
+[简体中文](SETUP.zh-CN.md) · [Windows guide](../windows/SETUP.md) · [macOS guide](../macos/SETUP.md)
+
+MeetingAssistant runs natively on Linux with **system loopback audio**, global
+hotkeys, screen-anchored screenshot Q&A, a tray item and login autostart — all
+verified on Ubuntu 24.04 (GNOME / Wayland, PipeWire 1.0.5, Electron 41).
+
+One capability is *not* available on Linux: content protection. See
+[Stealth](#stealth-honest-about-it).
+
+## Requirements
+
+| Component | Requirement |
+|---|---|
+| OS | Any distro with **PipeWire** + WirePlumber (Fedora 34+, Ubuntu 22.04+, Debian 12+, Arch) |
+| Runtime | Node.js ≥ 20 and npm |
+| System-audio capture | `pw-record` (from the `pipewire-utils` / `pipewire-tools` package) and `wpctl` (from `wireplumber`) |
+| LLM | Any OpenAI-compatible API key — DeepSeek recommended |
+| Local streaming ASR *(default)* | Python 3.10–3.12 with `requirements-funasr.txt`; CPU works, NVIDIA GPU faster |
+| Experimental MOSS ASR *(optional)* | isolated Python env with `requirements-moss.txt` |
+| Local Whisper *(offline fallback)* | `whisper-large-v3-turbo` ONNX weights, **CPU only** (DirectML is Windows-only) |
+| Cloud ASR *(optional)* | Alibaba Cloud DashScope or MiMo key |
+
+```bash
+# Debian/Ubuntu — pw-record and wpctl
+sudo apt install pipewire-utils wireplumber
+```
+
+## Install & run
+
+```bash
+git clone https://github.com/lakaka2970/MeetingAssistant-main.git
+cd MeetingAssistant-main
+npm install          # postinstall applies patches/ — do not skip it
+npm run dev          # or: npm run build && npm start
+```
+
+> 🇨🇳 If npm / Electron downloads are slow in China, create a `.npmrc` containing
+> `registry=https://registry.npmmirror.com` and
+> `electron_mirror=https://npmmirror.com/mirrors/electron/`.
+
+To check a **packaged** build (this is what the hotkey relaunch and autostart
+behaviour apply to):
+
+```bash
+npx electron-builder --dir --linux     # → release/linux-unpacked/meeting-assistant
+node tools/linux-verify.mjs            # 10 functional assertions + size/latency report
+```
+
+## Audio capture — how it reaches the other party
+
+Electron's `audio: 'loopback'` display-media token is Windows-only, and Chromium
+on Linux will not hand a sink monitor to `getUserMedia` (measured:
+`enumerateDevices()` returns only the physical microphone). So the app taps the
+output at the PipeWire graph level instead:
+
+1. it starts `pw-record --target <sink>` with the sample format the ASR host
+   wants (16 kHz mono float32, resampled by PipeWire itself), and
+2. **re-links** the stream's input ports from the microphone onto the sink's
+   `monitor_FL/FR` ports with `pw-link` — WirePlumber otherwise ignores
+   `--target` and connects the default source.
+
+The link table is read back and the capture refuses to start if the graph does
+not end up on the monitor, because silently recording the local microphone and
+presenting it as "the other party" would be worse than recording nothing.
+Pressing **▶ Start** therefore needs no virtual sound card and changes nothing
+in your audio routing — you keep hearing the meeting normally.
+
+- **Multiple outputs** (speakers + HDMI): Settings → Audio devices lists the
+  PipeWire outputs; pick the one you are actually listening to. Leaving it on
+  *Default output* follows whatever PipeWire is playing to.
+- **Without `pw-record`** the backend is reported unavailable and the app falls
+  back to a selectable input device. If you build your own route that carries
+  the meeting audio into a capture device, choose it there; the app makes no
+  claim about how that device was created.
+
+## Global hotkeys and the display backend
+
+Under a native Wayland session no client can grab keys globally, so
+`globalShortcut` fails for every accelerator. The app therefore defaults to the
+X11 backend (XWayland) on Linux, where hotkeys, translucent overlays and screen
+capture all work.
+
+- Packaged builds honour the stored choice by **relaunching once** with
+  `--ozone-platform=x11`; the first process exits before opening a window, so
+  the restart is invisible.
+- `Electron_OZONE_PLATFORM_HINT` and `app.commandLine.appendSwitch()` have no
+  effect here (measured on Electron 41) — only the real command line does.
+- A dev build does not relaunch (that would break `electron-vite dev`); pass the
+  flag yourself: `npx electron . --ozone-platform=x11`.
+- Switch back in Settings → General → *Display backend* if you prefer native
+  Wayland rendering; you lose the global hotkeys and keep the tray.
+
+Defaults: **Control+B** hide/show · **Control+Shift+S** screenshot Q&A ·
+**Control+Alt+A** answer the latest line.
+
+## Local streaming FunASR (default ASR backend)
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-funasr.txt   # torch + funasr + modelscope + numpy
+```
+
+The app **auto-spawns and reaps** the sidecar (`tools/funasr_stream_server.py`,
+`ws://127.0.0.1:10097`, own process group, killed with `SIGTERM` on quit) —
+selecting the preset in Settings is all you do. Interpreter resolution order:
+`MC_FUNASR_PYTHON` → project `.venv/bin/python` → `python3` → `python`.
+The selected model downloads automatically on first run (~880 MB paraformer,
+~1.7 GB Nano). If the engine dies, the error names `requirements-funasr.txt`
+rather than a conda environment — conda is a Windows-side arrangement.
+
+## Experimental MOSS-Transcribe-Diarize 0.9B
+
+Keep it in its own environment so the Transformers 5.x stack cannot disturb FunASR:
+
+```bash
+python3 -m venv .venv-moss
+.venv-moss/bin/pip install -r requirements-moss.txt
+```
+
+Selecting “MOSS-Transcribe 0.9B” auto-starts `tools/moss_asr_server.py`
+(~1.7 GB of weights on first run; device order CUDA → CPU). Override with
+`MC_MOSS_PYTHON`, force a device with `MC_MOSS_DEVICE=cuda:0` / `cpu`.
+MOSS is not a native streaming model: one decode after ~700 ms of trailing
+silence, no word-by-word partials.
+
+## Local Whisper turbo (offline fallback)
+
+Place [`onnx-community/whisper-large-v3-turbo-ONNX`](https://huggingface.co/onnx-community/whisper-large-v3-turbo-ONNX)
+under `~/.config/MeetingAssistant/models/onnx-community/whisper-large-v3-turbo-ONNX/`
+(`encoder_model_fp16.onnx`, `decoder_model_merged_quantized.onnx`, plus config
+and tokenizer files). On Linux it runs on the **CPU** execution provider only.
+`MC_MODELS_DIR` overrides the directory; `node tools/asr-harness.mjs --cpu`
+checks the whole path.
+
+## Stealth, honestly
+
+`setContentProtection()` is implemented for Windows and macOS only, so on Linux
+the overlay **does appear in screen recordings and shares** — the 🕶 button says
+so in its tooltip instead of promising otherwise. Window positioning, the
+frameless transparent overlay and `desktopCapturer` screenshot capture all work
+(verified on both Wayland and X11).
+
+## Login autostart
+
+Enabling it writes `~/.config/autostart/com.lakaka2970.meetingassistant.desktop`
+(the XDG mechanism GNOME and KDE actually read, since Electron's
+`setLoginItemSettings` does nothing on Linux). Packaged builds only — a dev
+build never registers `node_modules/electron/dist/electron` at login. The entry
+points at `$APPIMAGE` when running from an AppImage, so a mount path that
+changes per boot is not baked in.
+
+## Data locations
+
+- Settings / sessions / materials: `~/.config/MeetingAssistant/` (`$XDG_CONFIG_HOME` honoured)
+- API keys: encrypted at rest via the Secret Service (`safeStorage`); the app
+  warns in Settings if the backend is unavailable and keys would be stored plain
+- Tray icon needs a StatusNotifierHost (Ubuntu's default GNOME ships one);
+  without it the app degrades to "no tray" and the hotkeys become the way back

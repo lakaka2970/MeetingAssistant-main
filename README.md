@@ -4,9 +4,9 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 > 实时会议 / 面试助手：一边流式转写对方的话，一边用 AI 生成你可以**照着念**的第一人称回答。
-> Windows / macOS · 本地优先 · BYOK（自带 Key，没有账号系统、没有中间服务器）
+> Windows / macOS / Linux · 本地优先 · BYOK（自带 Key，没有账号系统、没有中间服务器）
 
-Real-time meeting/interview assistant for Windows and macOS: streaming ASR captions of the other
+Real-time meeting/interview assistant for Windows, macOS and Linux: streaming ASR captions of the other
 party plus first-person AI answers you can read aloud. Local-first, bring-your-own-key, no bot joins
 your meeting — it just listens to your system audio. 中文文档为主，English summary at the bottom。
 
@@ -451,7 +451,7 @@ conda run -n moss-asr python -m pip install -r requirements-moss.txt
 把 [`onnx-community/whisper-large-v3-turbo-ONNX`](https://huggingface.co/onnx-community/whisper-large-v3-turbo-ONNX)
 放入 `%APPDATA%/MeetingAssistant/models/onnx-community/whisper-large-v3-turbo-ONNX/`，编码器走 DirectML GPU。
 
-完整平台配置见 [docs/windows/SETUP.zh-CN.md](docs/windows/SETUP.zh-CN.md)（Windows）与 [docs/macos/SETUP.md](docs/macos/SETUP.md)（macOS）。
+完整平台配置见 [docs/windows/SETUP.zh-CN.md](docs/windows/SETUP.zh-CN.md)（Windows）、[docs/macos/SETUP.md](docs/macos/SETUP.md)（macOS）与 [docs/linux/SETUP.zh-CN.md](docs/linux/SETUP.zh-CN.md)（Linux：PipeWire 系统声音环回、X11 后端与快捷键、开机自启）。
 
 ## 🛠 从源码开发
 
@@ -531,6 +531,7 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 | [INSTALL_MACOS.en.md](docs/user/INSTALL_MACOS.en.md) | macOS 从源码安装与 BlackHole 音频路由 |
 | [docs/windows/SETUP.md](docs/windows/SETUP.md) / [zh-CN](docs/windows/SETUP.zh-CN.md) | Windows 平台完整配置（Python / 本地 ASR） |
 | [docs/macos/SETUP.md](docs/macos/SETUP.md) | macOS 平台完整配置 |
+| [docs/linux/SETUP.md](docs/linux/SETUP.md) / [zh-CN](docs/linux/SETUP.zh-CN.md) | Linux 平台完整配置（PipeWire 环回采集、X11 后端与快捷键、XDG 开机自启） |
 | [RELEASE_NOTES_v1.0.2.md](docs/user/RELEASE_NOTES_v1.0.2.md) | **当前版本**说明：换台机器就连不上的四类修复（虚拟网卡配对地址、证书重签、系统保留端口、出站请求挂起） |
 | [RELEASE_NOTES_v1.0.1.md](docs/user/RELEASE_NOTES_v1.0.1.md) | 上一版说明：升级必读的三个默认行为变更、新增内容、已知问题 |
 | [RELEASE_NOTES_v1.0.0.md](docs/user/RELEASE_NOTES_v1.0.0.md) | 首个正式版说明与已知问题 |
@@ -565,7 +566,7 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 
 ## English
 
-**MeetingAssistant** is a real-time meeting / interview assistant for Windows and macOS. It captures
+**MeetingAssistant** is a real-time meeting / interview assistant for Windows, macOS and Linux. It captures
 the other party through **system loopback audio** (no bot, no integration—works with any meeting app),
 transcribes it with streaming ASR, and generates **first-person answers you can read aloud**, powered
 by your own BYOK (bring-your-own-key) LLM provider. It is local-first: the default ASR backend

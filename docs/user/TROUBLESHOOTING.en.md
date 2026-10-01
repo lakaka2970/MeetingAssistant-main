@@ -43,6 +43,8 @@ In order:
 
 macOS has no system loopback capture: install a virtual device such as BlackHole and select it under Settings → other-party audio input. See [docs/macos/SETUP.md](../macos/SETUP.md).
 
+On Linux the app taps the monitor of a PipeWire **output** device: it follows your current default output, and when several exist (speakers / HDMI) you pick the one you are actually hearing under Settings → system-output tap. It needs `pw-record` (from `pipewire-utils`) and `wpctl` (from `wireplumber`); without them the backend reports itself unavailable. See [docs/linux/SETUP.md](../linux/SETUP.md).
+
 ## 3. Transcription works, but there are no AI answers
 
 - "AI answers are not configured yet" in the panes: no LLM key is stored. Transcription and answers are independent services; missing one never disables the other. Add the key in Settings, or re-run the setup wizard.
