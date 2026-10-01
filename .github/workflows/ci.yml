@@ -46,3 +46,45 @@ jobs:
 
       - name: Verify transformers.js patch survived
         run: npm run verify:patched
+
+  # Linux is a supported runtime, not just a build host: the PipeWire tap, the
+  # XDG autostart entry and the display-backend relaunch all live here. The
+  # interactive checks (tools/linux-verify.mjs) need a real session with
+  # PipeWire and a tray host, so they stay out of CI and run on a desktop.
+  linux:
+    name: typecheck, test, build (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Python sidecar tests
+        run: npm run test:python
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify transformers.js patch survived
+        run: npm run verify:patched
+
+      # proves the linux target in electron-builder.yml actually resolves (icon,
+      # extraResources, asarUnpack) without producing release artifacts
+      - name: Package (unpacked)
+        run: npx electron-builder --dir --linux

@@ -54,13 +54,54 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  build-linux:
+    name: build linux packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify
+        run: npm run verify
+
+      # AppImage + deb. No `depends:` on pipewire-utils in electron-builder.yml:
+      # the package name differs per distro and the app degrades to a manually
+      # chosen input device (with the reason in Settings) when pw-record is absent.
+      - name: Build packages
+        run: npm run dist:linux
+
+      - name: Compute SHA256 checksums
+        run: |
+          for f in release/*.AppImage release/*.deb; do
+            [ -e "$f" ] || continue
+            sha256sum "$f" | tee "$f.sha256"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            release/*.AppImage
+            release/*.AppImage.sha256
+            release/*.deb
+            release/*.deb.sha256
+          if-no-files-found: error
+          retention-days: 14
+
   # build-macos:
   #   Add when the macOS target lands. Upload as `macos-installers`; the
   #   release job picks it up automatically via download-artifact's glob.
 
   release:
     name: draft github release
-    needs: [build-windows]
+    needs: [build-windows, build-linux]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

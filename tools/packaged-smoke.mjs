@@ -43,9 +43,10 @@ import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, rmS
 import { tmpdir } from 'os';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { packagedBinary } from './appPaths.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const exePath = join(repoRoot, 'release', 'win-unpacked', 'MeetingAssistant.exe');
+const exePath = packagedBinary(repoRoot);
 const logPath = join(repoRoot, 'release', 'packaged-smoke.log');
 
 /**
@@ -86,16 +87,33 @@ const log = createWriteStream(logPath);
 console.log(`[smoke] exe  ${exePath}`);
 console.log(`[smoke] log  ${logPath}`);
 
-/** taskkill /T so the Python ASR sidecar (a child of electron) dies too */
+/**
+ * Kill the whole tree: the Python ASR sidecar is a child of electron, and on
+ * Linux the app relaunches itself once for the display backend. Windows needs
+ * taskkill /T; POSIX gets the same reach through the process group (the spawn
+ * below sets `detached` so the group is ours to signal).
+ */
 function killTree(child) {
   if (!child.pid) return;
-  try {
-    execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-  } catch {
+  if (process.platform === 'win32') {
     try {
-      child.kill();
+      execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+      return;
     } catch {
-      /* already gone */
+      /* fall through to the single-process kill */
+    }
+  }
+  for (const signal of ['SIGTERM', 'SIGKILL']) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      try {
+        child.kill(signal);
+        return;
+      } catch {
+        /* already gone */
+      }
     }
   }
 }
@@ -116,6 +134,8 @@ function runScenario({ name, env, readyMarkers, settleMs }) {
       env: { ...process.env, MC_USERDATA: userData, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      // own process group on POSIX so killTree can reach the sidecar/relaunch
+      detached: process.platform !== 'win32',
     });
 
     let output = '';

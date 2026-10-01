@@ -33,8 +33,30 @@ files:
   - '!**/*.map'
   - '!**/*.ts'
   - '!**/*.tsx'
+  # ---- platform-independent dead weight (validated on a Linux build; the same
+  # files are unused on Windows because every target runs the Node bundle) ----
+  # 65.8 MB of browser-only ONNX Runtime (52 MB of .wasm plus every ort.*.js
+  # variant). transformers.js bundles `onnxruntime-web` as an IGNORED module in
+  # its Node build, so the dynamic import can never resolve from Electron's main
+  # process — verified by loading the packaged transformers.node.mjs with these
+  # excluded. Both spellings of the jsep artifact are listed because the install
+  # tree and the packaged tree name it differently.
+  - '!node_modules/onnxruntime-web/**'
+  - '!node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm'
+  - '!node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs'
+  - '!node_modules/@huggingface/transformers/dist/jsep.wasm'
+  - '!node_modules/@huggingface/transformers/dist/jsep.mjs'
+  # pdf-parse imports pdfjs-dist/legacy/build/pdf.mjs; build/ and web/ are never
+  # loaded (verified: docparse + knowledge-import specs pass with them absent)
+  - '!node_modules/pdfjs-dist/build/**'
+  - '!node_modules/pdfjs-dist/web/**'
 
 asar: true
+# The app is zh/en only; Electron otherwise ships ~50 locale .pak files (46 MB)
+# and every unused one falls back to en-US anyway.
+electronLanguages:
+  - zh-CN
+  - en-US
 # @huggingface/transformers is loaded through a dynamic ESM import of
 # transformers.node.mjs (electron/asr/engine.ts); an app.asar file:// URL is not
 # importable, and the silent CJS fallback would drop our cache_position patch.
@@ -117,6 +139,88 @@ win:
     - target: portable
       arch:
         - x64
+
+# Linux ships an AppImage (runs on every distro, no root) and a .deb (apt users,
+# and the target that gets a real desktop entry). No `depends` on pipewire-utils:
+# the package name differs across distros, and the app already degrades to a
+# manually chosen input device — with the reason shown in Settings — when
+# pw-record is missing.
+linux:
+  icon: build/icon.png
+  category: Utility
+  maintainer: lakaka2970
+  synopsis: Real-time meeting and interview assistant
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
+  # A platform-level `files` list REPLACES the global one (verified: listing only
+  # the negations below dropped the `out/**` positive, and electron-builder fell
+  # back to its default include-everything — 308 extra entries landed in app.asar,
+  # among them docs/MeetingAssistant-demo.mp4 and README.pdf). So the global
+  # patterns are repeated here; keep the two lists in sync.
+  #
+  # The Linux-only negations drop payload that is never loaded on this platform:
+  # shared/platform.ts asks onnxruntime for ['cpu'] off Windows and ['dml','cpu']
+  # on it, so the CUDA/TensorRT providers (327 MB) are dead weight, as are the
+  # darwin/arm64 prebuilts and the musl builds of the native image libraries.
+  # libonnxruntime.so.1.21.0 is the versioned twin of the SONAME the binding
+  # actually links (DT_NEEDED libonnxruntime.so.1, RUNPATH $ORIGIN/).
+  files:
+    - out/**
+    - package.json
+    - '!src/**'
+    - '!test/**'
+    - '!docs/**'
+    - '!tools/**'
+    - '!patches/**'
+    - '!build/**'
+    - '!.github/**'
+    - '!**/*.md'
+    - '!**/*.tsbuildinfo'
+    - '!electron.vite.config.ts'
+    - '!tsconfig*.json'
+    - '!**/{.npmrc,.editorconfig,start.bat,start-funasr-local.bat}'
+    - '!**/*.map'
+    - '!**/*.ts'
+    - '!**/*.tsx'
+    - '!node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_cuda.so'
+    - '!node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_tensorrt.so'
+    - '!node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime.so.1.21.0'
+    - '!node_modules/onnxruntime-node/bin/napi-v3/linux/arm64/**'
+    - '!node_modules/onnxruntime-node/bin/napi-v3/darwin/**'
+    - '!node_modules/onnxruntime-node/bin/napi-v3/win32/**'
+    - '!node_modules/@napi-rs/canvas-linux-x64-musl/**'
+    - '!node_modules/@img/sharp-libvips-linuxmusl-x64/**'
+    # 65.8 MB of browser-only ONNX Runtime (52 MB of .wasm plus every ort.*.js
+    # variant). transformers.js bundles `onnxruntime-web` as an IGNORED module
+    # in its Node build, so the dynamic import can never resolve here — verified
+    # by loading the packaged transformers.node.mjs with this excluded.
+    - '!node_modules/onnxruntime-web/**'
+    # Browser-only ONNX Runtime wasm that the Node bundle never references
+    # (grep of transformers.node.mjs: zero hits for 'ort-wasm'/'jsep'), and the
+    # pdfjs-dist copies pdf-parse does not load — it imports
+    # pdfjs-dist/legacy/build/pdf.mjs, so build/ and web/ are dead here.
+    - '!node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm'
+    - '!node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs'
+    # the same artifact under the name @huggingface/transformers ships it in the
+    # install tree; both spellings are excluded because the pattern that matches
+    # neither would silently save nothing
+    - '!node_modules/@huggingface/transformers/dist/jsep.wasm'
+    - '!node_modules/@huggingface/transformers/dist/jsep.mjs'
+    - '!node_modules/pdfjs-dist/build/**'
+    - '!node_modules/pdfjs-dist/web/**'
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  # login autostart is written by electron/autostartLinux.ts, not by a packaged
+  # desktop file: an AppImage mounts at a random /tmp path per boot, so only the
+  # running app knows the right Exec target (process.env.APPIMAGE).
+  desktop:
+    entry:
+      Name: MeetingAssistant
+      StartupWMClass: meetingassistant
 
 nsis:
   oneClick: true

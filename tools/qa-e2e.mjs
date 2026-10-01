@@ -17,16 +17,15 @@ import { createRequire } from 'module';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { homedir, tmpdir } from 'os';
+import { tmpdir } from 'os';
+import { userDataDir } from './appPaths.mjs';
 
 const require = createRequire(import.meta.url);
 const electron = require('electron');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const keep = process.argv.includes('--keep');
 
-const appData =
-  process.env.APPDATA || join(homedir(), 'AppData', 'Roaming');
-const realSettings = join(appData, 'MeetingCopilot', 'settings.json');
+const realSettings = join(userDataDir(), 'settings.json');
 // a fresh dir per process: two runs must never share (or rmSync) one profile
 const profile = join(tmpdir(), `mc-qa-e2e-${Date.now().toString(36)}-${process.pid}`);
 

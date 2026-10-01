@@ -24,6 +24,7 @@
     "verify:patched": "node tools/verify-patched.mjs",
     "dist:dir": "npm run build && npm run verify:patched && electron-builder --dir",
     "dist:win": "npm run build && npm run verify:patched && electron-builder --win nsis portable --publish never",
+    "dist:linux": "npm run build && npm run verify:patched && electron-builder --linux AppImage deb --publish never",
     "harness": "node tools/asr-harness.mjs",
     "smoke:llm": "vite-node tools/llm-smoke.ts",
     "smoke:rag": "vite-node tools/rag-smoke.ts",

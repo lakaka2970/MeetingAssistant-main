@@ -10,13 +10,14 @@ import { readFileSync, existsSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
+import { userDataDir } from './appPaths.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(here, '..');
 const useCpu = process.argv.includes('--cpu');
 
 const MODELS_DIR =
-  process.env.MC_MODELS_DIR ?? join(process.env.APPDATA, 'MeetingAssistant', 'models');
+  process.env.MC_MODELS_DIR ?? join(userDataDir(), 'models');
 const MODEL_ID = 'onnx-community/whisper-large-v3-turbo-ONNX';
 const FIXTURE = join(projectRoot, 'test', 'fixtures', 'zh_16k.f32');
 

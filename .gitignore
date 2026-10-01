@@ -4,6 +4,7 @@ __pycache__/
 out/
 dist/
 release/
+.tmp-verify-home/
 models/
 *.log
 .vite/
