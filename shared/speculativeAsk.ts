@@ -22,6 +22,7 @@
  * reducer is deterministic under test.
  */
 import { heuristic, type Verdict } from './questionGate';
+import type { SegmentCloseReason } from './protocol';
 
 /**
  * How long a speculative ask stays replaceable. Deliberately the same number the
@@ -30,16 +31,18 @@ import { heuristic, type Verdict } from './questionGate';
  */
 export const SPEC_REPLACE_WINDOW_MS = 1100;
 
-/** a segment the ASR cut off by trailing silence may still be unfinished */
-export type SegmentReason = 'silence' | 'maxlen' | 'flush';
-
 /**
- * `silence` / `maxlen` both deliver a finished line as far as the user is
- * concerned, and only `flush` (capture being torn down) must not start a paid
- * request. The renderer does not receive the VAD reason yet, so it passes
- * `undefined` and speculation stays allowed — plumbing the real one is a
- * follow-up, not a correctness dependency.
+ * Two ceilings, both about money rather than latency. A chained question can be
+ * chopped repeatedly (「你们…」+「那个…」+「上线…」) and every cut we act on is one
+ * discarded request, so merging stops paying for the user after this many
+ * retractions; and an ask whose first token has already been rendered is never
+ * retracted at all — blanking an answer someone is reading is worse than the
+ * 1100 ms we saved, and that call is spent either way.
  */
+export const SPEC_MAX_RETRACTS = 2;
+
+/** a segment the ASR closed; see shared/protocol SegmentCloseReason */
+export type SegmentReason = SegmentCloseReason;
 
 export interface InFlightAsk {
   requestId: string;
@@ -47,6 +50,10 @@ export interface InFlightAsk {
   text: string;
   /** Date.now() at send */
   firedAt: number;
+  /** true once any token has reached the screen (see above) */
+  streamed: boolean;
+  /** retractions already spent on this chained question */
+  retracts: number;
 }
 
 export type AskPlan =
@@ -98,13 +105,14 @@ export function isContinuation(
 /**
  * What to do with a freshly closed 对方 segment.
  *
- * `reason` gates speculation to the only case that needs it: a segment ended by
- * silence may be unfinished, while 'maxlen'/'flush' deliver a line that is
- * already complete (speculating there would buy nothing).
+ * `reason` is the VAD's own verdict on whether the line can still grow: a
+ * silence-closed one may be mid-sentence, `maxlen` is a complete line forced
+ * open, and `flush` means capture is being torn down — an answer started there
+ * is a paid request nobody will read.
  */
 export function planAsk(o: {
   speculative: boolean;
-  /** undefined = the caller cannot tell (the renderer cannot yet) */
+  /** undefined = the engine never ran our VAD (a service's own final) */
   reason?: SegmentReason;
   line: string;
   inFlight: InFlightAsk | null;
@@ -114,24 +122,27 @@ export function planAsk(o: {
   if (h.verdict === 'skip') return { action: 'skip' };
   // off means off: every non-speculative path below is already the status quo
   if (!o.speculative) return { action: 'debounce', gate: h.verdict };
+  if (o.reason === 'flush') return { action: 'debounce', gate: h.verdict };
 
   if (o.inFlight) {
     const gapMs = o.now - o.inFlight.firedAt;
-    if (isContinuation(o.inFlight.text, o.line, gapMs)) {
+    const mergeable =
+      !o.inFlight.streamed &&
+      o.inFlight.retracts < SPEC_MAX_RETRACTS &&
+      isContinuation(o.inFlight.text, o.line, gapMs);
+    if (mergeable) {
       const merged = `${o.inFlight.text.trim()}${looksTruncated(o.inFlight.text) ? '，' : ' '}${o.line.trim()}`;
       return { action: 'replace', merged, why: 'continuation' };
     }
-    // Not a continuation: an unrelated question while a request is in flight.
-    // Falling back to the ordinary wait keeps today's semantics (two asks are
-    // possible either way) and, above all, never drops a real question.
+    // Not mergeable (unrelated line, already on screen, or out of budget):
+    // fall back to the ordinary wait. Never 'hold' — dropping a real question to
+    // save one call is not a trade the user asked for.
     return { action: 'debounce', gate: h.verdict };
   }
 
   // heuristic.verdict === 'answer' already means the line reads as a complete
-  // ask, so speculation is allowed on any closing reason except a flush.
-  if (o.reason !== 'flush' && h.verdict === 'answer') {
-    return { action: 'fire', why: 'speculative' };
-  }
+  // ask, which is exactly when firing early carries no extra risk.
+  if (h.verdict === 'answer') return { action: 'fire', why: 'speculative' };
   return { action: 'debounce', gate: h.verdict };
 }
 
@@ -141,4 +152,17 @@ export function planAsk(o: {
  */
 export function clearInFlight(inFlight: InFlightAsk | null, requestId: string): InFlightAsk | null {
   return inFlight && inFlight.requestId === requestId ? null : inFlight;
+}
+
+/**
+ * Note the first token of an in-flight ask. Returns the same object for any
+ * other requestId so the caller can assign unconditionally.
+ */
+export function markStreamed(inFlight: InFlightAsk | null, requestId: string): InFlightAsk | null {
+  return inFlight && inFlight.requestId === requestId ? { ...inFlight, streamed: true } : inFlight;
+}
+
+/** a fresh speculative ask, with its retraction budget intact */
+export function startInFlight(requestId: string, text: string, now: number, retracts = 0): InFlightAsk {
+  return { requestId, text, firedAt: now, streamed: false, retracts };
 }

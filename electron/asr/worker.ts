@@ -23,7 +23,7 @@ import { AliyunRealtimeEngine } from './aliyunRealtimeEngine';
 import { MoonshineEngine } from './moonshineEngine';
 import { DEFAULT_STRATEGY_OPTIONS, shouldUseFastEngine, strategyLabel, type AsrStrategyOptions } from './strategy';
 import { LanguageRouter, type LidResult } from './langRouter';
-import type { WorkerInit, WorkerInMessage, WorkerOutMessage } from './contract';
+import type { SegmentCloseReason, WorkerInit, WorkerInMessage, WorkerOutMessage } from './contract';
 
 // Electron utilityProcess exposes process.parentPort (MessageEvent-style).
 interface UtilPort {
@@ -52,6 +52,8 @@ interface PendingSegment {
   endTs: number;
   vadCloseTs: number;
   speaker: Channel;
+  /** carried so the renderer can tell a pause from a finished line */
+  reason?: SegmentCloseReason;
 }
 
 const MAX_QUEUE = 10;
@@ -163,7 +165,14 @@ function handleVadEvents(events: ReturnType<VadSegmenter['push']>, channel: Chan
         queue.shift();
         post({ type: 'error', message: 'transcribe queue overflow, dropped oldest segment', fatal: false });
       }
-      queue.push({ pcm: ev.pcm, startTs: ev.startTs, endTs: ev.endTs, vadCloseTs: Date.now(), speaker: channel });
+      queue.push({
+        pcm: ev.pcm,
+        startTs: ev.startTs,
+        endTs: ev.endTs,
+        vadCloseTs: Date.now(),
+        speaker: channel,
+        reason: ev.reason,
+      });
       void pump();
     }
   }
@@ -341,6 +350,7 @@ async function pump(): Promise<void> {
         lang: r.lang ?? (effLang === 'auto' ? undefined : effLang),
         speaker: seg.speaker,
         audioMs,
+        reason: seg.reason,
         speechStartTs: seg.startTs,
         speechEndTs: seg.endTs,
         vadCloseTs: seg.vadCloseTs,

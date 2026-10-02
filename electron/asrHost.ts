@@ -68,6 +68,7 @@ export class AsrHost {
             lang: msg.lang,
             speaker: msg.speaker,
             audioMs: msg.audioMs,
+            reason: msg.reason,
             timings: {
               speechStartTs: msg.speechStartTs,
               speechEndTs: msg.speechEndTs,

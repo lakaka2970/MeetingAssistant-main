@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   clearInFlight,
   isContinuation,
+  markStreamed,
   planAsk,
+  SPEC_MAX_RETRACTS,
   SPEC_REPLACE_WINDOW_MS,
+  startInFlight,
   type InFlightAsk,
 } from '../shared/speculativeAsk';
 
@@ -11,6 +14,8 @@ const flight = (over: Partial<InFlightAsk> = {}): InFlightAsk => ({
   requestId: 'req-1',
   text: '你们这个季度的交付节奏是怎么安排的？',
   firedAt: 10_000,
+  streamed: false,
+  retracts: 0,
   ...over,
 });
 
@@ -128,6 +133,71 @@ describe('ask planning', () => {
     expect(p).toEqual({ action: 'debounce', gate: 'answer' });
   });
 
+  it('never retracts an answer that has already started on screen', () => {
+    // merging here would blank out text the user is reading, and the call is
+    // spent either way — so the continuation is answered as its own question
+    const p = planAsk({
+      speculative: true,
+      line: '还有灰度策略呢',
+      inFlight: flight({ text: '这套自适应 FEC 的取舍是什么', streamed: true }),
+      now: 10_400,
+    });
+    expect(p.action).toBe('debounce');
+  });
+
+  it('stops merging after the retraction budget, however choppy the sentence', () => {
+    const over = flight({
+      text: '这套自适应 FEC 的取舍是什么',
+      retracts: SPEC_MAX_RETRACTS,
+    });
+    expect(
+      planAsk({
+        speculative: true,
+        line: '还有灰度策略呢',
+        inFlight: over,
+        now: 10_400,
+      }).action,
+    ).toBe('debounce');
+    // one retraction left means the very next cut is still merged
+    expect(
+      planAsk({
+        speculative: true,
+        line: '还有灰度策略呢',
+        inFlight: { ...over, retracts: SPEC_MAX_RETRACTS - 1 },
+        now: 10_400,
+      }).action,
+    ).toBe('replace');
+  });
+
+  it('does not answer a flush line at all — capture is going away', () => {
+    expect(
+      planAsk({
+        speculative: true,
+        reason: 'flush',
+        line: '你们怎么做弱网对抗的？',
+        inFlight: null,
+        now: 1,
+      }).action,
+    ).toBe('debounce');
+    // and an in-flight ask is not merged INTO a flush either
+    expect(
+      planAsk({
+        speculative: true,
+        reason: 'flush',
+        line: '还有灰度策略呢',
+        inFlight: flight({ text: '这套自适应 FEC 的取舍是什么' }),
+        now: 10_400,
+      }).action,
+    ).toBe('debounce');
+  });
+
+  it('marks the ask as streamed without disturbing an unrelated one', () => {
+    const f = flight();
+    expect(markStreamed(f, 'other')).toBe(f);
+    expect(markStreamed(f, 'req-1')).toEqual({ ...f, streamed: true });
+    expect(markStreamed(null, 'req-1')).toBeNull();
+  });
+
   it('skips greetings and logistics without asking anything', () => {
     expect(
       planAsk({
@@ -142,6 +212,17 @@ describe('ask planning', () => {
 });
 
 describe('in-flight bookkeeping', () => {
+  it('starts a fresh ask unstreamed, carrying over the retraction count', () => {
+    expect(startInFlight('req-9', '问题', 5000)).toEqual({
+      requestId: 'req-9',
+      text: '问题',
+      firedAt: 5000,
+      streamed: false,
+      retracts: 0,
+    });
+    expect(startInFlight('req-9', '问题', 5000, 1).retracts).toBe(1);
+  });
+
   it('clears only the ask that just settled', () => {
     const f = flight();
     expect(clearInFlight(f, 'other')).toBe(f);

@@ -4,6 +4,11 @@
  * WebGPU later). Do not add engine-specific fields here.
  */
 
+import type { SegmentCloseReason } from '../../shared/protocol';
+
+/** re-exported so the worker and the host can share one vocabulary */
+export type { SegmentCloseReason };
+
 export interface WorkerInit {
   type: 'init';
   /** 'local' = Whisper turbo on-device; 'cloud' = OpenAI-compatible ASR API; 'cloud-realtime' = WebSocket streaming ASR */
@@ -62,6 +67,8 @@ export interface WorkerSegment {
   lang?: string;
   speaker: 'them' | 'me';
   audioMs: number;
+  /** why the local VAD closed this segment (see shared/protocol SegmentCloseReason) */
+  reason?: SegmentCloseReason;
   speechStartTs: number;
   speechEndTs: number;
   vadCloseTs: number;

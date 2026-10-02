@@ -809,6 +809,14 @@ export interface SettingsPatch {
 
 // ---------- ASR events (main -> renderer) ----------
 
+/**
+ * Why the VAD closed a segment. It decides whether the line can still grow:
+ * `silence` is a pause that may be mid-sentence, `maxlen` is a forced close on a
+ * line that is complete, and `flush` is capture being torn down — answering
+ * that one costs a request nobody will read.
+ */
+export type SegmentCloseReason = 'silence' | 'maxlen' | 'flush';
+
 export interface SegmentTimings {
   /** Date.now() of the first speech sample of the segment */
   speechStartTs: number;
@@ -827,6 +835,8 @@ export interface AsrSegmentEvent {
   lang?: string;
   speaker: Speaker;
   audioMs: number;
+  /** absent on engines that do not run the local VAD (a service's own final) */
+  reason?: SegmentCloseReason;
   timings: SegmentTimings;
 }
 

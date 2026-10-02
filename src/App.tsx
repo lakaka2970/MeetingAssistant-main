@@ -19,7 +19,9 @@ import {
 import { PANEL_ALPHA_DEFAULT, RAIL_SPLIT_DEFAULT } from '../shared/protocol';
 import {
   clearInFlight,
+  markStreamed,
   planAsk,
+  startInFlight,
   type InFlightAsk,
 } from '../shared/speculativeAsk';
 import { themSourceFor } from '../shared/platform';
@@ -412,6 +414,9 @@ export function App() {
                     text: ev.text,
                     lang: ev.lang,
                     speaker: ev.speaker,
+                    // speculative answering needs the VAD's own verdict on
+                    // whether this line can still grow
+                    reason: ev.reason,
                     startTs: ev.timings.speechStartTs,
                     endTs: ev.timings.speechEndTs,
                     e2eMs,
@@ -439,6 +444,8 @@ export function App() {
       // ④: the very first delta of a continuous answer is the number that
       // matters — everything before it (ASR, debounce, gate, retrieve) was silence
       if (ev.kind === 'delta') {
+        // once it is on screen, retracting it would blank an answer being read
+        inFlightRef.current = markStreamed(inFlightRef.current, ev.requestId);
         const start = speechEndRef.current.get(ev.requestId);
         if (start !== undefined) {
           speechEndRef.current.delete(ev.requestId);
@@ -625,6 +632,7 @@ export function App() {
     const speculative = !!settingsRef.current?.llm.speculativeAsk;
     const plan = planAsk({
       speculative,
+      reason: lastSeg.reason,
       line: lastSeg.text,
       inFlight: inFlightRef.current,
       now: Date.now(),
@@ -641,9 +649,14 @@ export function App() {
       }
       answeredRef.current = lastSeg.id;
       const requestId = askLlmRef.current('continuous', question, interrupted?.requestId);
-      inFlightRef.current = { requestId, text: question, firedAt: Date.now() };
+      inFlightRef.current = startInFlight(
+        requestId,
+        question,
+        Date.now(),
+        interrupted ? interrupted.retracts + 1 : 0,
+      );
       console.log(
-        `[spec-ask] ${interrupted ? 'replaced' : 'fired'} in-flight ask "${question.slice(0, 24)}"`,
+        `[spec-ask] ${interrupted ? `replaced (retract #${inFlightRef.current.retracts})` : 'fired'}: "${question.slice(0, 24)}"`,
       );
       return;
     }
@@ -654,7 +667,7 @@ export function App() {
       answeredRef.current = lastSeg.id;
       const requestId = askLlmRef.current('continuous');
       if (speculative) {
-        inFlightRef.current = { requestId, text: lastSeg.text, firedAt: Date.now() };
+        inFlightRef.current = startInFlight(requestId, lastSeg.text, Date.now());
       }
     };
     // obvious ask → answer at debounce expiry straight away; ambiguous → the

@@ -3,6 +3,7 @@
  * Lesson from Natively: STT can split one sentence into fragments — merge
  * same-speaker segments that arrive close together, capped in length.
  */
+import type { SegmentCloseReason } from './protocol';
 
 export interface TranscriptSegment {
   id: number;
@@ -16,6 +17,13 @@ export interface TranscriptSegment {
   /** Date.now() of speech start/end (from ASR timings) */
   startTs: number;
   endTs: number;
+  /**
+   * Why the VAD closed this line. Speculative answering needs it: a line ended
+   * by silence may keep growing, one ended by maxlen is finished, and a flush
+   * must not start a paid request at all. Optional because sessions written
+   * before it existed, and services that finalise on their own, have none.
+   */
+  reason?: SegmentCloseReason;
   /** end-to-end latency (speech end -> rendered), for the HUD */
   e2eMs?: number;
   inferMs?: number;
