@@ -140,15 +140,26 @@ function finish() {
   console.log('\n================ linux verification ================');
 
   const relaunches = log.split('\n').filter((l) => l.includes('relaunching with')).length;
-  record(
-    'display backend relaunch (XWayland)',
-    relaunches === 1 && /linux display backend: x11 \(--ozone-platform=x11\)/.test(log),
-    `${relaunches} relaunch(es)`,
-  );
-  record(
-    'no relaunch loop',
-    log.split('\n').filter((l) => l.includes('linux display backend')).length === 2,
-  );
+  // The relaunch exists only to move a Wayland session onto XWayland. On an X11
+  // session (this shell's env decides, not the code) there is nothing to move,
+  // so asserting it there would fail for the wrong reason.
+  const wayland = process.env.XDG_SESSION_TYPE === 'wayland';
+  console.log(`session: XDG_SESSION_TYPE=${process.env.XDG_SESSION_TYPE || 'unset'} DISPLAY=${process.env.DISPLAY || '-'}`);
+  if (wayland) {
+    record(
+      'display backend relaunch (XWayland)',
+      relaunches === 1 && /linux display backend: x11 \(--ozone-platform=x11\)/.test(log),
+      `${relaunches} relaunch(es)`,
+    );
+    record(
+      'no relaunch loop',
+      log.split('\n').filter((l) => l.includes('linux display backend')).length === 2,
+    );
+  } else {
+    console.log(
+      `SKIP  display-backend relaunch — not a Wayland session (${relaunches} relaunch(es) seen)\n`,
+    );
+  }
   record('global hotkeys registered', /\[main\] hotkeys registered/.test(log));
   record('no hotkey failures', !log.includes('hotkey registration failed'));
   record('system tray created', /\[tray\] created/.test(log));
