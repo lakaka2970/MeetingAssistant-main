@@ -98,17 +98,38 @@ Defaults: **Control+B** hide/show · **Control+Shift+S** screenshot Q&A ·
 ## Local streaming FunASR (default ASR backend)
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements-funasr.txt   # torch + funasr + modelscope + numpy
+uv venv .venv --python 3.12      # or: python3 -m venv .venv
+# CPU builds of torch/torchaudio — required on a machine without NVIDIA, since
+# the default index serves CUDA wheels
+uv pip install --python .venv 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cpu
+uv pip install --python .venv 'torchaudio==2.11.0+cpu' --index-url https://download.pytorch.org/whl/cpu --reinstall-package torchaudio
+uv pip install --python .venv -r requirements-funasr.txt 'transformers>=4.44,<5'
 ```
+
+Neither extra is optional, both measured on a clean Ubuntu box:
+
+- installing `requirements-funasr.txt` alone resolves `transformers` down to
+  4.12.2 (2021), which pins `tokenizers==0.10.3` — no wheels exist for it, so it
+  tries to build from source and dies for want of a Rust toolchain. A modern
+  floor fixes it.
+- without the CPU index, `torch`/`torchaudio` arrive as CUDA builds: gigabytes
+  larger, and `import torchaudio` then fails with a missing `libcudart.so.13`.
+  Reinstalling `torchaudio==2.11.0` from the CPU index is a no-op (same version
+  string), so it needs the explicit `+cpu` label plus `--reinstall-package`.
 
 The app **auto-spawns and reaps** the sidecar (`tools/funasr_stream_server.py`,
 `ws://127.0.0.1:10097`, own process group, killed with `SIGTERM` on quit) —
 selecting the preset in Settings is all you do. Interpreter resolution order:
 `MC_FUNASR_PYTHON` → project `.venv/bin/python` → `python3` → `python`.
-The selected model downloads automatically on first run (~880 MB paraformer,
-~1.7 GB Nano). If the engine dies, the error names `requirements-funasr.txt`
-rather than a conda environment — conda is a Windows-side arrangement.
+First run downloads the model (≈880 MB paraformer, ≈2.1 GB Nano, from ModelScope).
+If the engine dies, the error names `requirements-funasr.txt` rather than a conda
+environment — conda is a Windows-side arrangement.
+
+Self-check (the combination verified here):
+
+```bash
+MC_VERBOSE_LOGS=1 MC_USERDATA=/tmp/asr-check npm run smoke:e2e:local
+```
 
 ## Experimental MOSS-Transcribe-Diarize 0.9B
 

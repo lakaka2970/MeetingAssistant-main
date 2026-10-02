@@ -39,7 +39,7 @@ worker `PARTIAL_INTERVAL_MS=1400` / `RING_MS=300` / `STREAM_IDLE_CLOSE_MS=10000`
 | S5 | 排除 `libonnxruntime.so.1.21.0`（binding 的 DT_NEEDED/RUNPATH 只指向 `libonnxruntime.so.1`） | **-21 MB** | `readelf -d` 实测 + `ldd` 在打包树内解析成功 | ✅ |
 | S8 | 排除 transformers 的 jsep wasm（dev 树名 `jsep.wasm`，打包树名 `ort-wasm-simd-threaded.jsep.wasm`，两种拼写都列） | **-21 MB** | node bundle 中 `ort-wasm`/`jsep` 引用数为 0；移走文件后导入与 spec 均通过 | ✅ |
 | S7 | 排除 `pdfjs-dist/build`、`web`（pdf-parse 实际 import `pdfjs-dist/legacy/build/pdf.mjs`） | **-8 MB** | 移走两目录后 `docparse.spec.ts` + `globalKnowledgeImport.spec.ts` 14 项全过 | ✅ |
-| S6 | 排除 `LICENSES.chromium.html`（19 MB） | -19 MB | 合规取舍，需产品确认 | ⏸ 待定 |
+| S6 | ~~排除 `LICENSES.chromium.html`（19 MB）~~ | **实测后取消** | 19.13 MB 原文 → **xz -9 后 180 KB**（deb 与 AppImage 的 squashfs 默认都是 xz），gzip 也只有 2.1 MB。它只在解包目录里显得大，在用户下载的产物里近乎零成本；而它是 Chromium 及大量第三方组件的许可声明，删掉是拿合规换 0.18 MB。**保留。** | ❌ 不做 |
 
 实施要点（踩到的坑，写进配置注释）：
 
@@ -153,5 +153,34 @@ worker `PARTIAL_INTERVAL_MS=1400` / `RING_MS=300` / `STREAM_IDLE_CLOSE_MS=10000`
 仍未验证（评审时必须知道）：真实音频流上的投机命中率与撤销率、重复计费的实际增量。
 这两项需要一台接好 ASR 引擎（Python 依赖或已下载的 Whisper 模型）的机器，
 因此这一版仍应作为可开可关的实验，不应默认启用。
+
+## 7. 本地 ASR 打通后的实测（2026-10-02）
+
+Python 环境按 §docs/linux/SETUP 的配方建好（`.venv`，CPU 版 torch/torchaudio，
+`transformers>=4.44` 下界），`npm run smoke:e2e:local` → **E2E_LOCAL_OK**：
+应用自己发现 `.venv/bin/python`、拉起并回收 sidecar、连上 `ws://127.0.0.1:10097`、worker 就绪。
+真实链路（PipeWire 监听 → VAD → sidecar → 出字）用打包态 + `MC_E2E_LOOPBACK` 播放测试语音实测：
+
+| 指标 | nano（默认） | paraformer 流式 |
+| --- | --- | --- |
+| 语音结束 → segment 事件（e2e） | 1796–1947 ms | 1826–1968 ms |
+| 转写正确性 | 「测试。」/ "test" ✅ | 「测试。」/ "test" ✅ |
+| 首次就绪（含模型下载） | ~2.1 GB | ~880 MB |
+| 环回 ▶ → 首个 PCM | 194–201 ms | 同 |
+
+两个结论：
+
+1. **`requirements-funasr.txt` 在干净 Linux 上装不起来**，两处都是硬失败（已修文档并给出可复现配方）：
+   `transformers` 被解析到 4.12.2 → `tokenizers==0.10.3` 需 Rust 源码构建；
+   torch/torchaudio 默认拿 CUDA 变体，无 NVIDIA 机器上 `import torchaudio` 直接报缺
+   `libcudart.so.13`。这属于"包体/依赖"之外的可用性缺口，值得单独做平台化的 requirements 或安装脚本。
+2. **~1.85 s 的 ASR e2e 与模型无关**（两个引擎差在噪声范围内）。VAD 挂起只有 300 ms，
+   因此剩下 ~1.5 s 不是推理速度，而更可能是链路上的固定偏置——重点怀疑
+   `speechEndTs` 的重建方式（`epoch + endMs`，epoch 取自段起始的 `captureTs`）与实际墙钟的偏差，
+   以及流式引擎 final 的到达时机。**在拆穿这 1.85 s 之前，它比 1100 ms 防抖更该优先处理**：
+   它是用户最先感受到的那段时间，而投机作答只是在其之上再省 1.1 s。
+
+因此下一步顺序调整为：先定位 ASR e2e 的构成（P0），再评估投机作答的命中率（P1，需真实语音），
+参数化 partial 节奏（P1），最后才是打包产物相关（L1/S6 已判定不做）。
 
 

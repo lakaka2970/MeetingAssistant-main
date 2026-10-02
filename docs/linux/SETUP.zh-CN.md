@@ -86,15 +86,34 @@ Wayland 原生会话下没有客户端能全局抓键，`globalShortcut` 会对�
 ## 本地流式 FunASR（默认 ASR）
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements-funasr.txt   # torch + funasr + modelscope + numpy
+uv venv .venv --python 3.12      # 或 python3 -m venv .venv
+# CPU 版 torch（本机无 NVIDIA 时必须；默认索引给的是 CUDA 变体）
+uv pip install --python .venv 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cpu
+uv pip install --python .venv 'torchaudio==2.11.0+cpu' --index-url https://download.pytorch.org/whl/cpu --reinstall-package torchaudio
+uv pip install --python .venv -r requirements-funasr.txt 'transformers>=4.44,<5'
 ```
+
+两条都不是可选的，实测原因：
+
+- 只按 `requirements-funasr.txt` 装，`transformers` 会被解析到 4.12.2（2021 年），
+  它要求 `tokenizers==0.10.3`——那版本没有预编译 wheel，需要 Rust 工具链源码构建，
+  干净机器上会直接失败。加一个现代下界即可。
+- `torch` / `torchaudio` 不加 CPU 索引时会装成 CUDA 变体：体积大几 GB，且在没有
+  NVIDIA 的机器上 `import torchaudio` 会因缺 `libcudart.so.13` 报错。
+  注意 `torchaudio==2.11.0` 从 CPU 索引重装时会被判定"已满足"而跳过，必须写
+  `+cpu` 并 `--reinstall-package`。
 
 应用会**自动拉起并回收** sidecar（`tools/funasr_stream_server.py`，
 `ws://127.0.0.1:10097`，独立进程组，退出时 `SIGTERM`）——在设置里选好预设即可。
 解释器查找顺序：`MC_FUNASR_PYTHON` → 项目内 `.venv/bin/python` → `python3` → `python`。
-首次运行自动下载模型（paraformer 约 880 MB，Nano 约 1.7 GB）。引擎异常退出时，
-报错会指向 `requirements-funasr.txt` 而不是 conda 环境——conda 那是 Windows 侧的约定。
+首次运行自动下载模型（paraformer 约 880 MB，Nano 约 2.1 GB，均走 ModelScope）。
+引擎异常退出时，报错会指向 `requirements-funasr.txt` 而不是 conda 环境——conda 那是 Windows 侧的约定。
+
+自检（本机实测通过的组合）：
+
+```bash
+MC_VERBOSE_LOGS=1 MC_USERDATA=/tmp/asr-check npm run smoke:e2e:local
+```
 
 ## 实验性 MOSS-Transcribe-Diarize 0.9B
 

@@ -474,11 +474,14 @@ function bootstrap(): void {
    * is the one Linux feature that cannot be judged from a window's appearance.
    */
   if (process.env.MC_E2E_LOOPBACK === '1') {
+    // window is tunable: measuring a real utterance through the whole
+    // tap → VAD → engine → segment chain needs longer than a smoke test does
+    const windowMs = Math.max(1000, Number(process.env.MC_E2E_LOOPBACK_MS ?? 5000));
     setTimeout(() => {
       e2eStartAt = Date.now();
       systemLoopback
         .start(process.env.MC_E2E_LOOPBACK_SINK || undefined)
-        .then(() => new Promise((r) => setTimeout(r, 5000)))
+        .then(() => new Promise((r) => setTimeout(r, windowMs)))
         .then(() => {
           const firstFrameMs = e2eFirstPcmAt && e2eStartAt ? e2eFirstPcmAt - e2eStartAt : -1;
           console.log(
