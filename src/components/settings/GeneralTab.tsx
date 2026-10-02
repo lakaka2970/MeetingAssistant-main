@@ -135,6 +135,20 @@ export function GeneralTab({
         </label>
       </div>
 
+      {/* experimental, off by default: it answers early and retracts the request
+          if the interviewer keeps talking, so a wrong guess costs a call */}
+      <div className="settings-row">
+        <label>
+          <input
+            type="checkbox"
+            checked={d.speculativeAsk}
+            onChange={(e) => d.setSpeculativeAsk(e.target.checked)}
+          />{' '}
+          {t.settings.speculativeAsk}
+        </label>
+        <span className="settings-inline-hint">{t.settings.speculativeAskHint}</span>
+      </div>
+
       <div className="settings-row">
         <label>{t.settings.autoLaunch}</label>
         <select

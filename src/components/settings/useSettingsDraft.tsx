@@ -173,6 +173,8 @@ export function useSettingsDraft(
   const [examHotkeyAsk, setExamHotkeyAsk] = useState(settings.exam.hotkeyAsk);
   const [examPreferOcr, setExamPreferOcr] = useState(settings.exam.preferOcr);
   const [examWebFallback, setExamWebFallback] = useState(settings.exam.webFallback);
+  /** draft: 投机作答（先答后撤），默认关 —— 猜错会白花一次请求 */
+  const [speculativeAsk, setSpeculativeAsk] = useState(!!settings.llm.speculativeAsk);
   /** the hotkeys the last save attempt refused ('' = none) */
   const [hotkeyError, setHotkeyError] = useState('');
   const [autoLaunch, setAutoLaunch] = useState(settings.ui.autoLaunch);
@@ -422,6 +424,7 @@ export function useSettingsDraft(
           thinking: llmThinking as ThinkingLevel | '',
           // whole-map replace: lanes not in the map fall back to the default
           thinkingByPreset,
+          speculativeAsk,
           routing: {
             enabled: routeEnabled,
             byKind: {
@@ -784,6 +787,8 @@ export function useSettingsDraft(
     setExamPreferOcr,
     examWebFallback,
     setExamWebFallback,
+    speculativeAsk,
+    setSpeculativeAsk,
     hotkeyError,
     autoLaunch,
     setAutoLaunch,

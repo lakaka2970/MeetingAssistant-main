@@ -90,6 +90,9 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       thinking: 'off',
       answerRichness: DEFAULT_RICHNESS,
       answerExpertise: DEFAULT_EXPERTISE,
+      // draft: speculative answering retracts a request when it guessed wrong,
+      // which can cost a billed call — off until the user turns it on
+      speculativeAsk: false,
       personas: [],
       activePersonaId: '',
       // upgrade P1: routing off by default — single provider stays the zero-
@@ -745,6 +748,7 @@ export class SettingsStore {
         thinkingByPreset: d.llm.thinkingByPreset ?? {},
         answerRichness: d.llm.answerRichness ?? DEFAULT_RICHNESS,
         answerExpertise: d.llm.answerExpertise ?? DEFAULT_EXPERTISE,
+        speculativeAsk: !!d.llm.speculativeAsk,
         personas: d.llm.personas ?? [],
         activePersonaId: d.llm.activePersonaId ?? '',
         promptPersona: d.llm.promptPersona,

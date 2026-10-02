@@ -37,6 +37,7 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
       thinkingByPreset: {},
       answerRichness: 'standard',
       answerExpertise: 'professional',
+      speculativeAsk: false,
       personas: [],
       activePersonaId: '',
     },

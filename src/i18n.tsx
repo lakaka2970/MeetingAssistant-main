@@ -772,6 +772,9 @@ const zh = {
     examPreferOcr: '优先本地 OCR 读题',
     examPreferOcrHint: '先离线识别文字再提问；识别失败自动回退视觉模型。',
     examWebFallback: '题库与本地模型都没把握时联网兜底',
+    speculativeAsk: '提前作答（实验）',
+    speculativeAskHint:
+      '对方一问完就发请求，如果他还在继续说则撤销并合并重问，可省约 1.1 秒首字等待。猜错时会浪费一次调用（可能计费），默认关闭。',
     webSearchNoKeyWarn: '联网搜索已开启但还没有 API Key：知识库未命中时会静默跳过联网，只由模型自身作答。',
     hotkeyInvalid: (keys: string) =>
       `快捷键格式无效：${keys}。请用「修饰键+按键」（如 Control+Alt+S），或单独的 F1–F24 / 媒体键。`,
@@ -1558,6 +1561,9 @@ const en: Dict = {
     examPreferOcr: 'Prefer local OCR',
     examPreferOcrHint: 'Read the text offline before asking; falls back to the vision model on failure.',
     examWebFallback: 'Web-search fallback when neither the bank nor the model is sure',
+    speculativeAsk: 'Answer early (experimental)',
+    speculativeAskHint:
+      'Sends the request the moment the question closes and retracts + re-asks it if the other side keeps talking — about 1.1 s less waiting before the first token. A wrong guess discards a call that may still be billed, so this is off by default.',
     webSearchNoKeyWarn:
       'Web search is on but no API Key is stored: knowledge-base misses silently skip the web and answer from the model alone.',
     hotkeyInvalid: (keys: string) =>

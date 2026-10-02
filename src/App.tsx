@@ -17,7 +17,11 @@ import {
   type TranscriptSegment,
 } from '../shared/transcript';
 import { PANEL_ALPHA_DEFAULT, RAIL_SPLIT_DEFAULT } from '../shared/protocol';
-import { heuristic } from '../shared/questionGate';
+import {
+  clearInFlight,
+  planAsk,
+  type InFlightAsk,
+} from '../shared/speculativeAsk';
 import { themSourceFor } from '../shared/platform';
 import { deriveServiceHealth } from '../shared/healthState';
 import { LoopbackCapture } from './audio/loopbackCapture';
@@ -219,28 +223,57 @@ export function App() {
     [patchSession],
   );
 
+  /**
+   * Ask and return the requestId, so a speculative ask can be cancelled and
+   * re-keyed later. `replaceTurnId` reuses the existing row instead of appending
+   * a second one — a retract-then-reask must not look like two answers.
+   */
   const askLlm = useCallback(
-    (mode: 'segment' | 'continuous' | 'free' | 'translate', text?: string) => {
+    (
+      mode: 'segment' | 'continuous' | 'free' | 'translate',
+      text?: string,
+      replaceTurnId?: string,
+    ): string => {
       const sid = currentIdRef.current;
-      if (!sid) return;
       const requestId = uid('req');
+      if (!sid) return requestId;
       const segs = sessionsRef.current.find((x) => x.id === sid)?.segments ?? [];
-      // continuous: resolve the actual question NOW — the other party's latest
-      // line — so the turn label (and thus session history) carries the real
-      // question instead of a constant '对方最新发言' (v1 history-label bug)
+      // continuous-mode 提图判断和投机重发都会显式传问题：主进程据此打标，
+      // 而不是把 turn 标签写成一条恒定的「对方最新发言」
       let question = text;
       let questionEndTs: number | undefined;
       if (mode === 'continuous') {
         for (let i = segs.length - 1; i >= 0; i--) {
           if ((segs[i].speaker ?? 'them') === 'them') {
-            question = segs[i].text;
             questionEndTs = segs[i].endTs;
+            if (!question) question = segs[i].text;
             break;
           }
         }
       }
       const label = question ?? (mode === 'continuous' ? tRef.current.app.latestRemark : '');
-      appendTurn(sid, { id: requestId, kind: mode, label, text: '', status: 'streaming' });
+      const turn: AnswerTurn = { id: requestId, kind: mode, label, text: '', status: 'streaming' };
+      if (replaceTurnId) {
+        patchSession(sid, (s) => ({
+          ...s,
+          turns: s.turns.map((t) =>
+            t.id === replaceTurnId
+              ? {
+                  ...turn,
+                  // a merged ask keeps the interrupted answer's position in the list
+                  reasoning: undefined,
+                  qa: undefined,
+                  web: undefined,
+                  webSup: undefined,
+                  webPending: false,
+                  error: undefined,
+                }
+              : t,
+          ),
+        }));
+      } else {
+        appendTurn(sid, turn);
+      }
       if (questionEndTs) speechEndRef.current.set(requestId, questionEndTs);
       if (mode === 'segment' || mode === 'free') maybeTitle(sid, text);
       const material = mode === 'translate' ? {} : currentMaterial();
@@ -257,8 +290,9 @@ export function App() {
         ...material,
       };
       window.mc.llmAsk(payload);
+      return requestId;
     },
-    [appendTurn, buildHistory, currentMaterial, maybeTitle],
+    [appendTurn, buildHistory, currentMaterial, maybeTitle, patchSession],
   );
   // The global answer hotkey is wired in the deps-free mount effect below, so it
   // has to reach the freshest askLlm through a ref rather than close over one.
@@ -398,6 +432,10 @@ export function App() {
     });
 
     const offLlm = window.mc.onLlmEvent((ev) => {
+      // a settled ask can never be retracted, so it stops being mergeable
+      if (ev.kind === 'done' || ev.kind === 'error') {
+        inFlightRef.current = clearInFlight(inFlightRef.current, ev.requestId);
+      }
       // ④: the very first delta of a continuous answer is the number that
       // matters — everything before it (ASR, debounce, gate, retrieve) was silence
       if (ev.kind === 'delta') {
@@ -572,31 +610,57 @@ export function App() {
     prewarm(false);
   }, [currentId, prewarm]);
 
-  // Continuous mode: only the OTHER party's lines trigger it (never my own
-  // mic). The debounce window still exists — it waits for a follow-up half
-  // sentence — but nothing inside it is idle now: the free two-ended
-  // `heuristic` decides the obvious cases up front (an obvious ask never
-  // costs a gate round-trip at all), and a genuinely ambiguous line runs its
-  // model gate IN PARALLEL with the debounce, collapsing the worst-case
-  // serial wait (1100ms + gate) into max(1100ms, gate).
+  // Continuous mode answers only the OTHER party's lines. Two schedules share
+  // this path: the status-quo collapse window, and — opt-in — speculative send
+  // with retraction, which buys back the ~1100 ms by discarding a request
+  // instead of delaying the ask. Rules and their reasoning: shared/speculativeAsk.ts.
   const lastSeg = segments.length ? segments[segments.length - 1] : null;
   const answeredRef = useRef<number>(-1);
+  /** the speculative ask that may still be retracted and re-asked, merged */
+  const inFlightRef = useRef<InFlightAsk | null>(null);
   useEffect(() => {
     if (!continuous || !lastSeg) return;
     if ((lastSeg.speaker ?? 'them') !== 'them') return; // ignore my own voice
     if (answeredRef.current === lastSeg.id) return; // this line is already handled
-    const h = heuristic(lastSeg.text);
-    if (h.verdict === 'skip') return; // greeting / fragment / logistics ask
+    const speculative = !!settingsRef.current?.llm.speculativeAsk;
+    const plan = planAsk({
+      speculative,
+      line: lastSeg.text,
+      inFlight: inFlightRef.current,
+      now: Date.now(),
+    });
+    if (plan.action === 'skip') return; // greeting / fragment / logistics ask
+
+    if (plan.action === 'fire' || plan.action === 'replace') {
+      const interrupted = plan.action === 'replace' ? inFlightRef.current : null;
+      const question = plan.action === 'fire' ? lastSeg.text : plan.merged;
+      if (interrupted) {
+        window.mc.llmCancel(interrupted.requestId);
+        // its first-delta measurement can never fire now
+        speechEndRef.current.delete(interrupted.requestId);
+      }
+      answeredRef.current = lastSeg.id;
+      const requestId = askLlmRef.current('continuous', question, interrupted?.requestId);
+      inFlightRef.current = { requestId, text: question, firedAt: Date.now() };
+      console.log(
+        `[spec-ask] ${interrupted ? 'replaced' : 'fired'} in-flight ask "${question.slice(0, 24)}"`,
+      );
+      return;
+    }
+
     let cancelled = false;
     const fire = (): void => {
       if (cancelled || answeredRef.current === lastSeg.id) return;
       answeredRef.current = lastSeg.id;
-      askLlm('continuous');
+      const requestId = askLlmRef.current('continuous');
+      if (speculative) {
+        inFlightRef.current = { requestId, text: lastSeg.text, firedAt: Date.now() };
+      }
     };
     // obvious ask → answer at debounce expiry straight away; ambiguous → the
     // gate call is already in flight (started with the debounce), and a gate
     // that somehow failed falls back to answering, exactly as before
-    const gateP: Promise<{ verdict: 'answer' | 'skip' }> | undefined = h.verdict
+    const gateP: Promise<{ verdict: 'answer' | 'skip' }> | undefined = plan.gate
       ? undefined
       : window.mc
           .gate({

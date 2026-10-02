@@ -251,6 +251,13 @@ export interface SettingsFile {
     answerRichness?: AnswerRichness;
     /** which register to say it in */
     answerExpertise?: AnswerExpertise;
+    /**
+     * Draft / opt-in (shared/speculativeAsk.ts): answer an obvious question the
+     * moment it closes, and retract + re-ask if the interviewer keeps talking,
+     * instead of waiting out the 1100 ms collapse window. A wrong guess costs a
+     * discarded (and possibly billed) request, so this ships off.
+     */
+    speculativeAsk?: boolean;
     /** the user's named answer personas; see shared/personas.ts */
     personas?: AnswerPersona[];
     /** '' = no persona. Always points at an existing id (guard drops it otherwise) */
@@ -533,6 +540,7 @@ export interface PublicSettings {
     thinkingByPreset: Record<string, ThinkingLevel>;
     answerRichness: AnswerRichness;
     answerExpertise: AnswerExpertise;
+    speculativeAsk: boolean;
     /** already sanitized by the settings guard — what actually got stored */
     personas: AnswerPersona[];
     activePersonaId: string;
@@ -691,6 +699,7 @@ export interface SettingsPatch {
     thinkingByPreset?: Record<string, ThinkingLevel>;
     answerRichness?: AnswerRichness;
     answerExpertise?: AnswerExpertise;
+    speculativeAsk?: boolean;
     /** whole-list replace; the guard trims to the caps in shared/personas.ts */
     personas?: AnswerPersona[];
     activePersonaId?: string;
