@@ -38,7 +38,10 @@
     "smoke:e2e:llm": "node tools/e2e-llm.mjs",
     "smoke:e2e:local": "node tools/e2e-local-lifecycle.mjs",
     "smoke:companion": "node tools/companion-boot-check.mjs",
-    "smoke:packaged": "node tools/packaged-smoke.mjs"
+    "smoke:packaged": "node tools/packaged-smoke.mjs",
+    "latency:provider": "bash tools/latency-provider.sh",
+    "latency:spec": "bash tools/latency-spec-live.sh",
+    "latency:asr": "bash tools/latency-asr-local.sh"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

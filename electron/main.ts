@@ -885,6 +885,15 @@ function bootstrap(): void {
     applyStealth();
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
+    if (VERBOSE_LOGS) {
+      // Renderer console.log never reaches the terminal, which leaves every
+      // renderer-side measurement (the speculative-ask fire/retract trail)
+      // unmeasurable from a script. One line of forwarding fixes that, and it
+      // is the same switch that already gates the main-process timings.
+      win.webContents.on('console-message', (e) => {
+        console.log(`[renderer] ${e.message}`);
+      });
+    }
 
     win.webContents.on('did-finish-load', () => {
       // replay cached ASR state for late-attaching renderer
