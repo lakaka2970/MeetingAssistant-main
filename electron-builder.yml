@@ -6,6 +6,19 @@ directories:
   buildResources: build
   output: release
 
+# The AppImage runtime electron-builder otherwise embeds (toolset "0.0.0",
+# appimage-12.0.1) dlopen()s libfuse.so.2 and aborts without it: measured on
+# Ubuntu 24.04, which ships libfuse3 and no libfuse2 by default --
+# `dlopen(): error loading libfuse.so.2 / AppImages require FUSE to run` was the
+# whole output of the built artifact, before any of our code ran. The static
+# runtime toolset (libappimage) speaks FUSE3, so the same artifact starts on a
+# default modern distro. Side effect, wanted here: with the legacy toolset
+# electron-builder appends `--no-sandbox` to the AppImage's own desktop-entry
+# Exec (AppImageTarget.js defaultArgs); the static toolset passes nothing, so a
+# kernel that allows unprivileged user namespaces keeps Chromium's sandbox.
+toolsets:
+  appimage: "1.0.3"
+
 # Only the compiled bundles ship. Production node_modules are added by
 # electron-builder itself (it walks the prod dependency tree separately), so
 # they must NOT be listed here. The negative patterns below are belt-and-braces
@@ -46,10 +59,45 @@ files:
   - '!node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs'
   - '!node_modules/@huggingface/transformers/dist/jsep.wasm'
   - '!node_modules/@huggingface/transformers/dist/jsep.mjs'
+  # The browser builds of transformers.js. electron/asr/engine.ts and
+  # electron/rag/embedWorker.ts both anchor on `require.resolve(…)` (which lands
+  # on dist/transformers.node.cjs) and then import the sibling
+  # transformers.node.mjs; `grep -c` for these six names inside the two Node
+  # builds returns 0. Verified by moving all six out of node_modules and running
+  # the same resolve+import (856 exports, `env` present) plus verify:patched.
+  # `transformers.node.cjs` itself stays: it is the resolution anchor.
+  - '!node_modules/@huggingface/transformers/dist/transformers.js'
+  - '!node_modules/@huggingface/transformers/dist/transformers.min.js'
+  - '!node_modules/@huggingface/transformers/dist/transformers.web.js'
+  - '!node_modules/@huggingface/transformers/dist/transformers.web.min.js'
+  - '!node_modules/@huggingface/transformers/dist/transformers.node.min.mjs'
+  - '!node_modules/@huggingface/transformers/dist/transformers.node.min.cjs'
   # pdf-parse imports pdfjs-dist/legacy/build/pdf.mjs; build/ and web/ are never
   # loaded (verified: docparse + knowledge-import specs pass with them absent)
   - '!node_modules/pdfjs-dist/build/**'
   - '!node_modules/pdfjs-dist/web/**'
+  # The rest of the PDF tree that no Node path can reach. Proven by moving all
+  # ten paths out of node_modules at once and running docparse,
+  # globalKnowledgeImport and knowledgeFiles (19 tests, green; 24 MB on disk).
+  # - pdf-parse's browser/worker builds: the app's dynamic import() resolves the
+  #   "." export's `import` condition, i.e. dist/pdf-parse/esm, and nothing ever
+  #   asks for "./worker".
+  - '!node_modules/pdf-parse/dist/pdf-parse/web/**'
+  - '!node_modules/pdf-parse/dist/worker/**'
+  # - pdfjs' own browser viewer, its separate (already-stripped) minified twins,
+  #   and the Adobe JS sandbox, which needs enableScripting we never turn on.
+  - '!node_modules/pdfjs-dist/legacy/web/**'
+  - '!node_modules/pdfjs-dist/legacy/build/pdf.min.mjs'
+  - '!node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs'
+  - '!node_modules/pdfjs-dist/legacy/build/pdf.sandbox.mjs'
+  - '!node_modules/pdfjs-dist/legacy/build/pdf.sandbox.min.mjs'
+  # - the standalone decoder folders. `grep -rl image_decoders node_modules/pdfjs-dist`
+  #   returns nothing outside those folders, and legacy/build/pdf.worker.mjs
+  #   inlines OpenJPEG/JPX itself (13 hits), so a scanned or JPEG2000 PDF still
+  #   decodes without them.
+  - '!node_modules/pdfjs-dist/image_decoders/**'
+  - '!node_modules/pdfjs-dist/legacy/image_decoders/**'
+  - '!node_modules/pdfjs-dist/wasm/**'
 
 asar: true
 # The app is zh/en only; Electron otherwise ships ~50 locale .pak files (46 MB)
@@ -205,8 +253,27 @@ linux:
     # neither would silently save nothing
     - '!node_modules/@huggingface/transformers/dist/jsep.wasm'
     - '!node_modules/@huggingface/transformers/dist/jsep.mjs'
+    # browser builds — see the identical block in the global `files` list
+    - '!node_modules/@huggingface/transformers/dist/transformers.js'
+    - '!node_modules/@huggingface/transformers/dist/transformers.min.js'
+    - '!node_modules/@huggingface/transformers/dist/transformers.web.js'
+    - '!node_modules/@huggingface/transformers/dist/transformers.web.min.js'
+    - '!node_modules/@huggingface/transformers/dist/transformers.node.min.mjs'
+    - '!node_modules/@huggingface/transformers/dist/transformers.node.min.cjs'
     - '!node_modules/pdfjs-dist/build/**'
     - '!node_modules/pdfjs-dist/web/**'
+    # keep in sync with the identical block in the global `files` list, which
+    # carries the evidence for each line
+    - '!node_modules/pdf-parse/dist/pdf-parse/web/**'
+    - '!node_modules/pdf-parse/dist/worker/**'
+    - '!node_modules/pdfjs-dist/legacy/web/**'
+    - '!node_modules/pdfjs-dist/legacy/build/pdf.min.mjs'
+    - '!node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs'
+    - '!node_modules/pdfjs-dist/legacy/build/pdf.sandbox.mjs'
+    - '!node_modules/pdfjs-dist/legacy/build/pdf.sandbox.min.mjs'
+    - '!node_modules/pdfjs-dist/image_decoders/**'
+    - '!node_modules/pdfjs-dist/legacy/image_decoders/**'
+    - '!node_modules/pdfjs-dist/wasm/**'
   target:
     - target: AppImage
       arch:

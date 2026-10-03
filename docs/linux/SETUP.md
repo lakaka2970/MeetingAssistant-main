@@ -45,8 +45,25 @@ behaviour apply to):
 
 ```bash
 npx electron-builder --dir --linux     # → release/linux-unpacked/meeting-assistant
-node tools/linux-verify.mjs            # 10 functional assertions + size/latency report
+node tools/linux-verify.mjs            # 8 functional assertions (+2 Wayland-only) and a size/latency report
+npm run dist:linux                     # → the two artifacts below
 ```
+
+### Prebuilt packages
+
+```bash
+sudo apt install ./MeetingAssistant-<version>-linux-amd64.deb   # or: sudo dpkg -i <same file>
+chmod +x MeetingAssistant-<version>-linux-x86_64.AppImage && ./MeetingAssistant-<version>-linux-x86_64.AppImage
+```
+
+The `.deb` is the better default on Ubuntu 22.10+ and anything else that restricts
+unprivileged user namespaces: its `postinst` probes `unshare --user` and, when the
+kernel says no, sets the setuid bit on `chrome-sandbox` and installs an AppArmor
+profile for `/opt/MeetingAssistant/meeting-assistant`. An AppImage cannot do either
+(it extracts as you, and its mount is `nosuid`), so on such a kernel it aborts with
+Chromium's `setuid_sandbox_host.cc` message instead of starting. Both artifacts need
+`libfuse3` only — the shipped AppImage uses the libappimage static runtime, not the
+old runtime that demanded `libfuse2`.
 
 ## Audio capture — how it reaches the other party
 

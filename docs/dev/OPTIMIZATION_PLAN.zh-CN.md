@@ -2,7 +2,7 @@
 
 > 分支：`feat/linux-support`　基线版本：v1.0.2
 > 所有数字均为本机实测（Ubuntu 24.04 / GNOME Wayland / PipeWire 1.0.5 / Electron 41.1.1）。
-> 复测工具：`node tools/asar-report.mjs`（包体构成）、`node tools/linux-verify.mjs`（功能 + 启动时序，10 项断言）。
+> 复测工具：`node tools/asar-report.mjs`（包体构成）、`node tools/linux-verify.mjs`（功能 + 启动时序，8 项在本机会话可断言，另 2 项只在 Wayland 会话生效）。
 
 ## 0. 基线
 
@@ -10,8 +10,8 @@
 
 | 组成 | 基线 | 优化后 |
 | --- | --- | --- |
-| **合计** | **994.7 MB** | **366.3 MB（-63.2%）** |
-| `resources/app.asar` | 140.2 MB | 52.3 MB |
+| **合计** | **994.7 MB** | **349 MB（-64.9%）** |
+| `resources/app.asar` | 140.2 MB | 52.3 MB（S9/S10 后逻辑体积 114.6→95.9 MB） |
 | `resources/app.asar.unpacked` | 558.7 MB | 62.8 MB |
 | └ `onnxruntime-node` | 469.1 MB | 21.3 MB |
 | └ `@huggingface/transformers` | 32 MB | 10.4 MB |
@@ -39,6 +39,9 @@ worker `PARTIAL_INTERVAL_MS=1400` / `RING_MS=300` / `STREAM_IDLE_CLOSE_MS=10000`
 | S5 | 排除 `libonnxruntime.so.1.21.0`（binding 的 DT_NEEDED/RUNPATH 只指向 `libonnxruntime.so.1`） | **-21 MB** | `readelf -d` 实测 + `ldd` 在打包树内解析成功 | ✅ |
 | S8 | 排除 transformers 的 jsep wasm（dev 树名 `jsep.wasm`，打包树名 `ort-wasm-simd-threaded.jsep.wasm`，两种拼写都列） | **-21 MB** | node bundle 中 `ort-wasm`/`jsep` 引用数为 0；移走文件后导入与 spec 均通过 | ✅ |
 | S7 | 排除 `pdfjs-dist/build`、`web`（pdf-parse 实际 import `pdfjs-dist/legacy/build/pdf.mjs`） | **-8 MB** | 移走两目录后 `docparse.spec.ts` + `globalKnowledgeImport.spec.ts` 14 项全过 | ✅ |
+| S9 | 排除 PDF 树里剩余的浏览器件：pdf-parse 的 `dist/pdf-parse/web`、`dist/worker`，pdfjs 的 `legacy/web`、独立的 `image_decoders`/`legacy/image_decoders`/`wasm`、`pdf.min.mjs`/`pdf.worker.min.mjs`/`pdf.sandbox*.mjs` | **-13 MB**（解包态 368→355 MB） | 十个路径一次移出 node_modules（24 MB）后 `docparse` + `globalKnowledgeImport` + `knowledgeFiles` 19 项全过，装回后复跑仍全过。`grep -rl image_decoders node_modules/pdfjs-dist` 在这两个目录自身之外零命中，`legacy/build/pdf.worker.mjs` 内联了 OpenJPEG/JPX（13 处命中）⇒ 扫描版/JPEG2000 PDF 不靠那两个目录 | ✅ |
+| S10 | 排除 `@huggingface/transformers` 的 6 个浏览器构建（`transformers.js`、`.min.js`、`.web.js`、`.web.min.js`、`node.min.mjs`、`node.min.cjs`） | **-6 MB**（解包态 355→349 MB，asar 逻辑体积 -6 MB，deb 只 -0.4 MB） | 两个 Node 构建里对这 6 个名字的引用数为 0；移走后按 `engine.ts` 的同一套 `require.resolve` + 动态 import 仍加载成功（856 个导出，`env` 在场），`verify:patched` 通过。**`transformers.node.cjs` 必须保留**：它是 `engine.ts:129` / `embedWorker.ts:26` 的定位锚点 | ✅ |
+| S11 | ~~排除 `@napi-rs/canvas`（29.8 MB skia 预编译）~~ | **实测后取消** | 移走 `canvas-linux-x64-gnu` 后 pdfjs 只 warn `Cannot load "@napi-rs/canvas"`，但紧接着 `ReferenceError: DOMMatrix is not defined`（`src/display/canvas.js:63`），docparse 与知识导入两条 PDF 用例双双失败。文本抽取路径依赖它，不只是渲染 | ❌ 不做 |
 | S6 | ~~排除 `LICENSES.chromium.html`（19 MB）~~ | **实测后取消** | 19.13 MB 原文 → **xz -9 后 180 KB**（deb 与 AppImage 的 squashfs 默认都是 xz），gzip 也只有 2.1 MB。它只在解包目录里显得大，在用户下载的产物里近乎零成本；而它是 Chromium 及大量第三方组件的许可声明，删掉是拿合规换 0.18 MB。**保留。** | ❌ 不做 |
 
 实施要点（踩到的坑，写进配置注释）：
@@ -57,7 +60,7 @@ worker `PARTIAL_INTERVAL_MS=1400` / `RING_MS=300` / `STREAM_IDLE_CLOSE_MS=10000`
 | L3 | 起始脏帧改为按值过滤（非有限值或 \|sample\|>1 即丢），窗口 1 s，替代固定 500 ms 全丢 | 与 L2 合并生效；4 个新单测覆盖（满幅±1 合法、1.09 判脏、窗口关闭后不再过滤） | ✅ |
 | L5 | 推测检索未命中时并行发起真实检索 | **分析后放弃**：`specCache.get()` 返回 null 时本就不等待，400 ms 窗只在"推测确已在飞行"时才付，而此时它比冷启动更可能先完成。并行会让每次答题多跑一遍 embed+检索，本地 CPU 代价换不到稳定收益 | ❌ 不做 |
 | L7 | 启动期把 sidecar / RAG 预热推迟 | **实测无效**：本地(拉起 Python sidecar) vs 云端(不拉起) 三次对比，热键就绪 422/428/430 ms 与 430/438/444 ms 基本一致；sidecar 在热键之后才 spawn。单次测出的 300 ms 差是噪声 | ❌ 不做 |
-| L1 | desktop 条目 Exec 带 `--ozone-platform=x11`，取消运行时自重启 | 未做：deb 的 Exec 可行，但 AppImage 的 .desktop 由运行时生成、且 `AppRun` 参数注入方式在不同 linuxdeploy 版本不一致，本机无法验证成品包（AppImage/deb 构建未跑）。当前自重启代价仅 ~190 ms 且发生在窗口出现前、用户不可见 | ⏸ 待成品包能构建后再做 |
+| L1 | desktop 条目 Exec 带 `--ozone-platform=x11`，取消运行时自重启 | **实测后不做**。成品包现在能构建（见 §9），机制查清了：`AppImageTarget` 自己拼 Exec（`[AppRun, …(executableArgs ?? defaultArgs), '%U']`），deb 走 `linux.executableArgs`，两处都能注入静态 flag。但静态 flag 会**盖掉用户在设置里选的 `ui.displayBackend`**（wayland 那档就永远到不了），而自重启只付一次、且在窗口出现之前。本机这轮打包验证跑在 `XDG_SESSION_TYPE=x11` 的会话里，重启分支根本没触发；Wayland 会话里仍是那 ~190 ms | ❌ 不做 |
 | L4 | ~~连续回答 1100 ms 防抖改自适应~~ → 改为**投机发送 + 可撤销**（见 §5 实测） | 数据推翻了原方案：本地链路开销只有 1–4 ms，防抖的 1100 ms 不是"省成本"而是纯等待。正确做法是句子一关闭就发起请求并在需要时 abort，而不是猜一个更短的等待时间 | 🔧 待实施 |
 | L6 | partial 间隔可配（云端 700~900 ms） | 未做：收益（字幕跟手感）只能连真实引擎评估 | ⏸ 需线上环境 |
 
@@ -75,12 +78,14 @@ worker `PARTIAL_INTERVAL_MS=1400` / `RING_MS=300` / `STREAM_IDLE_CLOSE_MS=10000`
 
 ## 4. 验收口径
 
-每步改动都要满足：`npm run typecheck` && `npm test`（当前 **1034** 个测试）&&
-`node tools/linux-verify.mjs` **10/10**，包体改动另附 `node tools/asar-report.mjs` 前后对比，
-答题链路改动附 `npm run latency:local`（离线门禁，TTFT p95 ≤ 50 ms）。
+每步改动都要满足：`npm run typecheck` && `npm test`（当前 **1055** 个测试）&&
+`node tools/linux-verify.mjs` **8/8**（Wayland 那两条在非 Wayland 会话里按设计 SKIP），包体改动另附
+`node tools/asar-report.mjs` 前后对比，答题链路改动附 `npm run latency:local`（离线门禁，TTFT p95 ≤ 50 ms）。
 
-尚不能在本机验证的：本地 Whisper 实际推理（未下载 ~1.5 GB 模型）、云端 ASR/LLM 往返、AppImage/deb 成品包。
+尚不能在本机验证的：本地 Whisper 实际推理（未下载 ~1.5 GB 模型）、云端 ASR/LLM 往返。
 这些在文档中标为 ⏸，不应被当作已完成。
+
+（2026-10-03 更新：AppImage / deb 成品包已能构建并实测通过，见 §9。）
 
 ## 5. 答题链路实测（2026-10-02，本地 mock provider）
 
@@ -219,3 +224,43 @@ Python 环境按 §docs/linux/SETUP 的配方建好（`.venv`，CPU 版 torch/to
 （需用户在自己 shell 里给 key）与投机作答命中率评估。
 
 
+
+## 9. v1.0.3 成品包：AppImage / deb 第一次真正跑通（2026-10-03）
+
+`npm run dist:linux` 此前从未产出过用户可执行的 Linux 包。这一轮全部构建并实测。
+
+| 产物 | 字节 | 备注 |
+| --- | --- | --- |
+| `MeetingAssistant-1.0.2-linux-x86_64.AppImage` | 134,340,209 | 静态 runtime、zstd；版本号发版时再 bump |
+| `MeetingAssistant-1.0.2-linux-amd64.deb` | 112,690,400 | |
+| `release/linux-unpacked` | 347.7 MB | asar 39.6 MB + unpacked 56.8 MB |
+
+同一棵树上 `node tools/packaged-smoke.mjs`（主窗口 IPC 往返 / 首次向导互斥两场景）与
+`node tools/linux-verify.mjs`（8/8：热键、托盘、PipeWire 环回、4.93 s PCM、▶→首帧 227 ms、
+autostart 条目）全绿；AppImage 直跑 40 s 无异常，日志走到 `[setup] wizard ready`。
+
+三件以前只能猜的事现在是实测结论：
+
+1. **默认 toolset 的 AppImage 在本机起不来**：只打印 `dlopen(): error loading libfuse.so.2`
+   就退出——Ubuntu 24.04.5 只装 `libfuse3-3`，没有 libfuse2。配置里加
+   `toolsets.appimage: "1.0.3"` 换 libappimage 静态 runtime 后，同一个产物直接可跑，
+   顺带小 11 MB（zstd 替 gzip）。`APPIMAGE_EXTRACT_AND_RUN=1` 是旧 runtime 的绕行方案，
+   现在不需要了。
+2. **沙箱：deb 会自愈，AppImage 不会**。electron-builder 的 postinst 先 `unshare --user` 探一次，
+   不通就 `chmod 4755 /opt/MeetingAssistant/chrome-sandbox`，并另外安装一份路径绑定的
+   AppArmor profile（`resources/apparmor-profile`，允许该二进制用 userns）。AppImage 里 SUID
+   注定无效（FUSE 挂载带 nosuid，解压后属主又是普通用户）。本机三种起法
+   （linux-unpacked 直跑 / AppImage 直跑 / extract-and-run）都没有 FATAL，`unshare -Ur true`
+   也成功 ⇒ **当初 start.sh 撞到的 `setuid_sandbox_host.cc:166` 在本机复现不出来**；
+   那条 `--no-sandbox` 保留为条件兜底（helper 非 root:root 4755 **且** unshare 失败才加）。
+   换静态 runtime 后 AppImage 的 desktop Exec 不再自动带 `--no-sandbox`
+   （`AppImageTarget.js` 的 `defaultArgs` 仅在 toolset `0.0.0` 时注入；deb 侧实测
+   `Exec=/opt/MeetingAssistant/meeting-assistant %U`），能建命名空间的内核就保留 Chromium 沙箱。
+3. **窗口分组**：实测 WM_CLASS = `('meetingassistant', 'MeetingAssistant')`，与 deb desktop 条目里
+   `StartupWMClass=meetingassistant` 一致 ⇒ 构建日志那句 `desktopName is not set` 在 X11 路径上
+   不影响任务栏关联，不改名（改了只会把用户已 pin 的 `meeting-assistant.desktop` 换掉）。
+   顺手修掉真正的文案错：包里的 `Comment` 来自 `package.json` description，原文写着
+   "for Windows and macOS"，已改为 Windows and Linux。
+
+包体在 §1 的基础上再降（S9/S10），并记下一条**否掉的**收益：`@napi-rs/canvas` 那 29.8 MB skia
+看着只服务渲染，实际移走之后 PDF 文本抽取直接 `DOMMatrix is not defined`（见 S11）。

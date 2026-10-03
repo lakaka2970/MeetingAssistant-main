@@ -43,8 +43,23 @@ npm run dev          # 或 npm run build && npm start
 
 ```bash
 npx electron-builder --dir --linux     # → release/linux-unpacked/meeting-assistant
-node tools/linux-verify.mjs            # 10 项功能断言 + 体积/延迟报告
+node tools/linux-verify.mjs            # 8 项功能断言（另 2 项只在 Wayland 会话生效）+ 体积/延迟报告
+npm run dist:linux                     # → 下面两个成品包
 ```
+
+### 现成的安装包
+
+```bash
+sudo apt install ./MeetingAssistant-<version>-linux-amd64.deb   # 或 sudo dpkg -i 同一个文件
+chmod +x MeetingAssistant-<version>-linux-x86_64.AppImage && ./MeetingAssistant-<version>-linux-x86_64.AppImage
+```
+
+Ubuntu 22.10+ 这类**限制非特权用户命名空间**的系统，优先用 `.deb`：它的 `postinst`
+会先 `unshare --user` 探一次，不通就给 `chrome-sandbox` 补 setuid 位，并为
+`/opt/MeetingAssistant/meeting-assistant` 装一份 AppArmor profile。AppImage 两件事都做不了
+（解压出来属主是你自己，挂载点又带 `nosuid`），在这种内核上它会直接停在 Chromium 的
+`setuid_sandbox_host.cc` 报错。两种包都只依赖 `libfuse3`：内置的是 libappimage 静态
+runtime，不是那个非要 `libfuse2` 的旧 runtime。
 
 ## 对方声音是怎么采到的
 
