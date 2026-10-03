@@ -46,6 +46,8 @@ ENCODER_LOOK_BACK = 4
 DECODER_LOOK_BACK = 1
 # endpointing: flush the sentence after this much trailing silence
 SILENCE_FLUSH_MS = 700
+# how finely that silence is measured inside a decode block (block = 600 ms)
+SILENCE_SUB_MS = 100
 SILENCE_RMS = 0.004
 # nano pseudo-streaming: re-transcribe the open sentence at most this often
 PARTIAL_INTERVAL_MS = 1200
@@ -202,15 +204,36 @@ class Session:
             block, self.buf = self.buf[:CHUNK_SAMPLES], self.buf[CHUNK_SAMPLES:]
             await self.process_block(block)
 
+    def _trailing_silence_ms(self, block: np.ndarray) -> float:
+        """How much of the END of this block is silence, at SILENCE_SUB_MS steps.
+
+        Measuring the block as one RMS number is what made endpointing cost
+        ~1.8 s: silence was accumulated in whole 600 ms blocks, so the 700 ms
+        flush threshold could never be met by a single silent block and always
+        waited for a second one. Scanning backwards in short steps lets the
+        sentence close as soon as the audio really has been quiet for 700 ms.
+        """
+        step = int(SILENCE_SUB_MS * 16)
+        total = 0.0
+        for end in range(len(block), 0, -step):
+            seg = block[max(0, end - step):end]
+            if len(seg) == 0:
+                break
+            if float(np.sqrt(np.mean(seg * seg))) > SILENCE_RMS:
+                break
+            total += len(seg) / 16.0
+        return total
+
     def _track_voice(self, block: np.ndarray) -> bool:
         block_ms = len(block) / 16.0
         self.samples_seen += len(block)
         now_ms = self.samples_seen / 16.0
-        rms = float(np.sqrt(np.mean(block * block))) if len(block) else 0.0
-        voiced = rms > SILENCE_RMS
+        trailing = self._trailing_silence_ms(block)
+        voiced = trailing < block_ms
         if voiced:
-            self.silence_ms = 0.0
-            self.last_voice_ms = int(now_ms)
+            # whatever silence follows the last syllable still counts
+            self.silence_ms = trailing
+            self.last_voice_ms = int(now_ms - trailing)
             if self.sent_begin_ms < 0:
                 self.sent_begin_ms = int(now_ms - block_ms)
         else:
@@ -280,6 +303,12 @@ class Session:
 
     async def _finalize_oneshot(self):
         pcm = self.sent_buf
+        # NOTE: trimming `pcm` to the voiced span looks tempting (decode time
+        # does track input length) but sent_buf begins with a 600 ms pre-roll
+        # block while sent_begin_ms is measured on the samples_seen timeline, so
+        # the two are offset by one block and a naive slice cuts into the word —
+        # it turned "测试" into "嗯，那咋？" on repeat. Revisit only with the
+        # pre-roll accounted for.
         self.sent_gen += 1  # cancel in-flight partials for this sentence
         self.sent_buf = np.zeros(0, dtype=np.float32)
         self.pre_block = np.zeros(0, dtype=np.float32)
@@ -288,7 +317,13 @@ class Session:
             self.sent_begin_ms = -1
             return
         loop = asyncio.get_running_loop()
+        # latency split: endpointing wait vs full-sentence decode
+        t0 = time.time()
         text = await loop.run_in_executor(_executor, _infer_oneshot, pcm)
+        log.info(
+            "finalize: audio=%.0fms silenceAtTrigger=%.0fms infer=%.0fms",
+            len(pcm) / 16.0, self.silence_ms, (time.time() - t0) * 1000.0,
+        )
         if text:
             await self.send_sentence(text, end=True)
         self.sent_begin_ms = -1

@@ -25,6 +25,9 @@ import { DEFAULT_STRATEGY_OPTIONS, shouldUseFastEngine, strategyLabel, type AsrS
 import { LanguageRouter, type LidResult } from './langRouter';
 import type { SegmentCloseReason, WorkerInit, WorkerInMessage, WorkerOutMessage } from './contract';
 
+/** same switch as the main process, so one env var lights up the whole chain */
+const VERBOSE = process.env.MC_VERBOSE_LOGS === '1';
+
 // Electron utilityProcess exposes process.parentPort (MessageEvent-style).
 interface UtilPort {
   on(ev: 'message', cb: (e: { data: unknown }) => void): void;
@@ -81,15 +84,47 @@ const PARTIAL_INTERVAL_MS = 1400;
 // ---- true-streaming backend state (backend === 'cloud-realtime') ----
 /** live WS session per channel; opened on speech-start, closed after idle */
 const streams: Record<Channel, StreamingSession | null> = { them: null, me: null };
-/** wallclock of each session's audio t=0 (maps service sentence times) */
+/** wallclock of each session's audio t=0 (fallback when no anchor covers a time) */
 const streamEpoch: Record<Channel, number> = { them: 0, me: 0 };
 /** last time the channel's VAD saw speech (drives idle close) */
 const lastSpeechAt: Record<Channel, number> = { them: 0, me: 0 };
 /** ~300 ms pre-roll so the first syllable isn't clipped at session open */
-const ring: Record<Channel, { pcm: Float32Array; ms: number }[]> = { them: [], me: [] };
+const ring: Record<Channel, { pcm: Float32Array; ms: number; captureTs: number }[]> = { them: [], me: [] };
 const RING_MS = 300;
 /** close the WS after this much silence (cost gate; service dies at ~23 s idle anyway) */
 const STREAM_IDLE_CLOSE_MS = 10_000;
+
+/**
+ * Service audio time -> the wallclock at which we actually captured that sample.
+ *
+ * `epoch + endMs` assumed the service's audio clock advances exactly with wall
+ * time from session open. It does not: the pre-roll is pushed in one burst, and
+ * every frame after that is delivered whenever the tap produced it. The error is
+ * a per-session offset of the whole e2e number — exactly the kind of thing that
+ * makes a fixed 1.7 s look like model latency when it is arithmetic. Anchoring on
+ * the capture time of the frame that ends the sentence removes it.
+ */
+const pushAnchors: Record<Channel, { audioMs: number; captureTs: number }[]> = { them: [], me: [] };
+const pushedMs: Record<Channel, number> = { them: 0, me: 0 };
+
+function recordPushedAudio(ch: Channel, ms: number, captureTs: number): void {
+  pushedMs[ch] += ms;
+  pushAnchors[ch].push({ audioMs: pushedMs[ch], captureTs });
+  // sentences arrive in increasing order, so anything older than the newest
+  // anchor by more than a minute can never be looked up again
+  const cutoff = pushedMs[ch] - 60_000;
+  const a = pushAnchors[ch];
+  while (a.length > 2 && a[0].audioMs < cutoff) a.shift();
+}
+
+/** wallclock of the frame containing service time `ms`, or the epoch fallback */
+function captureWallAt(ch: Channel, ms: number): number {
+  const a = pushAnchors[ch];
+  for (const anchor of a) {
+    if (anchor.audioMs >= ms) return anchor.captureTs;
+  }
+  return streamEpoch[ch] + ms;
+}
 
 setInterval(() => {
   if (!engine || transcribing || shuttingDown || queue.length > 0) return;
@@ -186,6 +221,9 @@ function ensureStream(ch: Channel): void {
   const ringDur = ring[ch].reduce((a, c) => a + c.ms, 0);
   streamEpoch[ch] = Date.now() - ringDur;
   const epoch = streamEpoch[ch];
+  // the session's audio clock restarts at 0, so the anchor timeline must too
+  pushAnchors[ch] = [];
+  pushedMs[ch] = 0;
   const session = engine.openSession(
     {
       onPartial: (text) => {
@@ -194,6 +232,17 @@ function ensureStream(ch: Channel): void {
       onSentence: (s) => {
         if (shuttingDown || isJunkTranscript(s.text)) return;
         const now = Date.now();
+        // what the old arithmetic claimed, for as long as both are reported
+        const reconstructed = epoch + s.endMs;
+        const endTs = captureWallAt(ch, s.endMs);
+        const startTs = captureWallAt(ch, s.beginMs);
+        if (VERBOSE) {
+          console.log(
+            `[worker] sentence ch=${ch} svc=${s.beginMs}..${s.endMs}ms ` +
+              `honestEnd=${endTs} reconstructedEnd=${reconstructed} ` +
+              `skew=${reconstructed - endTs}ms closeToArrival=${now - endTs}ms`,
+          );
+        }
         post({
           type: 'segment',
           id: ++segCounter,
@@ -201,10 +250,12 @@ function ensureStream(ch: Channel): void {
           lang: undefined,
           speaker: ch,
           audioMs: Math.max(0, s.endMs - s.beginMs),
-          speechStartTs: epoch + s.beginMs,
-          speechEndTs: epoch + s.endMs,
-          vadCloseTs: epoch + s.endMs,
-          inferStartTs: epoch + s.endMs,
+          speechStartTs: startTs,
+          speechEndTs: endTs,
+          // the service does its own endpointing, so there is no local VAD close
+          // to report as a separate stage — say so with the same timestamp
+          vadCloseTs: endTs,
+          inferStartTs: endTs,
           inferEndTs: now,
         });
       },
@@ -216,7 +267,10 @@ function ensureStream(ch: Channel): void {
     { language },
   );
   // flush pre-roll first so the first syllable survives, then live frames follow
-  for (const c of ring[ch]) session.push(c.pcm);
+  for (const c of ring[ch]) {
+    session.push(c.pcm);
+    recordPushedAudio(ch, c.ms, c.captureTs);
+  }
   ring[ch] = [];
   streams[ch] = session;
   console.log(`[worker] stream open ch=${ch}`);
@@ -251,8 +305,9 @@ function handleStreamingPcm(pcm: Float32Array, ch: Channel, captureTs: number): 
     // stream every frame (speech AND trailing silence) so the service's
     // sentence timing stays continuous; cost is bounded by the idle close
     streams[ch]!.push(pcm);
+    recordPushedAudio(ch, frameMs, captureTs);
   } else {
-    ring[ch].push({ pcm, ms: frameMs });
+    ring[ch].push({ pcm, ms: frameMs, captureTs });
     let held = ring[ch].reduce((a, c) => a + c.ms, 0);
     while (held > RING_MS && ring[ch].length > 1) {
       held -= ring[ch][0].ms;
