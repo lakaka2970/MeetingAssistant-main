@@ -17,6 +17,7 @@
  */
 import { BrowserWindow } from 'electron';
 import { join } from 'path';
+import { overlayAlphaSupported } from '../shared/platform';
 import type { SettingsStore } from './settings';
 
 /** logged so the packaged smoke test can prove the exam window boots */
@@ -32,6 +33,8 @@ export interface ExamWindowHandle {
 
 export function createExamWindow(settings: SettingsStore): ExamWindowHandle {
   const bounds = settings.data.exam?.bounds;
+  // same Linux rule as the interview overlay: see shared/platform.ts
+  const examAlpha = overlayAlphaSupported(process.platform);
   const win = new BrowserWindow({
     width: bounds?.width ?? DEFAULT_SIZE.width,
     height: bounds?.height ?? DEFAULT_SIZE.height,
@@ -40,8 +43,8 @@ export function createExamWindow(settings: SettingsStore): ExamWindowHandle {
     minWidth: 320,
     minHeight: 360,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    transparent: examAlpha,
+    backgroundColor: examAlpha ? '#00000000' : '#161a22',
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false,

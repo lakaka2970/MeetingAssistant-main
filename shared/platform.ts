@@ -25,6 +25,26 @@ export function linuxOzonePlatform(
 }
 
 /**
+ * Whether a frameless overlay window can be trusted to blend with the desktop.
+ *
+ * Linux says no. Measured on Electron 41 / GNOME-X11: one rectangular region of
+ * the transparent overlay composited at full opacity and ignored `--panel-alpha`
+ * outright, while the rest of the same window blended correctly. The rectangle
+ * corresponds to nothing in the DOM (no element, no pseudo-element, no
+ * layer-promoting property), the region does repaint (an injected opaque probe
+ * shows up in it), and it survives `--disable-gpu` as happily as it survives GPU
+ * rendering — so it is Chromium's presentation of a transparent X11 top-level,
+ * not our CSS and not a driver bug.
+ *
+ * A "translucent" overlay with one solid slab in it is worse than an honest
+ * opaque one, so on Linux the overlay windows are created opaque and the opacity
+ * control is taken away rather than left dead on the wall.
+ */
+export function overlayAlphaSupported(platform: string): boolean {
+  return platform !== 'linux';
+}
+
+/**
  * Which code actually records the 对方 channel.
  *
  * 'display-media' is the Windows `audio: 'loopback'` token; 'main-process' is

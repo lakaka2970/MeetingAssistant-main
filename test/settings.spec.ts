@@ -20,6 +20,7 @@ import {
   RAIL_SPLIT_MIN,
 } from '../shared/protocol';
 import { DEFAULT_SEARCH_MAX_RESULTS } from '../shared/searchProviders';
+import { overlayAlphaSupported } from '../shared/platform';
 import {
   DEFAULT_EXPERTISE,
   DEFAULT_RICHNESS,
@@ -344,9 +345,19 @@ describe('SettingsStore', () => {
   });
 
   describe('ui.panelAlpha (⑧ panel transparency slider)', () => {
-    it('ships at the ceiling so adding the slider changes nothing on upgrade', () => {
+    it('ships at the dark theme backdrop alpha the app has always used', () => {
       const s = new SettingsStore(file, fakeCipher);
       expect(s.getPublic().ui.panelAlpha).toBe(PANEL_ALPHA_DEFAULT);
+    });
+
+    it('reports the blend ability of this platform as a derived value, not a stored one', () => {
+      const s = new SettingsStore(file, fakeCipher);
+      expect(s.getPublic().ui.overlayAlpha).toBe(overlayAlphaSupported(process.platform));
+      // nothing on disk can forge it: getPublic recomputes from the OS every time
+      writeFileSync(file, JSON.stringify({ version: 2, ui: { overlayAlpha: 'nope' } }), 'utf8');
+      expect(new SettingsStore(file, fakeCipher).getPublic().ui.overlayAlpha).toBe(
+        overlayAlphaSupported(process.platform),
+      );
     });
 
     it('fills the default when the stored file predates the field', () => {

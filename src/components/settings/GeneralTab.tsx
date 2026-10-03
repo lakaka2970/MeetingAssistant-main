@@ -5,6 +5,7 @@ import type { SettingsDraft } from './useSettingsDraft';
 /** everything that is not a model: appearance, hotkeys, audio, companion, help */
 export function GeneralTab({
   d,
+  overlayAlpha,
   onRerunWizard,
   onOpenDiagnostics,
   onOpenHelp,
@@ -12,6 +13,8 @@ export function GeneralTab({
   onOpenPrompt,
 }: {
   d: SettingsDraft;
+  /** false on Linux, where the overlay window is opaque by construction */
+  overlayAlpha: boolean;
   onRerunWizard?: () => void;
   onOpenDiagnostics?: () => void;
   onOpenHelp?: () => void;
@@ -56,21 +59,23 @@ export function GeneralTab({
         </select>
       </div>
 
-      <div className="settings-row">
-        <label>{t.settings.panelAlphaLabel}</label>
-        <span className="alpha-row">
-          <input
-            className="alpha-range"
-            type="range"
-            min={PANEL_ALPHA_MIN * 100}
-            max={PANEL_ALPHA_MAX * 100}
-            step={1}
-            value={Math.round(d.panelAlpha * 100)}
-            onChange={(e) => d.setPanelAlpha(Number(e.target.value) / 100)}
-          />
-          <span className="alpha-value">{Math.round(d.panelAlpha * 100)}%</span>
-        </span>
-      </div>
+      {overlayAlpha && (
+        <div className="settings-row">
+          <label>{t.settings.panelAlphaLabel}</label>
+          <span className="alpha-row">
+            <input
+              className="alpha-range"
+              type="range"
+              min={PANEL_ALPHA_MIN * 100}
+              max={PANEL_ALPHA_MAX * 100}
+              step={1}
+              value={Math.round(d.panelAlpha * 100)}
+              onChange={(e) => d.setPanelAlpha(Number(e.target.value) / 100)}
+            />
+            <span className="alpha-value">{Math.round(d.panelAlpha * 100)}%</span>
+          </span>
+        </div>
+      )}
       <div className="settings-row">
         <label>{t.settings.hotkeyToggle}</label>
         <input value={d.hotkey} onChange={(e) => d.setHotkey(e.target.value)} spellCheck={false} />

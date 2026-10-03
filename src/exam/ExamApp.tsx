@@ -65,6 +65,9 @@ export function ExamApp() {
       const want = s.ui.theme ?? 'dark';
       const dark = want === 'system' ? window.matchMedia('(prefers-color-scheme: dark)').matches : want !== 'light';
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      // Linux creates this window opaque, where a rounded panel would leave four
+      // unfilled-looking corners inside a square window
+      document.documentElement.dataset.overlayAlpha = s.ui.overlayAlpha === false ? '0' : '1';
     });
     void window.mcExam.status().then(setStatus);
   }, []);

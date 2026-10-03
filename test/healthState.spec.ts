@@ -63,6 +63,7 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
       hotkeyAnswer: 'Control+Alt+A',
       railSplit: 0.16,
       panelAlpha: 1,
+      overlayAlpha: true,
       answerHistoryOpen: false,
       fontScale: 'medium',
       theme: 'dark',

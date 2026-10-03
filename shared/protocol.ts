@@ -178,15 +178,18 @@ export function clampRailSplit(v: number | undefined): number {
 }
 
 /**
- * ⑧ v1.0.1 panel transparency bounds. The value multiplies each theme's own
- * base backdrop alpha (dark 0.8 / light 0.93), so 1 is exactly what the app
- * looked like before the slider existed and nothing shifts on upgrade. The
- * floor keeps the overlay readable and clickable rather than letting it fade
- * into the desktop behind it.
+ * ⑧ v1.0.1 panel transparency bounds. The value IS the backdrop's alpha, so the
+ * percentage shown in the title-bar ◐ popover and in settings is what the panel
+ * actually renders at and 1 really is opaque — the old scheme multiplied each
+ * theme's base (dark 0.8 / light 0.93), which meant the slider read 100% while
+ * the desktop still bled through at 20%. Default 0.8 keeps the dark theme's
+ * original out-of-box look; a stored 1 from before this change now means fully
+ * opaque, which is what that setting was always asking for. The floor keeps the
+ * overlay readable and clickable rather than letting it fade into the desktop.
  */
 export const PANEL_ALPHA_MIN = 0.3;
 export const PANEL_ALPHA_MAX = 1;
-export const PANEL_ALPHA_DEFAULT = 1;
+export const PANEL_ALPHA_DEFAULT = 0.8;
 
 export function clampPanelAlpha(v: number | undefined): number {
   if (typeof v !== 'number' || !Number.isFinite(v)) return PANEL_ALPHA_DEFAULT;
@@ -601,6 +604,13 @@ export interface PublicSettings {
     railSplit: number;
     /** ⑧ panel backdrop multiplier, already clamped by getPublic() */
     panelAlpha: number;
+    /**
+     * ⑧ whether this platform can be trusted to blend at all — false on Linux,
+     * where the overlay is created opaque (see shared/platform.ts
+     * overlayAlphaSupported). Derived from the OS, never stored, so the UI can
+     * drop the opacity control instead of offering a slider that does nothing.
+     */
+    overlayAlpha: boolean;
     /** v1.0.1 ②: is the answer-history list unfolded under the focus card? */
     answerHistoryOpen: boolean;
     fontScale: FontScale;

@@ -50,6 +50,7 @@ export function TitleBar({
   onPickAnswerStyle,
   onManagePersonas,
   panelAlpha,
+  overlayAlpha,
   onLivePanelAlpha,
   onCommitPanelAlpha,
 }: {
@@ -94,8 +95,10 @@ export function TitleBar({
   };
   onPickAnswerStyle: (pick: AnswerStylePick) => void;
   onManagePersonas: () => void;
-  /** ⑧ ◐ popover: current backdrop multiplier + live preview / persist hooks */
+  /** ⑧  popover: current backdrop multiplier + live preview / persist hooks */
   panelAlpha: number;
+  /** false on Linux, where the window is opaque and the control would be a lie */
+  overlayAlpha: boolean;
   onLivePanelAlpha: (v: number) => void;
   onCommitPanelAlpha: (v: number) => void;
 }) {
@@ -231,12 +234,15 @@ export function TitleBar({
           onPick={onPickAnswerStyle}
           onManagePersonas={onManagePersonas}
         />
-        {/* ◐ 面板透明度 — fade the overlay back into the shared screen */}
-        <PanelAlphaPopover
-          alpha={panelAlpha}
-          onLive={onLivePanelAlpha}
-          onCommit={onCommitPanelAlpha}
-        />
+        {/* ◐ 面板透明度 — fade the overlay back into the shared screen. Hidden
+            where the window cannot blend, so no control is left inert. */}
+        {overlayAlpha && (
+          <PanelAlphaPopover
+            alpha={panelAlpha}
+            onLive={onLivePanelAlpha}
+            onCommit={onCommitPanelAlpha}
+          />
+        )}
         {icon('📚', t.knowledge.title, onOpenKnowledge)}
         {icon('⚙', t.titlebar.settingsTitle, onOpenSettings)}
         <div className="tb-menu-wrap" ref={menuRef}>

@@ -3,6 +3,7 @@ import {
   captureKindForPlatform,
   defaultHotkeysForPlatform,
   linuxOzonePlatform,
+  overlayAlphaSupported,
   themSourceFor,
   whisperExecutionProvidersForPlatform,
 } from '../shared/platform';
@@ -61,5 +62,14 @@ describe('platform defaults', () => {
     expect(linuxOzonePlatform('wayland')).toBe('wayland');
     expect(linuxOzonePlatform('auto')).toBeNull();
     expect(linuxOzonePlatform(undefined)).toBeNull();
+  });
+
+  it('gives Linux an opaque overlay and keeps translucency elsewhere', () => {
+    // Chromium refuses to blend one rectangle of a transparent X11 top-level and
+    // it survives --disable-gpu, so Linux ships the overlay solid rather than
+    // half-broken — see shared/platform.ts overlayAlphaSupported
+    expect(overlayAlphaSupported('linux')).toBe(false);
+    expect(overlayAlphaSupported('win32')).toBe(true);
+    expect(overlayAlphaSupported('darwin')).toBe(true);
   });
 });

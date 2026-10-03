@@ -22,6 +22,7 @@ import { join } from 'path';
 import {
   captureKindForPlatform,
   linuxOzonePlatform,
+  overlayAlphaSupported,
   whisperExecutionProvidersForPlatform,
   type LinuxDisplayBackend,
 } from '../shared/platform';
@@ -859,14 +860,16 @@ function bootstrap(): void {
   }
 
   function createWindow(): void {
+    // Linux gets a solid window: see shared/platform.ts overlayAlphaSupported
+    const alpha = overlayAlphaSupported(process.platform);
     win = new BrowserWindow({
       width: 940,
       height: 560,
       minWidth: 640,
       minHeight: 380,
       frame: false,
-      transparent: true,
-      backgroundColor: '#00000000',
+      transparent: alpha,
+      backgroundColor: alpha ? '#00000000' : '#161a22',
       alwaysOnTop: true,
       skipTaskbar: true,
       hasShadow: false,

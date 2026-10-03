@@ -29,7 +29,7 @@ import {
   PANEL_ALPHA_DEFAULT,
   RAIL_SPLIT_DEFAULT,
 } from '../shared/protocol';
-import { defaultHotkeysForPlatform } from '../shared/platform';
+import { defaultHotkeysForPlatform, overlayAlphaSupported } from '../shared/platform';
 import {
   findPresetById,
   presetsForCapability,
@@ -818,6 +818,9 @@ export class SettingsStore {
         // ⑧ clamped on the wire for the same reason: a hand-edited file must
         // not be able to fade the overlay past the point it stays usable
         panelAlpha: clampPanelAlpha(d.ui.panelAlpha),
+        // not stored: the platform decides whether the overlay can blend at all,
+        // and the renderer removes the control when it cannot
+        overlayAlpha: overlayAlphaSupported(process.platform),
         // optional on disk but always a boolean on the wire, so the renderer
         // needs no ?? dance before toggling the history list
         answerHistoryOpen: !!d.ui.answerHistoryOpen,

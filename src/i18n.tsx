@@ -99,7 +99,7 @@ const zh = {
   panelAlpha: {
     buttonTitle: '面板透明度：拖动即时生效，让背景透出后面的桌面',
     label: '面板不透明度',
-    hint: '只有背景会变透，文字、图标和按钮保持清晰。100% 就是默认观感。',
+    hint: '只有背景会变透，文字、图标和按钮保持清晰。100% 完全不透，默认 80%。',
   },
   promptLab: {
     personaEntry: '应答人设库',
@@ -880,7 +880,7 @@ const en: Dict = {
   panelAlpha: {
     buttonTitle: 'Panel transparency: drag to let the desktop show through, applies live',
     label: 'Panel opacity',
-    hint: 'Only the backdrop fades — text, icons and buttons stay crisp. 100% is the default look.',
+    hint: 'Only the backdrop fades — text, icons and buttons stay crisp. 100% is fully opaque; the default is 80%.',
   },
   promptLab: {
     personaEntry: 'Answer personas',

@@ -126,6 +126,7 @@ export function SettingsPanel({
       {!section && tab === 'general' && (
         <GeneralTab
           d={d}
+          overlayAlpha={settings.ui.overlayAlpha !== false}
           onRerunWizard={onRerunWizard}
           onOpenDiagnostics={onOpenDiagnostics}
           onOpenHelp={onOpenHelp}

@@ -18,6 +18,7 @@
  */
 import { BrowserWindow } from 'electron';
 import { join } from 'path';
+import { overlayAlphaSupported } from '../shared/platform';
 
 export const CONNECT_WINDOW_MARKER = '[connect] window created';
 
@@ -36,14 +37,16 @@ export function showConnectWindow(existing: BrowserWindow | null): ConnectWindow
     existing.focus();
     return { win: existing, reused: true };
   }
+  const connectAlpha = overlayAlphaSupported(process.platform);
   const win = new BrowserWindow({
     width: DEFAULT_SIZE.width,
     height: DEFAULT_SIZE.height,
     minWidth: 320,
     minHeight: 420,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    // same Linux rule as the interview overlay: see shared/platform.ts
+    transparent: connectAlpha,
+    backgroundColor: connectAlpha ? '#00000000' : '#161a22',
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false,

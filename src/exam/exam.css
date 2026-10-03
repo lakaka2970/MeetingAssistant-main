@@ -60,6 +60,11 @@ body {
   overflow: hidden;
 }
 
+:root[data-overlay-alpha='0'] .exam {
+  /* paired with the opaque window on Linux — see shared/platform.ts */
+  border-radius: 0;
+}
+
 .exam-head {
   display: flex;
   align-items: center;

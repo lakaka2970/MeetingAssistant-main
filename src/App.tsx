@@ -575,8 +575,13 @@ export function App() {
     if (!ui) return;
     document.documentElement.dataset.fontScale = ui.fontScale ?? 'medium';
     // ⑧ the slider writes this same property live while dragging; this effect
-    // is what restores it after a reload or a settings save
-    document.documentElement.style.setProperty('--panel-alpha', String(ui.panelAlpha));
+    // is what restores it after a reload or a settings save. On Linux the window
+    // itself is opaque, so any alpha below 1 would just darken the panel without
+    // letting the desktop through — pin it to 1 and let the CSS square off the
+    // corners instead of leaving a rounded panel floating on a square window.
+    const canAlpha = ui.overlayAlpha !== false;
+    document.documentElement.dataset.overlayAlpha = canAlpha ? '1' : '0';
+    document.documentElement.style.setProperty('--panel-alpha', String(canAlpha ? ui.panelAlpha : 1));
     const apply = () => {
       const mode = ui.theme ?? 'dark';
       const dark =
@@ -1173,6 +1178,7 @@ export function App() {
           setOpenPanel({ view: 'settings', tab: 'general', section: 'personas' })
         }
         panelAlpha={settings?.ui.panelAlpha ?? PANEL_ALPHA_DEFAULT}
+        overlayAlpha={settings?.ui.overlayAlpha !== false}
         onLivePanelAlpha={livePanelAlpha}
         onCommitPanelAlpha={(v) => void commitPanelAlpha(v)}
         onStartStop={() => (capturing ? void stopCapture() : void startCapture())}
