@@ -100,30 +100,28 @@ const STREAM_IDLE_CLOSE_MS = 10_000;
  * `epoch + endMs` assumed the service's audio clock advances exactly with wall
  * time from session open. It does not: the pre-roll is pushed in one burst, and
  * every frame after that is delivered whenever the tap produced it. The error is
- * a per-session offset of the whole e2e number — exactly the kind of thing that
- * makes a fixed 1.7 s look like model latency when it is arithmetic. Anchoring on
- * the capture time of the frame that ends the sentence removes it.
+ * a per-session offset on the whole e2e number — exactly the kind of thing that
+ * makes a fixed 1.7 s look like model latency when it is arithmetic.
+ *
+ * One clock per session, not per channel: closing a session and opening the next
+ * one (which the VAD-triggered finalize now does on every utterance) leaves the
+ * old session's final sentence in flight, and if it had to read the new
+ * session's anchors the lookup silently returned a time ~10 s away.
  */
-const pushAnchors: Record<Channel, { audioMs: number; captureTs: number }[]> = { them: [], me: [] };
-const pushedMs: Record<Channel, number> = { them: 0, me: 0 };
+type StreamClock = { anchors: { audioMs: number; captureTs: number }[]; pushedMs: number };
+const clocks: Record<Channel, StreamClock | null> = { them: null, me: null };
 
-function recordPushedAudio(ch: Channel, ms: number, captureTs: number): void {
-  pushedMs[ch] += ms;
-  pushAnchors[ch].push({ audioMs: pushedMs[ch], captureTs });
-  // sentences arrive in increasing order, so anything older than the newest
-  // anchor by more than a minute can never be looked up again
-  const cutoff = pushedMs[ch] - 60_000;
-  const a = pushAnchors[ch];
-  while (a.length > 2 && a[0].audioMs < cutoff) a.shift();
+function recordPushedAudio(clock: StreamClock, ms: number, captureTs: number): void {
+  clock.pushedMs += ms;
+  clock.anchors.push({ audioMs: clock.pushedMs, captureTs });
 }
 
 /** wallclock of the frame containing service time `ms`, or the epoch fallback */
-function captureWallAt(ch: Channel, ms: number): number {
-  const a = pushAnchors[ch];
-  for (const anchor of a) {
+function captureWallAt(clock: StreamClock, epoch: number, ms: number): number {
+  for (const anchor of clock.anchors) {
     if (anchor.audioMs >= ms) return anchor.captureTs;
   }
-  return streamEpoch[ch] + ms;
+  return epoch + ms;
 }
 
 setInterval(() => {
@@ -221,9 +219,8 @@ function ensureStream(ch: Channel): void {
   const ringDur = ring[ch].reduce((a, c) => a + c.ms, 0);
   streamEpoch[ch] = Date.now() - ringDur;
   const epoch = streamEpoch[ch];
-  // the session's audio clock restarts at 0, so the anchor timeline must too
-  pushAnchors[ch] = [];
-  pushedMs[ch] = 0;
+  const clock: StreamClock = { anchors: [], pushedMs: 0 };
+  clocks[ch] = clock;
   const session = engine.openSession(
     {
       onPartial: (text) => {
@@ -234,8 +231,8 @@ function ensureStream(ch: Channel): void {
         const now = Date.now();
         // what the old arithmetic claimed, for as long as both are reported
         const reconstructed = epoch + s.endMs;
-        const endTs = captureWallAt(ch, s.endMs);
-        const startTs = captureWallAt(ch, s.beginMs);
+        const endTs = captureWallAt(clock, epoch, s.endMs);
+        const startTs = captureWallAt(clock, epoch, s.beginMs);
         if (VERBOSE) {
           console.log(
             `[worker] sentence ch=${ch} svc=${s.beginMs}..${s.endMs}ms ` +
@@ -269,7 +266,7 @@ function ensureStream(ch: Channel): void {
   // flush pre-roll first so the first syllable survives, then live frames follow
   for (const c of ring[ch]) {
     session.push(c.pcm);
-    recordPushedAudio(ch, c.ms, c.captureTs);
+    recordPushedAudio(clock, c.ms, c.captureTs);
   }
   ring[ch] = [];
   streams[ch] = session;
@@ -280,6 +277,9 @@ function closeStream(ch: Channel): void {
   const s = streams[ch];
   if (!s) return;
   streams[ch] = null;
+  // live frames now buffer in the ring again, and the next session gets a
+  // fresh clock — this one stays alive in the closing session's callbacks
+  clocks[ch] = null;
   console.log(`[worker] stream close ch=${ch}`);
   void s.close().catch(() => undefined);
 }
@@ -292,20 +292,24 @@ function handleStreamingPcm(pcm: Float32Array, ch: Channel, captureTs: number): 
       post({ type: 'status', state: 'speech', queuedSegments: 0 });
       ensureStream(ch);
     } else if (ev.type === 'segment') {
-      // local VAD closed the utterance; keep the WS open for the service's own
-      // finalization + possible follow-up sentence (idle timer reaps it)
+      // local VAD closed the utterance (300 ms of hangover). The service has to
+      // re-derive the same conclusion out of whole 600 ms decode blocks, which
+      // is what made a 700 ms word take ~1.8 s to land — so finalize now and let
+      // the next speech-start reopen the session on its 300 ms pre-roll.
       post({ type: 'status', state: 'listening', queuedSegments: 0 });
+      closeStream(ch);
     }
     // 'partial' VAD events are meaningless here (service streams its own)
   }
   if (vads[ch].state === 'speech') lastSpeechAt[ch] = Date.now();
 
   const frameMs = (pcm.length / 16000) * 1000;
-  if (streams[ch]) {
+  const clock = clocks[ch];
+  if (streams[ch] && clock) {
     // stream every frame (speech AND trailing silence) so the service's
     // sentence timing stays continuous; cost is bounded by the idle close
     streams[ch]!.push(pcm);
-    recordPushedAudio(ch, frameMs, captureTs);
+    recordPushedAudio(clock, frameMs, captureTs);
   } else {
     ring[ch].push({ pcm, ms: frameMs, captureTs });
     let held = ring[ch].reduce((a, c) => a + c.ms, 0);
