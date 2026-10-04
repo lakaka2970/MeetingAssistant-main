@@ -25,17 +25,25 @@ fs.writeFileSync(process.argv[2], JSON.stringify(src));
 NODE
 
 : > "$log"
-MC_USERDATA="$profile" \
+# Same probe as start.sh: without --no-sandbox the app dies on the SUID-sandbox
+# FATAL on Ubuntu 22.10+ and this reports "the app never spawned its sidecar".
+. tools/sandbox-preflight.sh
+mc_detect_sandbox
+[[ "$MC_SANDBOX_STATE" == 'fallback' ]] && echo "note: Electron has no usable sandbox here — launching with --no-sandbox"
+
+setsid env MC_USERDATA="$profile" \
 MC_FUNASR_PYTHON="$repo_root/.venv/bin/python" \
 MC_VERBOSE_LOGS=1 \
 MC_E2E_LOOPBACK=1 \
 MC_E2E_LOOPBACK_MS=180000 \
-  npx electron . > "$log" 2>&1 &
+  npx electron . ${MC_SANDBOX_ARGS[@]+"${MC_SANDBOX_ARGS[@]}"} > "$log" 2>&1 &
 app=$!
 # SIGTERM to the app does not reliably run the before-quit reaper, and an
-# orphaned sidecar keeps holding :10097 for the next run
+# orphaned sidecar keeps holding :10097 for the next run. setsid above makes
+# $app a group leader so the kill also reaches the real Electron main and its
+# zygotes — plain `kill $app` only stopped the npx wrapper.
 cleanup() {
-  kill "$app" 2>/dev/null
+  kill -TERM -- -"$app" 2>/dev/null
   pkill -f "funasr_stream_server[.]py" 2>/dev/null
 }
 trap cleanup EXIT
@@ -56,17 +64,32 @@ for _ in $(seq 1 150); do
   sleep 1
 done
 grep -an "spawning local ASR\|FUNASR_READY\|ready ep=" "$log" | tail -4
-grep -aq "spawning local ASR" "$log" || { echo "ABORT: the app never spawned its own sidecar"; exit 4; }
+grep -aq "spawning local ASR" "$log" || {
+  echo "ABORT: the app never spawned its own sidecar. Last lines of its log:"
+  tail -12 "$log"
+  exit 4;
+}
 sleep 3
 
+# The clip is played to its own end (killing at a fixed 3.5 s truncated a longer
+# fixture mid-word), then the tap goes quiet for GAP_MS before the next pass.
+# 4600 ms is what the old fixed sleeps produced (2.1 s of tail + 2.5 s), so the
+# default run measures the same thing it always did; drop it to ~600 ms to stress
+# close-and-reopen of the streaming session, which is where consecutive sentences
+# live.
 passes=${PASSES:-3}
+wav=${WAV:-$repo_root/resources/test-audio/asr-test-zh.wav}
+gap_ms=${GAP_MS:-4600}
 for i in $(seq 1 "$passes"); do
-  echo "  playing asr-test-zh.wav (pass $i)"
-  pw-play --rate=16000 --channels=1 "$repo_root/resources/test-audio/asr-test-zh.wav" >/dev/null 2>&1 &
+  echo "  playing $(basename "$wav") (pass $i, ${gap_ms} ms between passes)"
+  pw-play --rate=16000 --channels=1 "$wav" >/dev/null 2>&1 &
   play=$!
-  sleep 3.5
+  for _ in $(seq 1 240); do
+    kill -0 "$play" 2>/dev/null || break
+    sleep 0.5
+  done
   kill "$play" 2>/dev/null
-  sleep 2.5
+  sleep "$(awk -v g="$gap_ms" 'BEGIN{printf "%.2f", g/1000}')"
 done
 
 for _ in $(seq 1 40); do

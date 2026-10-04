@@ -42,7 +42,14 @@ EOF2
 keyfile=$(mktemp) || exit 1
 trap 'rm -f "$keyfile"' EXIT
 
-if npx electron tools/unlock-key.cjs "$settings" "$keyfile" "$slot" 2>/tmp/mc-unlock.err; then
+# Even this windowless helper dies on the SUID-sandbox FATAL when neither the
+# helper nor unprivileged userns is available, and the failure looks like "no
+# stored key" rather than like a launch failure.
+. tools/sandbox-preflight.sh
+mc_detect_sandbox
+[[ "$MC_SANDBOX_STATE" == 'fallback' ]] && echo "note: Electron has no usable sandbox here — launching with --no-sandbox"
+
+if npx electron tools/unlock-key.cjs "$settings" "$keyfile" "$slot" ${MC_SANDBOX_ARGS[@]+"${MC_SANDBOX_ARGS[@]}"} 2>/tmp/mc-unlock.err; then
   echo "using the stored key for slot '$slot' (provider config: ${model:-?} @ ${base:-?})"
 else
   cat /tmp/mc-unlock.err >&2

@@ -104,30 +104,22 @@ fi
 
 # Chromium needs one of two things to sandbox its renderers: a setuid-root
 # chrome-sandbox helper, or unprivileged user namespaces. npm always unpacks the
-# helper as a plain user-owned file, and Ubuntu 24.04 ships
-# apparmor_restrict_unprivileged_userns=1, so a fresh clone dies before it ever
-# paints: `FATAL:setuid_sandbox_host.cc ... The SUID sandbox helper binary was
-# found, but is not configured correctly`. Detect that here and fall back to
-# --no-sandbox so the launcher still gets someone running, while naming the
-# command that restores the real sandbox.
-sandbox_args=()
-if [[ "$(uname -s)" == 'Linux' ]]; then
-  sandbox_helper=node_modules/electron/dist/chrome-sandbox
-  helper_ready=0
-  [[ "$(stat -c '%U' "$sandbox_helper" 2>/dev/null)" == 'root' ]] &&
-    [[ "$(stat -c '%a' "$sandbox_helper" 2>/dev/null)" == '4755' ]] && helper_ready=1
-  if [[ $helper_ready -eq 1 ]]; then
-    echo '      · Chromium 沙箱：SUID 助手已配置'
-  elif unshare -Ur true 2>/dev/null; then
-    echo '      · Chromium 沙箱：走非特权 user namespace'
-  else
-    sandbox_args+=(--no-sandbox)
-    echo '      · Chromium 沙箱：SUID 助手未配置，且内核禁用了非特权 user namespace（Ubuntu 24.04 默认如此）。'
+# helper as a plain user-owned file, and Ubuntu 22.10+ restricts userns for
+# unconfined processes, so a fresh clone can die before it ever paints:
+# `FATAL:setuid_sandbox_host.cc ... not configured correctly`. The same probe is
+# used by the latency tools, so it lives in one file.
+. tools/sandbox-preflight.sh
+mc_detect_sandbox
+case "$MC_SANDBOX_STATE" in
+  suid) echo '      · Chromium 沙箱：SUID 助手已配置' ;;
+  userns) echo '      · Chromium 沙箱：走非特权 user namespace' ;;
+  fallback)
+    echo '      · Chromium 沙箱：SUID 助手未配置，且内核禁用了非特权 user namespace（Ubuntu 22.10+ 默认如此）。'
     echo '        本次以 --no-sandbox 启动，应用能正常跑，只是开发态少一层隔离。'
-    echo "        想恢复沙箱，执行一次：sudo chown root:root $sandbox_helper && sudo chmod 4755 $sandbox_helper"
+    echo "        想恢复沙箱，执行一次：sudo chown root:root $MC_SANDBOX_HELPER && sudo chmod 4755 $MC_SANDBOX_HELPER"
     echo '        （重装 electron 后需要重做。）'
-  fi
-fi
+    ;;
+esac
 
 if [[ $check_only -eq 1 ]]; then
   echo
@@ -141,4 +133,4 @@ launch_args=(.)
 if [[ "$(uname -s)" == 'Linux' && "${XDG_SESSION_TYPE:-}" == 'wayland' ]]; then
   launch_args+=(--ozone-platform=x11)
 fi
-npx electron "${launch_args[@]}" ${sandbox_args[@]+"${sandbox_args[@]}"}
+npx electron "${launch_args[@]}" ${MC_SANDBOX_ARGS[@]+"${MC_SANDBOX_ARGS[@]}"}
