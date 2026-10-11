@@ -124,6 +124,56 @@ worker `PARTIAL_INTERVAL_MS=1400` / `RING_MS=300` / `STREAM_IDLE_CLOSE_MS=10000`
    命令：`read -rs MC_LLM_KEY && export MC_LLM_KEY && npm run latency:llm -- --runs=9`
 2. **语音→文字的端到端**：本机没有 FunASR 依赖与 Whisper 模型，这段只能等环境就绪后实测。
 
+### 2026-10-11 新增：答后复核回合与代码块显示
+
+**结构结论（by construction，无需测量）**：算法题答完会自动追加一轮模型自查。主进程
+（`electron/main.ts`）把自动回合放在 `send({ kind: 'done', text, origin, ms })` **之后**，
+以 `void runExamCheck(...)` 启动、不等待——`done` 与它携带的 `ms` 在复核开始前已经定稿，
+所以**首答的出现时间不受这个功能影响**。复核自身的时长随 `check` 事件的 `ms` 字段下发，
+并记进日志：
+
+```
+[exam] check turn=… verdict=… ms=… chars=…
+```
+
+它**不会回填进作答记录的 `ms`**——`done` 早已发出，那份 `ms` 定稿时只有 read/bank/model/total
+四段，不存在复核字段。
+复核与答案走同一个 `chatStream`→同一个适配器，上文实测的应用侧开销（1–4 ms）同样适用；
+但它的提示带着整题与整答，provider 侧耗时按"至少一次长答案往返"的量级预期——这是推理，
+不是实测。题库直答不触发复核，日志里不会出现任何 `check` 行。
+
+**代码块显示实测（条件：手机页 `resources/companion/`，临时 node http 静态服务直挂 + 浏览器
+量取，非 Electron；2026-10-11，558 px 宽视口；样本＝一条 120 列 C++ 长行 + 一个空行 +
+一行 4 空格缩进）**：
+
+- 默认态：`white-space: pre`、`overflow-x: auto`、`scrollWidth 1229 > clientWidth 534` → 真的横向可滚，
+  长行不再被拆成 identifier 碎片
+- 空行不塌：`span.code-line` 实测高 22 px
+- 点「换行」后：`aria-pressed=true`、`white-space: pre-wrap`、逐行块 `display:block`、
+  `text-indent −19.264px / padding-left 19.264px`（=1.4em 悬挂缩进）；同一长行首行文字左边缘
+  从 x=23 起、软换行续行从 x=43 起，而新的源行仍从 x=23 起 → 续行与新语句可区分
+- 点「换行」不会触发 hero 折叠（`collapsed` 前后都是 false）
+
+这组数字没有覆盖的：桌面 Electron 窗口里同一代码块的呈现、真机手机浏览器与触摸交互。**待测**。
+
+**待测清单（5 道真算法题，记录机器、provider 与模型名后填入）**：
+
+```bash
+npm run latency:llm   # provider TTFT；Key 只经使用者本人的 shell（命令见本节开头）
+npm run dev           # 另一终端；做题窗口跑五道算法题，从日志里抄两类行：
+                      #   [exam] technical model in <N>ms (read=… bank=… model=…)  ← 首答 ms.total
+                      #   [exam] check turn=… verdict=… ms=<N> chars=…           ← 每个复核回合自身耗时
+```
+
+每题填三列，填的时候连同条件一起写（本机 / 哪个模型 / 桌面还是手机）：
+
+| # | 首答 `ms.total` | 复核回合 `ms` | 墙钟：语音结束→首答可见→复核卡可见 |
+| --- | --- | --- | --- |
+| 1–5 | 待测 | 待测 | 待测 |
+
+另两项数字量不了、同样待测：手机页复核卡的 20 s 空闲超时（`CHECK_IDLE_MS`）收卡在真人
+感受上对不对，以及桌面 Electron 窗口的复核卡是否如设计先出首答、后出复核卡。
+
 ## 6. L4 草案已落地（默认关闭，待评审）
 
 `shared/speculativeAsk.ts`（纯逻辑）+ `src/App.tsx` 接入 + 设置项 `llm.speculativeAsk`
