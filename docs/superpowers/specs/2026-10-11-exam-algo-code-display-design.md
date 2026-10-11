@@ -106,10 +106,11 @@ control op）、`shared/protocol.ts`（事件与 grant）、`electron/companion/
 
 要求：
 
-1. 窗口每次切换子模式就写 settings（实现时核实 `setSubMode` 当前是切换即写还是关窗才写，
-   见 `main.ts:2345-2424` 一带的 handler），并广播 `{kind:'subMode'}`；
+1. 窗口切换子模式时写 settings —— **已核实：现状就是这样**（`src/exam/ExamApp.tsx:260-263` 每次点击都
+   `setSubMode(m)` + `window.mcExam.setSubMode(m)`，落到 `main.ts:2352-2356`），无需改动；
 2. `runExamAsk` 以 `settings.data.exam.subMode` 为准，覆盖 `payload.subMode`；
-3. 窗口收到 `subMode` 事件时同步自己的 picker。
+3. 窗口收到 `subMode` 事件时同步自己的 picker（该事件必须在 `ExamApp.tsx:100` 的 requestId 过滤**之前**
+   处理，否则手机上改的档位永远传不到开着的窗口）。
 
 ### 4.4 手机控制区新增两项
 
