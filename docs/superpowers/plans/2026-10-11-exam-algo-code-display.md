@@ -1071,7 +1071,9 @@ describe('algorithm answer contract', () => {
 
   it('caps what may sit outside the fence', () => {
     const s = system('technical');
-    expect(s).toContain('块外只允许两行');
+    expect(s).toContain('块外的说明只允许这几行');
+    expect(s).toContain('题干信息不全时末尾再加一行假设说明');
+    expect(s).not.toContain('块外只允许两行');
   });
 
   it('keeps the existing style rules untouched', () => {
