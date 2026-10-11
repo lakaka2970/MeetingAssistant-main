@@ -226,9 +226,12 @@ win:
     - '!node_modules/pdfjs-dist/wasm/**'
     # ---- Windows-only: onnxruntime-node ships every platform in one tarball ----
     # dist/binding.js resolves `../bin/napi-v3/${process.platform}/${process.arch}/`, so
-    # a win32/x64 build can never load the darwin or linux trees (65 MB + 404 MB, CUDA
-    # and TensorRT providers included) nor win32/arm64 (34 MB) — all three shipped in
-    # the v1.0.2 installers. win32/x64 itself holds exactly three files
+    # a win32/x64 build can never load the darwin or linux trees or win32/arm64 — all
+    # three are in the v1.0.2 installers. Measured on the Windows CI runner: darwin
+    # 65 MB + linux 76 MB + win32/arm64 34 MB ≈ 175 MB of unloadable payload. (A Linux
+    # host shows 404 MB under linux/ because onnxruntime-node's postinstall fetches the
+    # GPU build there; that is the S1/S5 saving, not a Windows one.)
+    # win32/x64 itself holds exactly three files
     # (onnxruntime_binding.node, onnxruntime.dll, DirectML.dll) and is left whole.
     # Pinned by test/packagingFiles.spec.ts, which also fails if this list drops a
     # global exclusion: a platform-level `files` list REPLACES the global one.

@@ -89,10 +89,10 @@ sha256sum -c MeetingAssistant-1.0.3-linux-amd64.deb.sha256
 | Linux 解包目录 | 994.7 MB（本分支首个能跑的构建） | **349 MB（-64.9%）** |
 | `linux-amd64.deb` | 无（v1.0.2 不发 Linux） | 107.5 MiB（本机 2026-10-03 完整构建实测 112,690,400 B；本版发布包的确切字节数以发布页为准） |
 | `linux-x86_64.AppImage` | 无 | 128.1 MiB（同上，134,340,209 B） |
-| `win-x64.exe`（NSIS） | 181.2 MiB | 由 CI 构建后在发布页公布；解包态少掉 **503 MB** 加载不到的文件 |
+| `win-x64.exe`（NSIS） | 181.2 MiB | 由 CI 构建后在发布页公布；解包态少掉约 **175 MB** 加载不到的原生二进制 |
 | `win-x64-portable.exe` | 181.1 MiB | 同上 |
 
-Windows 这一版少了 **503 MB 解包态的死重**：`onnxruntime-node` 一个 npm 包里同时装着 darwin、linux、win32 三套原生二进制，而运行时只解析 `bin/napi-v3/${platform}/${arch}` —— 也就是说 win32/x64 的包里有 65 MB darwin + 404 MB linux（CUDA、TensorRT 全在里面）+ 34 MB win32/arm64 是**永远读不到**的。v1.0.2 的 .exe 照样装了。另外提升到全局的与平台无关裁剪（浏览器版 ONNX Runtime、transformers.js 的浏览器构建、pdfjs 的浏览器件、只保留 zh-CN / en-US 两套语言包）合计约 158 MB，Windows 和 Linux 都吃到。
+Windows 这一版少了 **约 175 MB 加载不到的东西**：`onnxruntime-node` 一个 npm 包里同时装着 darwin、linux、win32 三套原生二进制，而运行时只解析 `bin/napi-v3/${platform}/${arch}` —— 在 CI 的 Windows runner 上实测：win32/x64 的包里有 65 MB darwin + 76 MB linux + 34 MB win32/arm64 是**永远读不到**的。v1.0.2 的 .exe 照样装了。（别拿 Linux 机器上的数字来比：Linux/x64 那边 `linux/` 有 404 MB，是因为 onnxruntime-node 的安装脚本只在这个平台上额外下载 GPU 构建，Windows 装机上并没有那 327 MB 的 CUDA provider。）另外提升到全局的与平台无关裁剪（浏览器版 ONNX Runtime、transformers.js 的浏览器构建、pdfjs 的浏览器件、只保留 zh-CN / en-US 两套语言包）合计约 158 MB，Windows 和 Linux 都吃到。
 
 **功能没有因为裁剪受损**：每一项排除都有对应的验证（打包树里真实导入、相关单测在文件被移走后仍全过），发版前又在成品包上跑了 `tools/packaged-smoke.mjs` 与 `tools/linux-verify.mjs`。两条实测的否掉项也留在文档里：`@napi-rs/canvas` 看着只服务渲染，移走后 PDF **文本抽取**直接 `DOMMatrix is not defined`；`LICENSES.chromium.html` 那 19 MB 在 xz 之后只值 180 KB，删它是拿合规换零头。
 
@@ -171,10 +171,10 @@ Everything removed this release is something the runtime cannot reach, with evid
 | Linux unpacked | 994.7 MB (first working build) | **349 MB (-64.9%)** |
 | `linux-amd64.deb` | none (v1.0.2 shipped no Linux build) | 107.5 MiB (measured 112,690,400 B in the full local build of 2026-10-03; the release page carries this version's exact bytes) |
 | `linux-x86_64.AppImage` | none | 128.1 MiB (same build, 134,340,209 B) |
-| `win-x64.exe` (NSIS) | 181.2 MiB | published by CI on the release page; **503 MB** of unloadable payload removed |
+| `win-x64.exe` (NSIS) | 181.2 MiB | published by CI on the release page; ~**175 MB** of unloadable payload removed |
 | `win-x64-portable.exe` | 181.1 MiB | as above |
 
-The Windows payload dropped **503 MB of unreachable bytes**: one npm package (`onnxruntime-node`) carries darwin, linux and win32 natives, while the binding resolves `bin/napi-v3/${platform}/${arch}` — so a win32/x64 installer held 65 MB of darwin, 404 MB of linux (CUDA and TensorRT included) and 34 MB of win32/arm64 that no code path can ever load. v1.0.2 shipped all of it. The platform-independent trims promoted to the global list (browser-only ONNX Runtime, the browser builds of transformers.js, pdfjs' browser pieces, and shipping only zh-CN + en-US locales) account for roughly another 158 MB on both platforms. Nothing was lost to get there: each exclusion is verified by loading the packaged tree without it, and the built package was re-checked with `tools/packaged-smoke.mjs` and `tools/linux-verify.mjs`. Two tempting cuts were measured and **rejected** — `@napi-rs/canvas` (29.8 MB) turns out to carry PDF *text extraction*, which dies without it, and the 19 MB `LICENSES.chromium.html` costs 180 KB after xz.
+The Windows payload dropped **about 175 MB of unreachable bytes**: one npm package (`onnxruntime-node`) carries darwin, linux and win32 natives, while the binding resolves `bin/napi-v3/${platform}/${arch}` — measured on the Windows CI runner: 65 MB of darwin, 76 MB of linux and 34 MB of win32/arm64 that no code path can ever load. v1.0.2 shipped all of it. (Do not quote the Linux host numbers here: on linux/x64 the `linux/` tree is 404 MB because onnxruntime-node postinstall fetches the GPU build on that platform only — a Windows install never has that 327 MB CUDA provider.) The platform-independent trims promoted to the global list (browser-only ONNX Runtime, the browser builds of transformers.js, pdfjs' browser pieces, and shipping only zh-CN + en-US locales) account for roughly another 158 MB on both platforms. Nothing was lost to get there: each exclusion is verified by loading the packaged tree without it, and the built package was re-checked with `tools/packaged-smoke.mjs` and `tools/linux-verify.mjs`. Two tempting cuts were measured and **rejected** — `@napi-rs/canvas` (29.8 MB) turns out to carry PDF *text extraction*, which dies without it, and the 19 MB `LICENSES.chromium.html` costs 180 KB after xz.
 
 ### How much faster the answer path is
 

@@ -50,20 +50,34 @@ describe('electron-builder files lists', () => {
     const items = platformFileList(source, 'win');
 
     // dist/binding.js resolves `../bin/napi-v3/${process.platform}/${process.arch}/`,
-    // so on win32/x64 every other directory under there is unreachable: 65 MB of
-    // darwin, 404 MB of linux (CUDA and TensorRT included) and 34 MB of win32/arm64.
+    // dist/binding.js resolves `../bin/napi-v3/${process.platform}/${process.arch}/`,
+    // so on win32/x64 every other directory under there is unreachable. Measured on
+    // the Windows CI runner: darwin 65 MB + linux 76 MB + win32/arm64 34 MB ≈ 175 MB.
+    // (On a Linux/x64 host the linux tree is 404 MB because onnxruntime-node's
+    // postinstall fetches the GPU build there — do not quote that figure for Windows.)
     expect(items).toContain(`!${ORT_BIN}/darwin/**`);
     expect(items).toContain(`!${ORT_BIN}/linux/**`);
     expect(items).toContain(`!${ORT_BIN}/win32/arm64/**`);
   });
 
   it('names paths that really exist in the install tree', () => {
+    // A directory exclusion is meaningful on every host — measured on the Windows
+    // CI runner, a Windows `npm ci` really does carry napi-v3/darwin (65 MB) and
+    // napi-v3/linux (76 MB). The file-level entries under linux/x64 are not:
+    // onnxruntime-node's postinstall fetches the GPU build only on linux/x64, so
+    // that .so exists on the Linux host and nowhere else. Assert what can exist.
+    const hostHasGpuBuild = process.platform === 'linux' && process.arch === 'x64';
     const checked: string[] = [];
     for (const platform of PLATFORMS) {
       for (const item of platformFileList(source, platform)) {
         if (!item.startsWith(`!${ORT_BIN}/`)) continue;
+        const path = item.slice(1);
+        const isDirectory = path.endsWith('/**');
+        if (!isDirectory && !hostHasGpuBuild) continue;
         checked.push(item);
-        expect(onDisk(item.slice(1).replace(/\/\*\*$/, '')), `${item} matches nothing on disk`).toBe(true);
+        expect(onDisk(isDirectory ? path.slice(0, -'/**'.length) : path), `${item} matches nothing on disk`).toBe(
+          true
+        );
       }
     }
     expect(checked.length).toBeGreaterThan(0);

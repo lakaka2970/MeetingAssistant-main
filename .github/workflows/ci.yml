@@ -13,11 +13,6 @@ jobs:
   windows:
     name: typecheck, test, build (windows)
     runs-on: windows-latest
-    # contents:read keeps the checkout working; issues:write is only used by the
-    # temporary diagnostic step below, which files the failure tail as an issue.
-    permissions:
-      contents: read
-      issues: write
     steps:
       - uses: actions/checkout@v4
 
@@ -42,36 +37,6 @@ jobs:
 
       - name: Unit tests
         run: npm test
-
-      # TEMPORARY DIAGNOSTIC (2026-10-11, v1.0.3 release prep) - delete once the
-      # Windows-only failure is fixed. GitHub will not serve a job log to an
-      # unauthenticated client, so instead of blocking the release on someone
-      # pasting it, the runner re-runs the suite on failure and files the tail as an
-      # issue, which the public API does expose.
-      - name: File the failing test tail (temporary diagnostic)
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          npx vitest run > vitest-tail.log 2>&1 || true
-          {
-            echo "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo "commit: ${{ github.sha }}"
-            echo "### what a Windows npm ci actually contains under onnxruntime-node"
-            echo '```'
-            du -sh node_modules/onnxruntime-node/bin/napi-v3/* 2>&1
-            find node_modules/onnxruntime-node/bin/napi-v3 -maxdepth 2 -type f -printf '%10s %p\n' 2>/dev/null | sort -k2
-            echo '```'
-            echo "### vitest tail"
-            echo '```'
-            tail -n 60 vitest-tail.log
-            echo '```'
-          } > tail.md
-          gh issue create \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "ci(windows): unit-test tail at ${{ github.sha }}" \
-            --body-file tail.md
 
       - name: Python sidecar tests
         run: npm run test:python
