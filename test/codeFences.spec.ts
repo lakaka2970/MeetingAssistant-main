@@ -62,4 +62,15 @@ describe('codeFileExt', () => {
     expect(codeFileExt('brainfuck')).toBe('txt');
     expect(codeFileExt(undefined)).toBe('txt');
   });
+
+  it('never walks the prototype chain for a tag that names an Object member', () => {
+    // models do not always obey the six-tag contract and revisions are model
+    // output: LANG_EXT is an object literal, so a bare LANG_EXT[key] would hit
+    // Object.prototype for `constructor` and name the download
+    // answer.function Object() { [native code] }… — the phone twin
+    // (resources/companion/markdown.js) has the same own-property guard.
+    expect(codeFileExt('constructor')).toBe('txt');
+    expect(codeFileExt('toString')).toBe('txt');
+    expect(codeFileExt('__proto__')).toBe('txt');
+  });
 });

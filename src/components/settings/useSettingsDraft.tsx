@@ -208,7 +208,7 @@ export function useSettingsDraft(
   const [cShot, setCShot] = useState(settings.companion.pushScreenshot);
   const [cPhoneOnly, setCPhoneOnly] = useState(settings.companion.hotkeyToPhone);
   const [cPort, setCPort] = useState(String(settings.companion.port));
-  // ⑦ 远程控制：总开关 + 六项逐项授权（R2）
+  // ⑦ 远程控制：总开关 + 八项逐项授权（R2；examSubMode/examCheck 后由六项增至八项）
   const [cControl, setCControl] = useState(settings.companion.allowControl);
   const [cCtlItems, setCCtlItems] = useState<CompanionControlItems>(settings.companion.allowItems);
   const setCtlItem = (op: keyof CompanionControlItems, on: boolean): void => {

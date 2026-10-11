@@ -1992,6 +1992,11 @@ function bootstrap(): void {
         examSend({ requestId, kind: 'note', text: T().examCheckNoContext });
         return;
       }
+      // claim the turn here, behind every guard that says this round is really
+      // starting: the auto round (turn 1) never used to touch checkTurns, so a
+      // first manual press printed 第 2 轮 on the first visible card. Math.max
+      // keeps a racing caller from ever moving the counter backwards.
+      checkTurns.set(requestId, Math.max(checkTurns.get(requestId) ?? 0, turn));
       const llmKey = settings.getLlmApiKey() ?? '';
       if (!llmKey && settings.data.llm.providerId !== 'ollama') {
         examSend({ requestId, kind: 'check', turn, verdict: 'unknown', note: T().noApiKey, ms: 0 });
@@ -2180,6 +2185,9 @@ function bootstrap(): void {
           // the bank hit above is still a complete answer for the user
           if (hitView) {
             send({ requestId: payload.requestId, kind: 'done', text: hitView.answer, origin: 'bank', ms });
+            // this answer is on screen and re-checkable: an unrecorded lastExam
+            // answered 还没有可复核的答案 right after the answer appeared
+            lastExam = { requestId: payload.requestId, question, subMode, answer: hitView.answer, at: Date.now() };
             return;
           }
           sendErr(T().noApiKey);
@@ -2256,6 +2264,8 @@ function bootstrap(): void {
         const text = r.text.trim();
         if (!text && hitView) {
           send({ requestId: payload.requestId, kind: 'done', text: hitView.answer, origin: 'bank', ms });
+          // same as the no-key bank exit: what the user can see must be checkable
+          lastExam = { requestId: payload.requestId, question, subMode, answer: hitView.answer, at: Date.now() };
           return;
         }
         send({ requestId: payload.requestId, kind: 'done', text, origin, ms });
@@ -2296,7 +2306,7 @@ function bootstrap(): void {
      * forwards it to the bridge, so a rejected press is answered out loud instead
      * of being a button that does nothing with no explanation.
      */
-    type ExamCheckRefusal = 'exam_check_no_context' | 'exam_check_busy';
+    type ExamCheckRefusal = 'exam_check_no_context' | 'exam_check_busy' | 'exam_check_stale';
     const requestExamCheck = (hint?: string): ExamCheckRefusal | undefined => {
       const requestId = lastExam?.requestId;
       if (!requestId) {
@@ -2304,6 +2314,18 @@ function bootstrap(): void {
         // before their request filter, so it reads as a global caveat
         examSend({ requestId: '', kind: 'note', text: T().examCheckNoContext });
         return 'exam_check_no_context';
+      }
+      // a press while a DIFFERENT request is in flight is aimed at an answer
+      // no renderer will show: the phone has no answer.streaming gate like the
+      // desktop button, lastExam still points at the previous answer, and both
+      // surfaces drop this requestId's events per the orphan rule — the user
+      // would see 「已让模型重查一遍」 while an invisible round bills an LLM call.
+      // examControllers holds every live answer round and check round, so one
+      // scan covers both; a round of the reviewed answer itself is busy, not stale.
+      for (const live of examControllers.keys()) {
+        if (live === requestId) continue;
+        console.log(`[exam] manual check ignored — request ${live} is in flight`);
+        return 'exam_check_stale';
       }
       // one round at a time, and asked before the counter moves: pressing
       // 再检查一遍 while the auto round is still streaming must not spend a second
@@ -2313,9 +2335,9 @@ function bootstrap(): void {
         return 'exam_check_busy';
       }
       // a manual round is user-requested: it runs ungated — even on a
-      // bank-direct answer, which only the auto round skips
-      const turn = (checkTurns.get(requestId) ?? 1) + 1;
-      checkTurns.set(requestId, turn);
+      // bank-direct answer, which only the auto round skips. runExamCheck claims
+      // the number once the round really starts; a refused press never advances it.
+      const turn = (checkTurns.get(requestId) ?? 0) + 1;
       void runExamCheck(requestId, turn, hint?.trim().slice(0, 500));
       return undefined;
     };

@@ -33,7 +33,12 @@ const LANG_EXT: Record<string, string> = {
 /** the file extension a downloaded snippet should get; unknown tags are not an error */
 export function codeFileExt(lang: string | undefined, fallback = 'txt'): string {
   const key = (lang ?? '').trim().toLowerCase();
-  return LANG_EXT[key] ?? fallback;
+  // own-property check: LANG_EXT is an object literal, so a bare index reads
+  // through the prototype chain — a fence tagged `constructor` would hand back
+  // Object.prototype.constructor and name the download
+  // answer.function Object() { [native code] }… (the phone twin in
+  // resources/companion/markdown.js guards the same lookup the same way)
+  return Object.prototype.hasOwnProperty.call(LANG_EXT, key) ? LANG_EXT[key] : fallback;
 }
 
 function trimBlankEdges(lines: string[]): string {

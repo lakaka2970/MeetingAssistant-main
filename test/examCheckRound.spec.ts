@@ -63,4 +63,43 @@ describe('requestExamCheck 的单回合上限（主进程源码形状）', () =>
     expect(guard).toBeGreaterThan(-1);
     expect(guard).toBeLessThan(manual.indexOf('const turn = (checkTurns.get(requestId)'));
   });
+
+  it('refuses while a DIFFERENT request is in flight — a phone press must not bill invisible tokens', () => {
+    // the desktop gates its button (answer.streaming || stage); the phone has
+    // no such gate, and lastExam still points at the PREVIOUS answer — the
+    // round would run and both renderers would drop its events per the orphan
+    // rule. The refusal code rides the existing refusal → note() chain.
+    expect(src).toMatch(/type ExamCheckRefusal = 'exam_check_no_context' \| 'exam_check_busy' \| 'exam_check_stale'/);
+    const guard = manual.indexOf('for (const live of examControllers.keys())');
+    expect(guard).toBeGreaterThan(-1);
+    expect(manual.slice(guard, guard + 400)).toContain("return 'exam_check_stale'");
+    // asked before the counter moves, like every other refusal
+    expect(guard).toBeLessThan(manual.indexOf('const turn = (checkTurns.get(requestId)'));
+  });
+
+  it('第 N 轮 counts rounds that actually ran, not presses', () => {
+    // the old shape `(checkTurns.get ?? 1) + 1` showed 第 2 轮 on the first
+    // visible card whenever the auto round never ran: the auto round never
+    // touched checkTurns. The claim now happens inside runExamCheck, once the
+    // guards say the round is really starting — the auto round claims turn 1,
+    // and the next manual press is one higher than the last round that ran.
+    expect(run).toMatch(/checkTurns\.set\(requestId, Math\.max\(checkTurns\.get\(requestId\) \?\? 0, turn\)\)/);
+    expect(manual).toMatch(/const turn = \(checkTurns\.get\(requestId\) \?\? 0\) \+ 1/);
+    expect(manual).not.toMatch(/checkTurns\.set\(requestId, turn\)/);
+    // the claim sits behind the same-round and context guards: a round ignored
+    // for a concurrent one must not burn a number
+    expect(run.indexOf('checkRunning.has(requestId)')).toBeLessThan(
+      run.indexOf('checkTurns.set(requestId, Math.max'),
+    );
+    expect(run.indexOf('lastExam.requestId !== requestId')).toBeLessThan(
+      run.indexOf('checkTurns.set(requestId, Math.max'),
+    );
+  });
+
+  it('every answer that reaches the user records lastExam — the early exits included', () => {
+    // the bank-hit-without-key and empty-model-output fallbacks used to return
+    // without recording: 再检查一遍 answered 还没有可复核的答案 right after an
+    // answer had appeared on screen
+    expect((src.match(/lastExam = \{ requestId: payload\.requestId/g) || []).length).toBe(4);
+  });
 });
