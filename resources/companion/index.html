@@ -98,6 +98,12 @@
   .x-check-body{font-size:.98rem;line-height:1.6;overflow-wrap:anywhere;margin-top:.3rem;
                border-top:1px dashed var(--line);padding-top:.3rem}
   .x-check-body p{margin:.3rem 0}
+  /* 修订还在流出来 = verdict 未定的 provisional 卡（token 走在 verdict 头前面）。
+     此时按 unknown 的红色描边会被读成「没查成」，所以走中性描边 + 明写复核中。 */
+  .x-check[data-verdict='unknown'][data-streaming='1']{border-left-color:var(--dim)}
+  .x-check-live{font-size:.72rem;color:var(--dim);margin-top:.2rem}
+  /* 流式途中的修订正文：保住换行的纯文本，收束那一刻才被 Markdown 取代 */
+  .x-check-plain{white-space:pre-wrap}
 
   main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:.55rem;
        display:flex;flex-direction:column;gap:.4rem;-webkit-overflow-scrolling:touch}

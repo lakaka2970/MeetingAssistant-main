@@ -324,6 +324,13 @@ body {
 .exam-check[data-verdict='unknown'] {
   border-left-color: var(--exam-bad);
 }
+/* A provisional card: the round's tokens stream before its verdict header
+   (parse needs the full text), so the verdict is still unknown while the
+   revision is being written. The 「没查成」 red belongs to a round that ENDED
+   unknown — painting it mid-stream reports a verdict that hasn't been given. */
+.exam-check[data-verdict='unknown'][data-streaming='1'] {
+  border-left-color: var(--exam-border);
+}
 .exam-check-note {
   font-size: 12px;
   color: var(--exam-warn);

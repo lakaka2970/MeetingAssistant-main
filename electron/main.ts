@@ -1968,12 +1968,26 @@ function bootstrap(): void {
     let lastExam: { requestId: string; question: string; subMode: ExamSubMode; answer: string; at: number } | undefined;
     const checkNotes = new Map<string, string[]>();
     const checkTurns = new Map<string, number>();
+    /**
+     * Rounds currently spending tokens, by requestId. The guard lives here rather
+     * than behind a button, because this is where the money is spent: a second
+     * concurrent round for the same answer would `examControllers.set(requestId)`
+     * over the first one, orphaning an abort handle the user can no longer reach
+     * (so 停止 would cancel the NEW round and let the old one keep streaming).
+     * Both entry points share it — the auto round after `done` and a manual
+     * press of 再检查一遍 — and neither UI can be trusted to gate itself.
+     */
+    const checkRunning = new Set<string>();
 
     const runExamCheck = async (
       requestId: string,
       turn: number,
       hint?: string,
     ): Promise<void> => {
+      if (checkRunning.has(requestId)) {
+        console.log(`[exam] check turn=${turn} ignored — a round for ${requestId} is still running`);
+        return;
+      }
       if (!lastExam || lastExam.requestId !== requestId) {
         examSend({ requestId, kind: 'note', text: T().examCheckNoContext });
         return;
@@ -1985,6 +1999,7 @@ function bootstrap(): void {
       }
       const ac = new AbortController();
       examControllers.set(requestId, ac);
+      checkRunning.add(requestId);
       const t0 = Date.now();
       let raw = '';
       try {
@@ -2015,6 +2030,7 @@ function bootstrap(): void {
         examSend({ requestId, kind: 'check', turn, verdict: 'unknown', note: `${T().examCheckFailed}: ${(e as Error).message}`.slice(0, 300), ms: Date.now() - t0 });
       } finally {
         examControllers.delete(requestId);
+        checkRunning.delete(requestId);
       }
     };
 
@@ -2280,6 +2296,13 @@ function bootstrap(): void {
         // no requestId of its own: the window and the phone both surface this
         // before their request filter, so it reads as a global caveat
         examSend({ requestId: '', kind: 'note', text: T().examCheckNoContext });
+        return;
+      }
+      // one round at a time, and asked before the counter moves: pressing
+      // 再检查一遍 while the auto round is still streaming must not spend a second
+      // LLM call, and must not advance checkTurns to a number no round ever ran
+      if (checkRunning.has(requestId)) {
+        console.log(`[exam] manual check ignored — round ${checkTurns.get(requestId) ?? 1} for ${requestId} is still running`);
         return;
       }
       // a manual round is user-requested: it runs ungated — even on a

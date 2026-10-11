@@ -18,6 +18,7 @@
     "electron/**/*.ts",
     "shared/**/*.ts",
     "src/components/prompt/focusTurn.ts",
+    "src/exam/checkCard.ts",
     "test/**/*.ts",
     "tools/**/*.ts",
     "electron.vite.config.ts"

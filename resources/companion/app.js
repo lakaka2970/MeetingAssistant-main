@@ -103,6 +103,15 @@ function escapeHtml(t) {
   return String(t).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+/** Markdown → HTML，唯一的入口：markdown.js 没到位就退回纯文本段落。
+ * 答案正文与复核修订都走这里 —— 绝不允许因为排版失败让一块内容整块空白，
+ * 也不允许在 renderHero / archiveCurrent 里抛出异常（archiveCurrent 已经
+ * 把 current 置空，抛出等于把整张卡丢掉）。 */
+function mdHtml(text) {
+  return typeof window.renderMarkdown === 'function'
+    ? window.renderMarkdown(text)
+    : `<p>${escapeHtml(text)}</p>`;
+}
 
 /* ---- 时钟偏差与 ping ---- */
 let clockOffset = null;   // 电脑时钟 - 本机时钟
@@ -228,10 +237,75 @@ const ORIGINS = {
 const CHECK_TITLE = {
   ok: '复核：没发现问题', fix: '复核：已订正', unknown: '复核未完成',
 };
+/* 修订还在流出来时的标题：provisional 卡的 verdict 还是 unknown，直接印
+ * 「复核未完成」会在回合仍在跑的时候报一个失败 —— 与桌面 t.checkThinking 同词。 */
+const CHECK_LIVE = '复核中…';
+
+/* CHECK_MARK_BEGIN —— 复核卡状态机（纯函数，无 DOM 无定时器）
+ * 单测把它单独切出来在 node:vm 里跑：test/companionMarkdown.spec.ts。
+ * 主进程把每一个 checkDelta 都发在 verdict 头之前（判词要等全文才解析得出来），
+ * bridge 也刻意先把缓冲的 checkDelta 刷出去再发头，所以渲染端**永远**先看到
+ * token、后看到 verdict。要求「先有卡才收 token」等于把整段修订丢掉，只在
+ * checkDone 那一瞬间整块显形。于是：
+ *  · 某轮第一个 token 且还没有卡 → 开一张 provisional 卡（verdict unknown）；
+ *  · 随后同轮的 check 头 → **合并**：保住已经流出来的正文，只补 verdict/note/ms，
+ *    streaming 由 verdict 决定（fix 且正文还在来 → 继续转；ok/unknown → 收）；
+ *  · 已有同轮的卡 → 照旧追加；
+ *  · 回合已收束（streaming false）才来的 token → 丢弃，绝不重开一张已定的卡。
+ * 返回同一个引用表示「这个事件什么也别改」。
+ */
+function applyCheckEvent(check, msg) {
+  const mine = !!check && check.turn === msg.turn;
+  if (msg.phase === 'checkDelta') {
+    if (mine) return check.streaming ? { ...check, text: check.text + msg.text } : check;
+    return { turn: msg.turn, verdict: 'unknown', note: '', text: msg.text, ms: 0, streaming: true };
+  }
+  if (msg.phase === 'check') {
+    const open = msg.verdict === 'fix';
+    const note = msg.note || '';
+    const ms = msg.ms || 0;
+    // 同一轮：整张换新对象会抹掉用户已经逐字看到的修订
+    if (mine) return { ...check, verdict: msg.verdict, note, ms, streaming: open };
+    return { turn: msg.turn, verdict: msg.verdict, note, text: '', ms, streaming: open };
+  }
+  if (msg.phase === 'checkDone') {
+    if (!mine) return check;   // 没有卡的 done 不凭空造卡
+    return { ...check, text: msg.text || check.text, streaming: false };
+  }
+  return check;
+}
+/* CHECK_MARK_END */
+
 let current = null;
+
+/* ---- 复核卡的空转看门狗 ----
+ * 被取消的回合既不补 verdict 头也不发 checkDone（主进程在 AbortError 上直接 return），
+ * 但 bridge 每 80ms 刷一次的缓冲 token 仍然会到达手机 —— 一张 provisional 卡就带着
+ * 「复核中…」永远转下去。手机页没有停止按钮可以清它（桌面有），所以给一个只作用于
+ * 「这一张还在转的卡」的静默期限：token 之间最多隔 FLUSH_MS 几十毫秒，20s 没有新
+ * token 也没有 verdict 头就是这条回合已经死了，如实收卡（verdict 仍是 unknown，
+ * 即「复核未完成」），下一次真到达的头仍然可以合并进来把它重新打开。 */
+const CHECK_IDLE_MS = 20000;
+let checkIdle = null;
+function clearCheckIdle() {
+  if (checkIdle !== null) { clearTimeout(checkIdle); checkIdle = null; }
+}
+function armCheckIdle(id, turn) {
+  clearCheckIdle();
+  checkIdle = setTimeout(() => {
+    checkIdle = null;
+    // 只关自己那一张：换题/换轮之后的旧定时器不能碰新卡
+    if (current && current.id === id && current.check && current.check.turn === turn && current.check.streaming) {
+      current.check = { ...current.check, streaming: false };
+      renderHero(current);
+    }
+  }, CHECK_IDLE_MS);
+}
 
 function newAnswer(id, kind) {
   if (current) archiveCurrent();
+  // 一次新的作答就是上一张 provisional 复核卡的终点：定时器随旧对象一起作废
+  clearCheckIdle();
   current = {
     id, kind, text: '', state: 'streaming', startedAt: Date.now(),
     serverMs: 0, question: '', qa: '', origin: '', rendered: false,
@@ -293,20 +367,41 @@ function renderHero(a) {
 function answerHtml(a) {
   let html = '';
   if (a.qa) html += `<div class="qa"><b>资料里的原话</b>${escapeHtml(a.qa)}</div>`;
-  html += (typeof window.renderMarkdown === 'function')
-    ? window.renderMarkdown(a.text)
-    : `<p>${escapeHtml(a.text)}</p>`;
+  html += mdHtml(a.text);
   if (a.state === 'error') html += `<p class="failed">⚠ ${escapeHtml(a.error || '失败')}</p>`;
   // the check card rides below the answer it reviewed — the original answer
   // above stays visible, which is what makes OK / FIX / "didn't run" tellable
   if (a.check) {
-    const v = a.check.verdict;
-    html += `<div class="x-check" data-verdict="${v}"><div class="x-check-head">${CHECK_TITLE[v] || v} · ${a.check.turn}</div>`
-      + (a.check.note ? `<div class="x-check-note">${escapeHtml(a.check.note)}</div>` : '')
-      + (a.check.text ? `<div class="x-check-body">${window.renderMarkdown(a.check.text)}</div>` : '')
+    const c = a.check;
+    // verdict unknown + still streaming is a provisional card (its tokens ran
+    // ahead of the verdict header), not a failed round: say 复核中, not 未完成
+    const title = c.streaming && c.verdict === 'unknown' ? CHECK_LIVE : (CHECK_TITLE[c.verdict] || c.verdict);
+    html += `<div class="x-check" data-verdict="${escapeHtml(c.verdict)}"${c.streaming ? ' data-streaming="1"' : ''}>`
+      + `<div class="x-check-head">${escapeHtml(title)} · ${c.turn}</div>`
+      + (c.note ? `<div class="x-check-note">${escapeHtml(c.note)}</div>` : '')
+      + (c.text
+        // 还在流的修订是纯文本（保住换行），回合收束那一刻才做一次 Markdown + KaTeX：
+        // 逐 token 重排会把上面已定版的答案一起重算，正是本文件开头那条延迟纪律
+        ? (c.streaming
+          ? `<div class="x-check-body x-check-plain">${escapeHtml(c.text)}</div>`
+          : `<div class="x-check-body">${mdHtml(c.text)}</div>`)
+        : '')
+      + (c.streaming && c.verdict !== 'unknown' ? `<div class="x-check-live">${CHECK_LIVE}</div>` : '')
       + '</div>';
   }
   return html;
+}
+/** 修订卡的增量绘制：token 还在来的时候只往已有的块里写纯文本。整块重排会把上面
+ * 已经定版的答案连同 KaTeX 一起重算，每 80ms 一次在手机上是明显掉帧 —— 与本文件
+ * 开头那条「流式阶段只追加纯文本」是同一条纪律。开卡、verdict 到达、回合收束
+ * 这三种状态变化才走完整的 renderHero。 */
+function paintCheck(a, prev, msg) {
+  if (msg.phase === 'checkDelta' && a.check.streaming
+    && prev && prev.streaming && prev.turn === a.check.turn) {
+    const body = heroBody.querySelector('.x-check-body');
+    if (body) { body.textContent = a.check.text; return; }
+  }
+  renderHero(a);
 }
 function typeset(el) {
   // KaTeX 的 /vendor/katex/* 是可选资源：拿不到就退回原始文本，
@@ -373,6 +468,11 @@ function archiveCurrent() {
   if (!current) return;
   const a = current;
   current = null;
+  // feed 里的条目是静态的：一张还在转的复核卡归档进去就是一个永远停不下来的
+  // 「复核中…」。收束它（verdict 若还是 unknown 就照实说「复核未完成」），
+  // 定时器也一并作废 —— 它绑的是 hero 那一个 id。
+  clearCheckIdle();
+  if (a.check && a.check.streaming) a.check = { ...a.check, streaming: false };
   if (!a.text && !a.qa && !a.error) return;
   const el = document.createElement('div');
   el.className = 'ans';
@@ -732,29 +832,20 @@ function handle(msg) {
         if (a.origin !== 'bank') a.origin = msg.origin;
         finish(msg.id, 'x', msg.text, a.origin, msg.ms);
         if (a.question) { heroQ.hidden = false; heroQ.textContent = `Q：${a.question.slice(0, 300)}`; }
-      } else if (msg.phase === 'check') {
-        // the round rides the id of the answer it reviews: touch() resolves to the
-        // current hero answer, so the revision card attaches below the original.
-        const a = touch(msg.id, 'x');
-        a.check = { turn: msg.turn, verdict: msg.verdict, note: msg.note || '', text: '', streaming: msg.verdict === 'fix', ms: msg.ms || 0 };
-        renderHero(a);
-      } else if (msg.phase === 'checkDelta') {
-        // orphan-tolerant: main streams tokens before the verdict header, so a
-        // delta can arrive with no card yet. Only ever append to an open card for
-        // THIS turn; never touch() here — that would invent a blank hero.
-        if (current && current.id === msg.id && current.check
-          && current.check.turn === msg.turn && current.check.streaming) {
-          current.check.text += msg.text;
-          renderHero(current);
-        }
-      } else if (msg.phase === 'checkDone') {
-        // a stray done for a turn with no card must not invent one; a cancelled
-        // round emits a buffered delta but never a done, and a check without a
-        // header is meaningless anyway
-        if (current && current.id === msg.id && current.check && current.check.turn === msg.turn) {
-          current.check.text = msg.text || current.check.text;
-          current.check.streaming = false;
-          renderHero(current);
+      } else if (msg.phase === 'check' || msg.phase === 'checkDelta' || msg.phase === 'checkDone') {
+        // 三条阶段共用同一条孤儿规则（Finding 1）：复核回合骑在它所展示的那条答案的
+        // id 上。那条答案一旦定版进 feed，`current` 就换成了下一题（或为 null），这边
+        // 再也无法把它重新渲染出来 —— 只能丢弃。绝不能用 touch()：那会把正在流式的
+        // 下一题当成残卡归档，再给一条早已归档的答案开一个没有正文的 hero。
+        // 状态机本身（开 provisional / 合并 verdict / 追加 / 收束）是纯函数，见 applyCheckEvent。
+        if (current && current.id === msg.id) {
+          const prev = current.check;
+          const next = applyCheckEvent(prev, msg);
+          if (next !== prev) {
+            current.check = next;
+            if (next.streaming) armCheckIdle(msg.id, next.turn); else clearCheckIdle();
+            paintCheck(current, prev, msg);
+          }
         }
       } else if (msg.phase === 'error') { const a = touch(msg.id, 'x'); a.state = 'error'; a.error = msg.message; renderHero(a); }
       break;

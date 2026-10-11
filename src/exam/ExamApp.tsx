@@ -19,6 +19,10 @@ import type {
 } from '../../shared/protocol';
 import { buildPersonaBlock, defaultPersona, updateLedger, type Ledger } from '../../shared/persona';
 import { MathText } from '../components/MathText';
+// The check card's shape and its whole state machine live in ./checkCard: the
+// card is never merged into `answer` (the original must stay visible beside it),
+// and a pure reducer is the only way to unit-test the event ORDER without a DOM.
+import { applyCheckCard, type Check } from './checkCard';
 import { examDict } from './i18n';
 
 let seq = 0;
@@ -37,19 +41,9 @@ interface Answer {
 }
 
 /**
- * The self-check round on the answer already shown. It is kept in its own state
- * slot — never merged into `answer` — because the whole point of the card is
- * that the original answer stays visible and the revision sits beside it, so OK,
- * FIX and "didn't run" are distinguishable at a glance.
+ * The self-check round's shape lives in ./checkCard (its state machine is a pure
+ * function there, so the event order is unit-testable without a DOM).
  */
-interface Check {
-  turn: number;
-  verdict: 'ok' | 'fix' | 'unknown';
-  note: string;
-  revision: string;
-  streaming: boolean;
-  ms: number;
-}
 
 export function ExamApp() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
@@ -190,17 +184,14 @@ export function ExamApp() {
           break;
         // The check round rides the same requestId as the answer it reviews; it
         // never touches `answer`, so the original stays visible below the card.
-        // A cancelled round can still emit one buffered `checkDelta`, so the
-        // delta/done reducers only ever mutate a card that already exists for
-        // this turn — a stray event can't invent a half-open card.
+        // All three phases go through one pure reducer (./checkCard): the main
+        // process streams every `checkDelta` BEFORE the verdict header, so the
+        // first token must open a provisional card and the header must merge
+        // into it — replacing it would erase the text the user watched appear.
         case 'check':
-          setCheck({ turn: ev.turn, verdict: ev.verdict, note: ev.note, revision: '', streaming: ev.verdict === 'fix', ms: ev.ms });
-          break;
         case 'checkDelta':
-          setCheck((c) => (c && c.turn === ev.turn && c.streaming ? { ...c, revision: c.revision + ev.text } : c));
-          break;
         case 'checkDone':
-          setCheck((c) => (c && c.turn === ev.turn ? { ...c, revision: ev.text || c.revision, streaming: false } : c));
+          setCheck((c) => applyCheckCard(c, ev));
           break;
       }
     });
@@ -263,6 +254,10 @@ export function ExamApp() {
   const stop = useCallback(() => {
     if (activeRef.current) window.mcExam.cancel(activeRef.current);
     setAnswer((a) => (a ? { ...a, streaming: false } : a));
+    // an aborted round sends neither a verdict header nor a `checkDone` (main
+    // returns on AbortError), so a card opened by its tokens would keep a
+    // "复核中…" hint with nothing left to close it. Cancel takes the card with it.
+    setCheck(null);
     setStage('');
   }, []);
 
@@ -320,7 +315,7 @@ export function ExamApp() {
           <button className="btn btn-primary" onClick={() => void capture()} disabled={!!stage}>
             {t.capture}
           </button>
-          {answer?.streaming ? (
+          {answer?.streaming || check?.streaming ? (
             <button className="btn" onClick={stop}>
               {t.stop}
             </button>
@@ -388,10 +383,13 @@ export function ExamApp() {
         ) : null}
 
         {check ? (
-          <div className="exam-card exam-check" data-verdict={check.verdict}>
+          <div className="exam-card exam-check" data-verdict={check.verdict} data-streaming={check.streaming ? '1' : undefined}>
             <div className="exam-row">
               <span className={`exam-badge ${check.verdict === 'ok' ? 'good' : check.verdict === 'fix' ? 'warn' : ''}`}>
-                {t.checkTitle[check.verdict]}
+                {/* a provisional card (its tokens ran ahead of the verdict header) is
+                    still running, not a failed round: 复核未完成 would report a
+                    verdict the checker has not produced yet */}
+                {check.streaming && check.verdict === 'unknown' ? t.checkThinking : t.checkTitle[check.verdict]}
               </span>
               <span className="exam-meta">{t.checkTurn(check.turn)}</span>
               {check.ms ? <span className="exam-meta">{t.msLabel(check.ms)}</span> : null}
@@ -402,7 +400,7 @@ export function ExamApp() {
                 <MathText text={check.revision} codeLabels={t.codeLabels} />
               </div>
             ) : null}
-            {check.streaming ? <span className="exam-hint">{t.checkThinking}</span> : null}
+            {check.streaming && check.verdict !== 'unknown' ? <span className="exam-hint">{t.checkThinking}</span> : null}
           </div>
         ) : null}
 

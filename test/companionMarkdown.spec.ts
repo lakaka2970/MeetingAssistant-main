@@ -19,6 +19,32 @@ function loadRenderer(): (src: string) => string {
   return (loadWindow() as { renderMarkdown: (s: string) => string }).renderMarkdown;
 }
 
+/**
+ * app.js is a browser page: past its pure helpers it touches document/WebSocket
+ * at the top level, so the whole file cannot run in a vm. The check-card state
+ * machine is fenced in CHECK_MARK_BEGIN/CHECK_MARK_END comments — exactly the
+ * part that must be pinned, because it is a runtime-ORDER problem (the main
+ * process streams every checkDelta before the verdict header) that a type check
+ * cannot see. If the markers ever disappear, this throws instead of silently
+ * testing nothing.
+ */
+type PhoneCheck = { turn: number; verdict: string; note: string; text: string; ms: number; streaming: boolean };
+type PhoneMsg = { phase: string; turn: number; text?: string; verdict?: string; note?: string; ms?: number };
+
+function loadCheckMachine(): {
+  applyCheckEvent: (check: PhoneCheck | null, msg: PhoneMsg) => PhoneCheck | null;
+  region: string;
+} {
+  const src = readFileSync(new URL('../resources/companion/app.js', import.meta.url), 'utf8');
+  const start = src.indexOf('/* CHECK_MARK_BEGIN');
+  const end = src.indexOf('/* CHECK_MARK_END');
+  if (start < 0 || end < 0 || end <= start) throw new Error('app.js lost its CHECK_MARK_BEGIN/CHECK_MARK_END fence');
+  const region = src.slice(start, end);
+  const box: Record<string, unknown> = {};
+  runInContext(region, createContext(box) as never);
+  return { applyCheckEvent: box.applyCheckEvent as never, region };
+}
+
 describe('companion renderMarkdown', () => {
   const md = loadRenderer();
 
@@ -110,5 +136,128 @@ describe('companion code-block read path', () => {
     expect(src).toMatch(/codeTextFromLines/);
     expect(src).not.toMatch(/writeText\([^)]*textContent/);
     expect(src).not.toMatch(/new Blob\(\[[^\]]*textContent/);
+  });
+});
+
+/**
+ * The phone's half of the check card. The order under test is the one main
+ * really produces: `checkDelta` ×N, then the `check` verdict header, then
+ * `checkDone` — the verdict is parsed from the finished text, so the header can
+ * not precede the stream it describes. A renderer that waited for a card before
+ * accepting tokens dropped the whole revision (review finding #3).
+ */
+describe('companion check-card state machine (app.js, fenced pure region)', () => {
+  const { applyCheckEvent } = loadCheckMachine();
+  const D = (text: string, turn = 1): PhoneMsg => ({ phase: 'checkDelta', turn, text });
+  const H = (over: Partial<PhoneMsg> = {}): PhoneMsg => ({ phase: 'check', turn: 1, verdict: 'fix', note: '', ms: 900, ...over });
+  const F = (text: string, turn = 1): PhoneMsg => ({ phase: 'checkDone', turn, text });
+  const run = (msgs: PhoneMsg[]): PhoneCheck | null =>
+    msgs.reduce<PhoneCheck | null>((c, m) => applyCheckEvent(c, m), null);
+
+  it('the first token with no card opens a provisional card instead of vanishing', () => {
+    expect(applyCheckEvent(null, D('思路：'))).toEqual({
+      turn: 1, verdict: 'unknown', note: '', text: '思路：', ms: 0, streaming: true,
+    });
+  });
+
+  it('tokens grow the card, and the later header merges without erasing them', () => {
+    const c = run([D('O(n '), D('log n)'), H({ note: '少了空数组判断', ms: 1500 })]);
+    expect(c).toEqual({ turn: 1, verdict: 'fix', note: '少了空数组判断', text: 'O(n log n)', ms: 1500, streaming: true });
+  });
+
+  it('checkDone retells the round in full and closes the spinner', () => {
+    const c = run([D('半截'), H(), F('完整修订正文')]);
+    expect(c).toMatchObject({ text: '完整修订正文', streaming: false, verdict: 'fix' });
+  });
+
+  it('an empty checkDone never blanks what already streamed', () => {
+    const c = run([D('streamed'), H(), F('')]);
+    expect(c?.text).toBe('streamed');
+    expect(c?.streaming).toBe(false);
+  });
+
+  it('ok / unknown close the card — they are the round’s last word', () => {
+    for (const verdict of ['ok', 'unknown']) {
+      const c = run([D('x'), H({ verdict })]);
+      expect(c).toMatchObject({ verdict, streaming: false });
+    }
+  });
+
+  it('a token arriving after the round settled is dropped, not appended', () => {
+    const settled = run([D('a'), H({ verdict: 'ok' }), F('a')]);
+    expect(settled?.streaming).toBe(false);
+    expect(applyCheckEvent(settled, D('a'))).toBe(settled);
+  });
+
+  it('a checkDone for a turn with no card invents nothing', () => {
+    expect(applyCheckEvent(null, F('全文'))).toBe(null);
+  });
+
+  it('the first token of round 2 supersedes round 1’s card', () => {
+    const c = run([D('r1', 1), H({ turn: 1 }), F('r1', 1), D('r2 ', 2)]);
+    expect(c).toMatchObject({ turn: 2, verdict: 'unknown', text: 'r2 ', streaming: true });
+  });
+
+  it('a late header from another turn does not merge into this turn’s card', () => {
+    const c = run([D('本轮', 2), H({ turn: 1, verdict: 'ok' })]);
+    expect(c).toMatchObject({ turn: 1, verdict: 'ok', text: '', streaming: false });
+  });
+
+  it('the pure region stays pure: no DOM, no timers, no touch()', () => {
+    const { region } = loadCheckMachine();
+    expect(region).not.toMatch(/document|heroBody|innerHTML|setTimeout|touch\(/);
+  });
+});
+
+/**
+ * The two findings that live in app.js's wiring rather than in its reducer:
+ * a late header must not invent a hero (review finding #1, Critical), and the
+ * revision must never call the vendor renderer unguarded (review finding #2).
+ */
+describe('companion check-card wiring guards', () => {
+  const src = readFileSync(new URL('../resources/companion/app.js', import.meta.url), 'utf8');
+
+  it('all three check phases share one branch that requires the current hero id', () => {
+    const at = src.indexOf("msg.phase === 'check' || msg.phase === 'checkDelta' || msg.phase === 'checkDone'");
+    expect(at).toBeGreaterThan(-1);
+    const branch = src.slice(at, src.indexOf("msg.phase === 'error'", at));
+    expect(branch).toMatch(/current && current\.id === msg\.id/);
+    // the orphan rule: touch() would archive the live answer to re-render a
+    // card that has already left the hero — which this code cannot do
+    expect(branch).not.toMatch(/touch\(msg\.id/);
+  });
+
+  it('window.renderMarkdown has exactly one call site, behind the typeof fallback', () => {
+    expect(src).toMatch(/typeof window\.renderMarkdown === 'function'/);
+    expect((src.match(/window\.renderMarkdown\(/g) || []).length).toBe(1);
+  });
+
+  it('the revision body goes through mdHtml, the note through escapeHtml', () => {
+    expect(src).toMatch(/<div class="x-check-body">\$\{mdHtml\(c\.text\)\}/);
+    expect(src).toMatch(/<div class="x-check-note">\$\{escapeHtml\(c\.note\)\}/);
+  });
+
+  it('token growth paints plain text — the settled answer above is not re-typeset every flush', () => {
+    const at = src.indexOf('function paintCheck');
+    const body = src.slice(at, src.indexOf('function typeset'));
+    expect(at).toBeGreaterThan(-1);
+    expect(body).toContain("body.textContent = a.check.text");
+    expect(src).toMatch(/<div class="x-check-body x-check-plain">/);
+  });
+
+  it('a provisional card cannot spin forever: idle watchdog, new ask, archive all close it', () => {
+    expect(src).toMatch(/function armCheckIdle\(id, turn\)/);
+    // the timer only touches the card it was armed for
+    expect(src).toMatch(/current\.id === id && current\.check && current\.check\.turn === turn/);
+    // the start of a new ask drops it with the old hero object
+    const ask = src.slice(src.indexOf('function newAnswer'), src.indexOf('function touch('));
+    expect(ask).toMatch(/clearCheckIdle\(\)/);
+  });
+
+  it('archiving closes a still-streaming check card — no frozen spinner in the feed', () => {
+    const at = src.indexOf('function archiveCurrent');
+    const body = src.slice(at, src.indexOf('\n}\n', at));
+    expect(body).toMatch(/a\.check && a\.check\.streaming/);
+    expect(body).toMatch(/streaming: false/);
   });
 });
