@@ -1,0 +1,100 @@
+/* Component-owned sheet: MathText serves both the exam window and the
+   interview window, so the code-block styles cannot live in exam.css —
+   the interview window never loads that file. */
+
+:root {
+  --mono: ui-monospace, Menlo, Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK SC', monospace;
+  --code-bg: #0d1117;
+  --code-bar: rgba(255, 255, 255, 0.06);
+  --code-line: rgba(255, 255, 255, 0.1);
+  --code-kw: #c586c0;
+  --code-str: #ce9178;
+  --code-num: #b5cea8;
+  --code-cmt: #7d8794;
+  --code-pre: #d69d85;
+  --code-accent: #9dc0ff;
+}
+
+html[data-theme='light'] {
+  --code-bg: #f4f6fa;
+  --code-bar: rgba(20, 30, 50, 0.04);
+  --code-line: rgba(20, 30, 50, 0.14);
+  --code-kw: #8a2be2;
+  --code-str: #a31515;
+  --code-num: #098658;
+  --code-cmt: #6a737d;
+  --code-pre: #8b3a00;
+  --code-accent: #1b4fc0;
+}
+
+.code-block {
+  margin: 6px 0;
+  background: var(--code-bg);
+  border: 1px solid var(--code-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.code-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--code-bar);
+  border-bottom: 1px solid var(--code-line);
+}
+
+.code-lang {
+  margin-right: auto;
+  font: 11px/1.4 var(--mono);
+  color: var(--code-cmt);
+}
+
+.code-ctrl {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--code-line);
+  background: transparent;
+  color: var(--code-accent);
+  cursor: pointer;
+}
+
+.code-ctrl[aria-pressed='true'] {
+  background: #2563eb;
+  color: #fff;
+}
+
+.code-pre {
+  padding: 10px 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.code-pre code {
+  display: block;
+  font: 0.92em/1.6 var(--mono);
+  white-space: pre;
+  tab-size: 4;
+  /* .exam-a (and parts of the interview pane) set word-break: break-word,
+     which inherits here and would snap wide lines at an arbitrary column
+     instead of letting them scroll — the exact defect this block fixes. */
+  word-break: normal;
+}
+
+.code-block.wrap .code-pre code {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  padding-left: 1.4em;
+  text-indent: -1.4em;
+}
+
+.code-block.wrap .code-pre code > span:first-child {
+  text-indent: 0;
+}
+
+.tok-kw { color: var(--code-kw); }
+.tok-str { color: var(--code-str); }
+.tok-num { color: var(--code-num); }
+.tok-cmt { color: var(--code-cmt); font-style: italic; }
+.tok-pre { color: var(--code-pre); }

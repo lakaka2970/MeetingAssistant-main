@@ -1,17 +1,22 @@
 import { useMemo } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import { splitCodeFences } from '../../shared/codeFences';
 import { splitMath } from '../../shared/mathSplit';
 import { escapeHtml, renderMarkdownLite } from '../../shared/markdownLite';
+import { CodeBlock, type CodeBlockLabels } from './CodeBlock';
 
 /**
- * Renders an answer body with inline math typeset by KaTeX and the common
- * inline Markdown constructs (bold / italic / code / line headings) turned into
- * markup. The LLM answers arrive as plain text, so LaTeX delimiters ($…$,
- * $$…$$, \(…\), \[…\]) and `**markers**` would otherwise show verbatim.
- * {@link splitMath} does the prose/math split and {@link renderMarkdownLite}
- * handles the prose: both keep the app's existing pre-wrap behaviour, and the
- * prose is escaped before any markup is generated.
+ * Renders an answer body: fenced code goes to {@link CodeBlock} (monospace,
+ * scrolling, highlight), everything else to {@link ProseText} with inline math
+ * typeset by KaTeX and the common inline Markdown constructs (bold / italic /
+ * code / line headings) turned into markup. The LLM answers arrive as plain
+ * text, so a ``` fence would otherwise show its own backticks in a proportional
+ * font and LaTeX delimiters would show verbatim. {@link splitCodeFences} peels
+ * the fences off first — which also keeps a shell `$((a+b))` out of the math
+ * splitter — and then {@link splitMath} + {@link renderMarkdownLite} handle the
+ * prose exactly the way they did before; prose is escaped before any markup is
+ * generated.
  */
 
 function renderMath(tex: string, display: boolean): string {
@@ -30,7 +35,9 @@ function renderMath(tex: string, display: boolean): string {
   }
 }
 
-export function MathText({ text }: { text: string }) {
+/** The pre-fence-split renderer, moved here verbatim: an answer without a
+ *  fence must reach the DOM exactly as it did before this component existed. */
+function ProseText({ text }: { text: string }) {
   const segs = useMemo(() => splitMath(text), [text]);
   return (
     <>
@@ -41,6 +48,23 @@ export function MathText({ text }: { text: string }) {
         ) : (
           // KaTeX output is generated from escaped source — safe to inject.
           <span key={i} dangerouslySetInnerHTML={{ __html: renderMath(s.tex, s.display) }} />
+        ),
+      )}
+    </>
+  );
+}
+
+export function MathText({ text, codeLabels }: { text: string; codeLabels?: CodeBlockLabels }) {
+  // a trailing bare fence mid-stream yields body: '' — drop it rather than
+  // paint an empty framed block with three buttons around nothing
+  const segs = useMemo(() => splitCodeFences(text).filter((s) => s.kind !== 'code' || s.body !== ''), [text]);
+  return (
+    <>
+      {segs.map((seg, i) =>
+        seg.kind === 'code' ? (
+          <CodeBlock key={i} lang={seg.lang} code={seg.body} labels={codeLabels} />
+        ) : (
+          <ProseText key={i} text={seg.text} />
         ),
       )}
     </>
