@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createContext, runInContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
+import { splitCodeFences } from '../shared/codeFences';
 
 /**
  * The phone page loads markdown.js as a plain script that hangs renderMarkdown
@@ -36,13 +37,27 @@ function loadCheckMachine(): {
   region: string;
 } {
   const src = readFileSync(new URL('../resources/companion/app.js', import.meta.url), 'utf8');
-  const start = src.indexOf('/* CHECK_MARK_BEGIN');
-  const end = src.indexOf('/* CHECK_MARK_END');
-  if (start < 0 || end < 0 || end <= start) throw new Error('app.js lost its CHECK_MARK_BEGIN/CHECK_MARK_END fence');
-  const region = src.slice(start, end);
+  const region = extractRegion(src, 'CHECK_MARK');
   const box: Record<string, unknown> = {};
   runInContext(region, createContext(box) as never);
   return { applyCheckEvent: box.applyCheckEvent as never, region };
+}
+
+/** app.js fences its DOM-free decision functions in `X_MARK_BEGIN`/`X_MARK_END`
+ *  comment blocks so the node:vm harness can run them; a missing fence throws
+ *  instead of silently testing nothing. */
+function extractRegion(src: string, mark: string): string {
+  const start = src.indexOf(`/* ${mark}_BEGIN`);
+  const end = src.indexOf(`/* ${mark}_END`);
+  if (start < 0 || end < 0 || end <= start) throw new Error(`app.js lost its ${mark}_BEGIN/${mark}_END fence`);
+  return src.slice(start, end);
+}
+
+function loadNoteRouter(): (msg: { id?: string; text?: string }) => string {
+  const src = readFileSync(new URL('../resources/companion/app.js', import.meta.url), 'utf8');
+  const box: Record<string, unknown> = {};
+  runInContext(extractRegion(src, 'NOTE_MARK'), createContext(box) as never);
+  return box.examNoteRoute as never;
 }
 
 describe('companion renderMarkdown', () => {
@@ -260,4 +275,121 @@ describe('companion check-card wiring guards', () => {
     expect(body).toMatch(/a\.check && a\.check\.streaming/);
     expect(body).toMatch(/streaming: false/);
   });
+
+  it('the phone names a friendly line for every refusal code the desktop can send', () => {
+    // a code the table misses still shows as 电脑拒绝：<code> (visible, not
+    // swallowed), but the stale-answer refusal is the one that explains a
+    // press that deliberately spent nothing — pin every ExamCheckRefusal code
+    expect(src).toMatch(/exam_check_no_context:/);
+    expect(src).toMatch(/exam_check_busy:/);
+    expect(src).toMatch(/exam_check_stale:/);
+  });
+
+  it('the 错因 input clears after send and answers to Enter, like its sibling askInput', () => {
+    // a stale 错因 from question N would silently steer the checker for N+1:
+    // it corrupts the round's input, not just the UX. sendAsk set the pattern.
+    const at = src.indexOf('function sendCheck');
+    expect(at).toBeGreaterThan(-1);
+    const body = src.slice(at, src.indexOf('\n}', at));
+    expect(body).toMatch(/examCheckHint\.value = ''/);
+    expect(body).toMatch(/examCheckHint\.blur\(\)/);
+    expect(src).toMatch(/examCheckHint[\s\S]{0,120}addEventListener\('keydown', \(e\) => \{ if \(e\.key === 'Enter'\) sendCheck\(\); \}\)/);
+  });
+});
+
+/**
+ * Empty-id notes (Important 1): requestExamCheck's no-context refusal is the
+ * only exam event the main process emits with `requestId: ''`. It is a
+ * panel-level message — routed through the touch()/newAnswer() pipeline it
+ * would archive a live streaming answer mid-flight and open its own hero,
+ * the exact hijack the check-phase orphan rule was built to prevent.
+ */
+describe('companion note routing (app.js, fenced pure region)', () => {
+  const route = loadNoteRouter();
+
+  it('an empty-id note is panel-level, never an answer mutation', () => {
+    expect(route({ id: '', text: '电脑上还没有做完的题可复核' })).toBe('panel');
+    expect(route({ text: '缺省 id 同样按面板处理' })).toBe('panel');
+  });
+
+  it('a real answer note still attaches to its answer', () => {
+    expect(route({ id: 'q42', text: '题干有歧义' })).toBe('answer');
+  });
+
+  it('the pure region stays pure: no DOM, no touch()', () => {
+    const src = readFileSync(new URL('../resources/companion/app.js', import.meta.url), 'utf8');
+    expect(extractRegion(src, 'NOTE_MARK')).not.toMatch(/document|heroBody|innerHTML|setTimeout|touch\(/);
+  });
+
+  it('the wiring consults the router before touch can invent a hero', () => {
+    const src = readFileSync(new URL('../resources/companion/app.js', import.meta.url), 'utf8');
+    const at = src.indexOf("msg.phase === 'note'");
+    expect(at).toBeGreaterThan(-1);
+    const branch = src.slice(at, src.indexOf("msg.phase === 'delta'", at));
+    const guard = branch.indexOf("examNoteRoute(msg) === 'panel'");
+    expect(guard).toBeGreaterThan(-1);
+    expect(branch.indexOf('note(msg.text)')).toBeLessThan(branch.indexOf('touch(msg.id'));
+  });
+});
+
+/**
+ * The one deliberate duplication in the fence feature: shared/codeFences.ts
+ * (desktop segmenter) and the fence walk inside resources/companion/markdown.js
+ * (phone renderer) implement the same contract by hand — same FENCE regex, same
+ * close rule (same char, at least as long, empty info tail), same edge-blank
+ * trim, same unterminated-closes-at-EOF. Nothing type-checks them together, so
+ * every fixture runs through BOTH and the two must agree on what is code and
+ * what is prose. Edit one side into a divergence and this table goes red.
+ */
+describe('fence fixtures agree across desktop shared/codeFences and phone markdown.js', () => {
+  const FIXTURES: Array<[string, string]> = [
+    ['prose around a cpp block', '思路一句话\n```cpp\nint main(){}\n```\n复杂度 O(n)'],
+    ['edge blank lines trimmed, indentation kept', '```python\n\n\ndef f(x):\n    return x\n\n```'],
+    ['unterminated fence eats the rest of the input', '```java\nclass A {'],
+    ['tilde fence closes with tildes', '~~~go\npackage main\n~~~'],
+    ['backtick fence is not closed by tildes', '```\n~~~\n```'],
+    ['longer marker with a prose tail stays inside', '```\necho $((a+b))\n```` not a close\n```'],
+    ['a closing marker with an info string is code, not close', '```cpp\nint x;\n```cpp\ny=1\n```'],
+    ['CRLF normalises before splitting', 'a\r\n```py\r\nx=1\r\n```\r\nb\r\n```py\r\ny=2\r\n```'],
+    ['prototype-named tag is still just a language label', '```constructor\nclass Hack { }\n```'],
+    ['four-space indent is beyond the 3-space allowance', '前一行\n    ```\nnot code anywhere\n    ```\n后一行'],
+    ['html-ish code is carried as code, not prose', '```ts\nconst a = "<b> & \'x\'";\n```'],
+    ['a bare trailing fence opens an empty block', 'a\n```'],
+    ['two blocks back to back', '```py\nx=1\n```\n```py\ny=2\n```'],
+  ];
+  const md = loadRenderer();
+  const unescape = (s: string) =>
+    s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+  for (const [name, text] of FIXTURES) {
+    it(name, () => {
+      const desktop = splitCodeFences(text);
+      const desktopCode = desktop
+        .filter((s) => s.kind === 'code')
+        .map((s) => ({ lang: s.kind === 'code' ? s.lang ?? '' : '', body: s.kind === 'code' ? s.body : '' }));
+      const desktopProse = desktop
+        .filter((s) => s.kind === 'prose')
+        .flatMap((s) => (s.kind === 'prose' ? s.text.split('\n') : []))
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      // every phone code block is exactly one html line (codeBlockHtml emits
+      // no newlines inside the div) — that is what makes this split honest
+      const lines = md(text).split('\n');
+      const phoneCode = lines
+        .filter((l) => l.startsWith('<div class="code-block"'))
+        .map((l) => ({
+          lang: /data-lang="([^"]*)"/.exec(l)?.[1] ?? '',
+          body: [...l.matchAll(/<span class="code-line">([^<]*)<\/span>/g)]
+            .map((m) => unescape(m[1]))
+            .join('\n'),
+        }));
+      const phoneProse = lines
+        .filter((l) => !l.startsWith('<div class="code-block"'))
+        .map((l) => unescape(l.replace(/<[^>]+>/g, '')).trim())
+        .filter(Boolean);
+
+      expect({ code: phoneCode, prose: phoneProse }).toEqual({ code: desktopCode, prose: desktopProse });
+    });
+  }
 });

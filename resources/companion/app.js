@@ -276,6 +276,17 @@ function applyCheckEvent(check, msg) {
 }
 /* CHECK_MARK_END */
 
+/* NOTE_MARK_BEGIN —— note 事件的路由判定（纯函数，无 DOM）
+ * requestExamCheck 的「电脑上还没有做完的题」提示是全进程唯一一条 requestId 为
+ * 空的做题事件。它是面板级消息，不是某条答案的一部分：空 id 一旦按普通答案的
+ * 路径附着，正在流式的答案会被半途中转归档成残卡，这条提示自己开一张 hero ——
+ * 和 Task 9 在 check 三相里用孤儿规则拦住的是同一件事。返回 'panel' 时接线处
+ * 必须走控制栏的 note()，绝不碰 hero。 */
+function examNoteRoute(msg) {
+  return msg.id ? 'answer' : 'panel';
+}
+/* NOTE_MARK_END */
+
 let current = null;
 
 /* ---- 复核卡的空转看门狗 ----
@@ -579,6 +590,7 @@ const REFUSAL = {
   not_wired: '电脑端未启用',
   exam_check_no_context: '电脑上还没有做完的题可复核',
   exam_check_busy: '上一轮复核还在跑，稍后再点',
+  exam_check_stale: '电脑上有新的作答正在生成，等它完成后才能重查',
 };
 
 let caps = null;
@@ -778,13 +790,20 @@ function sendAsk() {
 document.getElementById('askSend').addEventListener('click', sendAsk);
 askInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendAsk(); });
 /* 再检查一遍：按钮无状态可等（没有 st 字段回显它），sendCmd 的待确认分支正好
- * 跳过它。note 先给按下回执；若桌面拒了这轮（无答案可查/上一轮还在跑），
- * 带 id 的 error 会经 controlReply 再调 note 顶掉这句话——拒绝永远有下文。 */
-document.getElementById('examCheckBtn').addEventListener('click', () => {
-  const hint = document.getElementById('examCheckHint').value.trim();
+ * 跳过它。note 先给按下回执；若桌面拒了这轮（无答案可查/上一轮还在跑/有新作答
+ * 在流式），带 id 的 error 会经 controlReply 再调 note 顶掉这句话——拒绝永远有下文。
+ * 错因发完即清、Enter 即发：与兄弟输入框 sendAsk 同规格。留着上一题的错因会
+ * 静默地喂给下一题的复核——坏的不是交互，是复核输出本身。 */
+function sendCheck() {
+  const examCheckHint = document.getElementById('examCheckHint');
+  const hint = examCheckHint.value.trim();
   sendCmd('examCheck', hint || undefined);
+  examCheckHint.value = '';
+  examCheckHint.blur();
   note(hint ? '已让模型带着这句话重查' : '已让模型重查一遍');
-});
+}
+document.getElementById('examCheckBtn').addEventListener('click', sendCheck);
+document.getElementById('examCheckHint').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendCheck(); });
 
 /* ---- 消息分发 ---- */
 let analysisEnabled = true;
@@ -838,8 +857,13 @@ function handle(msg) {
         a.text = (msg.letter ? `${msg.letter}　` : '') + msg.answer;
         renderHero(a);
         if (a.question) { heroQ.hidden = false; heroQ.textContent = `Q：${a.question.slice(0, 300)}`; }
-      } else if (msg.phase === 'note') { const a = touch(msg.id, 'x'); a.text += (a.text ? '\n\n' : '') + msg.text; renderHero(a); }
-      else if (msg.phase === 'delta') appendDelta(msg.id, 'x', msg.text);
+      } else if (msg.phase === 'note') {
+        // 空 id 的 note 是复核被拒的面板级回执（见 NOTE_MARK 区），不是答案的一部分
+        if (examNoteRoute(msg) === 'panel') { note(msg.text); break; }
+        const a = touch(msg.id, 'x');
+        a.text += (a.text ? '\n\n' : '') + msg.text;
+        renderHero(a);
+      } else if (msg.phase === 'delta') appendDelta(msg.id, 'x', msg.text);
       else if (msg.phase === 'done') {
         const a = touch(msg.id, 'x');
         if (a.origin !== 'bank') a.origin = msg.origin;
