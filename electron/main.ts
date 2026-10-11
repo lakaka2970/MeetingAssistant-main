@@ -63,12 +63,14 @@ import { destroyConnectWindow, showConnectWindow } from './connectWindow';
 import { createExamWindow, destroyExamWindow } from './examWindow';
 import {
   buildExamAskMessages,
+  buildExamCheckMessages,
   buildPersonaResearchMessages,
   buildTranscribeMessages,
   withScreenImage,
 } from './llm/examPrompts';
 import { parseSingleQuestion, type BankEntry } from '../shared/bankParse';
 import { decideBankAnswer, formatBankBlock, type ExamSubMode } from '../shared/bankStore';
+import { parseCheckOutput, shouldRunCheck } from '../shared/answerCheck';
 import { buildPersonaBlock, defaultPersona, parsePersona } from '../shared/persona';
 import { GATE_TIMEOUT_MS, gateMessages, heuristic, parseVerdict, GateMemory } from '../shared/questionGate';
 import { decideShotWeb, shouldRaiseLocalExamWindow } from '../shared/shotWeb';
@@ -1960,6 +1962,62 @@ function bootstrap(): void {
       return { text: clean, via: 'vision', ...(ambiguous ? { ambiguous } : {}) };
     };
 
+    // The check round rides on the answer it reviews: one slot for the last
+    // answered question, per-request round counters, and notes from earlier
+    // rounds fed back so round 3 does not re-report round 2.
+    let lastExam: { requestId: string; question: string; subMode: ExamSubMode; answer: string; at: number } | undefined;
+    const checkNotes = new Map<string, string[]>();
+    const checkTurns = new Map<string, number>();
+
+    const runExamCheck = async (
+      requestId: string,
+      turn: number,
+      hint?: string,
+    ): Promise<void> => {
+      if (!lastExam || lastExam.requestId !== requestId) {
+        examSend({ requestId, kind: 'note', text: T().examCheckNoContext });
+        return;
+      }
+      const llmKey = settings.getLlmApiKey() ?? '';
+      if (!llmKey && settings.data.llm.providerId !== 'ollama') {
+        examSend({ requestId, kind: 'check', turn, verdict: 'unknown', note: T().noApiKey, ms: 0 });
+        return;
+      }
+      const ac = new AbortController();
+      examControllers.set(requestId, ac);
+      const t0 = Date.now();
+      let raw = '';
+      try {
+        const messages = buildExamCheckMessages({
+          question: lastExam.question,
+          answer: lastExam.answer,
+          hint,
+          priorNotes: checkNotes.get(requestId) ?? [],
+        });
+        const r = await chatStream(
+          { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey: llmKey },
+          messages,
+          { onDelta: (t) => examSend({ requestId, kind: 'checkDelta', turn, text: t }) },
+          ac.signal,
+          { temperature: 0.2 },
+        );
+        raw = r.text;
+        const parsed = parseCheckOutput(raw);
+        const ms = Date.now() - t0;
+        examSend({ requestId, kind: 'check', turn, verdict: parsed.verdict, note: parsed.note, ms });
+        if (parsed.verdict === 'fix') {
+          examSend({ requestId, kind: 'checkDone', turn, text: parsed.revision });
+          if (parsed.note) checkNotes.set(requestId, [...(checkNotes.get(requestId) ?? []), `第 ${turn} 轮：${parsed.note}`]);
+        }
+        console.log(`[exam] check turn=${turn} verdict=${parsed.verdict} ms=${ms} chars=${raw.length}`);
+      } catch (e) {
+        if ((e as Error)?.name === 'AbortError') return;
+        examSend({ requestId, kind: 'check', turn, verdict: 'unknown', note: `${T().examCheckFailed}: ${(e as Error).message}`.slice(0, 300), ms: Date.now() - t0 });
+      } finally {
+        examControllers.delete(requestId);
+      }
+    };
+
     /**
      * The whole 做题 answer pipeline: screen → read → bank → (RAG material) →
      * model → web. Named (rather than inline in the IPC handler) because the
@@ -2029,7 +2087,10 @@ function bootstrap(): void {
         send({ requestId: payload.requestId, kind: 'stage', stage: 'searching' });
         const screen = parseSingleQuestion(question);
         const asked = screen.stem || question;
-        let subMode: ExamSubMode = payload.subMode;
+        // settings is the truth (spec §4.3): the phone can flip the sub-mode
+        // without touching any window's local picker state — payload.subMode
+        // stays the fallback for a ask whose settings write has not landed yet
+        let subMode: ExamSubMode = settings.data.exam?.subMode ?? payload.subMode;
         let verdict = examBanks.search(subMode, asked);
         if (verdict.mode === 'none') {
           // the user can leave 其他 on; the first bank that answers wins
@@ -2083,6 +2144,9 @@ function bootstrap(): void {
             origin: 'bank',
             ms,
           });
+          // recorded for a manual re-check only — shouldRunCheck refuses this
+          // answer for the auto round, the bank is already the certainty here
+          lastExam = { requestId: payload.requestId, question, subMode, answer: hitView.answer, at: Date.now() };
           return;
         }
         if (hitView) send({ requestId: payload.requestId, kind: 'bank', hit: hitView, letter });
@@ -2179,6 +2243,15 @@ function bootstrap(): void {
           return;
         }
         send({ requestId: payload.requestId, kind: 'done', text, origin, ms });
+        lastExam = { requestId: payload.requestId, question, subMode, answer: text, at: Date.now() };
+        ms.total = Date.now() - t0;
+        if (shouldRunCheck({ subMode, question, answer: text, fromBank: false })) {
+          // the first answer is already on screen; a failed check must not be
+          // able to reach the outer catch and mark the whole ask as errored
+          void runExamCheck(payload.requestId, 1).catch((e) =>
+            console.warn('[exam] check round failed:', (e as Error).message),
+          );
+        }
         console.log(
           `[exam] ${subMode} ${origin} in ${ms.total}ms` +
             ` (read=${ms.read ?? 0} bank=${ms.bank ?? 0} model=${ms.model ?? 0})`,
@@ -2187,7 +2260,10 @@ function bootstrap(): void {
         if ((e as Error)?.name === 'AbortError') return;
         sendErr((e as Error).message);
       } finally {
-        examControllers.delete(payload.requestId);
+        // the auto check round starts before this finally runs and takes over
+        // this requestId's slot: deleting it here would make examCancel a no-op
+        // while the check is still streaming. Only drop the answer's own abort.
+        if (examControllers.get(payload.requestId) === ac) examControllers.delete(payload.requestId);
       }
     };
     ipcMain.on(IPC.examAsk, (_e, payload: ExamAskPayload) => void runExamAsk(payload));
@@ -2196,6 +2272,23 @@ function bootstrap(): void {
       examControllers.get(String(requestId))?.abort();
       examControllers.delete(String(requestId));
     });
+
+    // one entry point, two callers: the exam window's button and the phone's op
+    const requestExamCheck = (hint?: string): void => {
+      const requestId = lastExam?.requestId;
+      if (!requestId) {
+        // no requestId of its own: the window and the phone both surface this
+        // before their request filter, so it reads as a global caveat
+        examSend({ requestId: '', kind: 'note', text: T().examCheckNoContext });
+        return;
+      }
+      // a manual round is user-requested: it runs ungated — even on a
+      // bank-direct answer, which only the auto round skips
+      const turn = (checkTurns.get(requestId) ?? 1) + 1;
+      checkTurns.set(requestId, turn);
+      void runExamCheck(requestId, turn, hint?.trim().slice(0, 500));
+    };
+    ipcMain.on(IPC.examCheck, (_e, p: { hint?: string }) => requestExamCheck(p?.hint));
 
     // ---- LAN companion (手机显示) ----
     screenShotAsk = async (): Promise<{ ok: boolean; ms: number; seq: number }> => {
@@ -2352,6 +2445,10 @@ function bootstrap(): void {
     ipcMain.handle(IPC.examSetMode, (_e, subMode: ExamSubMode) => {
       if (!['aptitude', 'technical', 'personality', 'open'].includes(String(subMode))) return false;
       settings.applyPatch({ exam: { subMode } });
+      // broadcast after the write (spec §4.3): a phone-side change and a
+      // still-open desktop window must converge on the same sub-mode, and runExamAsk
+      // now reads settings — the event keeps the open picker honest too
+      examSend({ requestId: '', kind: 'subMode', subMode });
       return true;
     });
     ipcMain.handle(IPC.examStatus, () => examStatusView());

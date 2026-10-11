@@ -7,6 +7,7 @@
  * lookup follows (shared/bankStore.ts decideBankAnswer) — certainty is earned,
  * not assumed.
  */
+import { classifyQuestion } from './textHeuristics';
 
 export type CheckVerdict = 'ok' | 'fix' | 'unknown';
 
@@ -61,4 +62,22 @@ export function parseCheckOutput(raw: string): CheckResult {
   // leave the original answer standing alone
   if (!revision) return { verdict: 'unknown', note: note || oneLine(body), revision: '' };
   return { verdict: 'fix', note, revision };
+}
+
+/**
+ * Whether an answered question deserves the extra call. Deliberately narrow:
+ * the checker costs one round trip per question, and on an 行测 item or a
+ * personality answer that buys nothing while slowing the thing the user is
+ * racing against.
+ */
+export function shouldRunCheck(input: {
+  subMode: 'aptitude' | 'technical' | 'personality' | 'open';
+  question: string;
+  answer: string;
+  fromBank: boolean;
+}): boolean {
+  if (input.fromBank || !input.answer.trim()) return false;
+  if (input.subMode === 'technical') return true;
+  if (input.subMode !== 'open') return false;
+  return classifyQuestion(input.question) === 'coding';
 }

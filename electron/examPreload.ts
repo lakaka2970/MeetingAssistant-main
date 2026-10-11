@@ -19,6 +19,7 @@ import { IPC, type ExamAskPayload, type ExamEvent, type ExamStatusView, type Exa
 const CH = {
   examAsk: 'exam:ask',
   examCancel: 'exam:cancel',
+  examCheck: 'exam:check',
   examEvent: 'exam:event',
   examStatus: 'exam:status',
   examBind: 'exam:bind',
@@ -37,6 +38,7 @@ const CH = {
   typeof IPC,
   | 'examAsk'
   | 'examCancel'
+  | 'examCheck'
   | 'examEvent'
   | 'examStatus'
   | 'examBind'
@@ -74,6 +76,8 @@ export interface McExamApi {
   pickRegion(): Promise<string | null>;
   ask(payload: ExamAskPayload): void;
   cancel(requestId: string): void;
+  /** re-check the last exam answer; the hint is the user's own words about what is wrong */
+  check(hint?: string): void;
   onExamEvent(cb: (ev: ExamEvent) => void): () => void;
   onProgress(cb: (p: { scanning: boolean; current?: string; done: unknown[] }) => void): () => void;
   /** the global ask hotkey fired: capture the screen and answer it */
@@ -97,6 +101,7 @@ const api: McExamApi = {
   pickRegion: () => ipcRenderer.invoke(CH.regionPick),
   ask: (payload) => ipcRenderer.send(CH.examAsk, payload),
   cancel: (requestId) => ipcRenderer.send(CH.examCancel, requestId),
+  check: (hint) => ipcRenderer.send(CH.examCheck, { hint }),
   onExamEvent: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, ev: ExamEvent) => cb(ev);
     ipcRenderer.on(CH.examEvent, listener);

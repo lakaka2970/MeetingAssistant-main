@@ -16,6 +16,8 @@ const zh = {
   pickResumeTitle: '导入我的简历（md/txt/docx/pdf/pptx）',
   pickJdTitle: '导入岗位JD（md/txt/docx/pdf/pptx）',
   examBindTitle: '选择题库目录（题目卷/答案卷成对的 PDF、md、json、csv）',
+  examCheckNoContext: '还没有可复核的答案：先作答一道题，再点复核',
+  examCheckFailed: '复核未完成',
   noApiKey: '未设置 API Key，请在设置里填入后重试',
   noApiKeyShort: '未设置 API Key',
   personaNoMaterial: '还没有可分析的简历或岗位JD：先在提词卡导入资料，或直接在设置里手写一份人设',
@@ -81,6 +83,8 @@ const en: MainDict = {
   pickResumeTitle: 'Import my resume (md/txt/docx/pdf/pptx)',
   pickJdTitle: 'Import the job description (md/txt/docx/pdf/pptx)',
   examBindTitle: 'Choose the question-bank folder (paired question/answer PDFs, md, json, csv)',
+  examCheckNoContext: 'Nothing to check yet — answer a question first, then hit re-check',
+  examCheckFailed: 'Check round failed',
   noApiKey: 'API Key not set — add one in Settings and retry',
   noApiKeyShort: 'API Key not set',
   personaNoMaterial:
