@@ -36,11 +36,27 @@ interface Answer {
   streaming: boolean;
 }
 
+/**
+ * The self-check round on the answer already shown. It is kept in its own state
+ * slot — never merged into `answer` — because the whole point of the card is
+ * that the original answer stays visible and the revision sits beside it, so OK,
+ * FIX and "didn't run" are distinguishable at a glance.
+ */
+interface Check {
+  turn: number;
+  verdict: 'ok' | 'fix' | 'unknown';
+  note: string;
+  revision: string;
+  streaming: boolean;
+  ms: number;
+}
+
 export function ExamApp() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [subMode, setSubMode] = useState<ExamSubMode>('aptitude');
   const [stage, setStage] = useState<string>('');
   const [answer, setAnswer] = useState<Answer | null>(null);
+  const [check, setCheck] = useState<Check | null>(null);
   const [candidates, setCandidates] = useState<ExamBankCandidateView[] | null>(null);
   const [error, setError] = useState<string>('');
   /** a caveat from the reader (e.g. a second question on screen matched too) */
@@ -92,9 +108,22 @@ export function ExamApp() {
         activeRef.current = ev.requestId;
         setError('');
         setNote('');
+        setCheck(null);
         setCandidates(null);
         setStage(t.reading);
         setAnswer({ question: '', text: '', origin: 'none', ms: {}, streaming: true });
+        return;
+      }
+      // A phone-driven sub-mode change has no active request in this window, and
+      // the "nothing to check yet" caveat is sent with an empty requestId: both
+      // must be handled BEFORE the filter below, or the window silently keeps the
+      // old mode / drops the global hint.
+      if (ev.kind === 'subMode') {
+        setSubMode(ev.subMode);
+        return;
+      }
+      if (ev.kind === 'note' && !ev.requestId) {
+        setNote(ev.text);
         return;
       }
       if (ev.requestId !== activeRef.current) return;
@@ -159,6 +188,20 @@ export function ExamApp() {
           setStage('');
           setAnswer((a) => (a ? { ...a, streaming: false } : a));
           break;
+        // The check round rides the same requestId as the answer it reviews; it
+        // never touches `answer`, so the original stays visible below the card.
+        // A cancelled round can still emit one buffered `checkDelta`, so the
+        // delta/done reducers only ever mutate a card that already exists for
+        // this turn — a stray event can't invent a half-open card.
+        case 'check':
+          setCheck({ turn: ev.turn, verdict: ev.verdict, note: ev.note, revision: '', streaming: ev.verdict === 'fix', ms: ev.ms });
+          break;
+        case 'checkDelta':
+          setCheck((c) => (c && c.turn === ev.turn && c.streaming ? { ...c, revision: c.revision + ev.text } : c));
+          break;
+        case 'checkDone':
+          setCheck((c) => (c && c.turn === ev.turn ? { ...c, revision: ev.text || c.revision, streaming: false } : c));
+          break;
       }
     });
     return () => {
@@ -171,6 +214,7 @@ export function ExamApp() {
     async (opts: { imageDataUrl?: string; question?: string; force?: ExamBankCandidateView; again?: boolean } = {}) => {
       setError('');
       setNote('');
+      setCheck(null);
       setCandidates(null);
       setCopied(false);
       const requestId = rid();
@@ -326,7 +370,7 @@ export function ExamApp() {
             <div className="exam-a">
               {answer.letter && answer.origin === 'bank' ? <span className="exam-big">{answer.letter}</span> : null}
               {answer.origin === 'bank' ? ' ' : ''}
-              <MathText text={answer.text} />
+              <MathText text={answer.text} codeLabels={t.codeLabels} />
               {answer.streaming && !answer.text ? <span>▍</span> : null}
             </div>
             {answer.bank?.explanation && answer.origin === 'bank' ? (
@@ -340,6 +384,25 @@ export function ExamApp() {
             <div className="exam-hint" style={{ marginTop: 4 }}>
               {answer.origin === 'bank' || answer.origin === 'bank+model' ? t.originBankHint : t.originModelHint}
             </div>
+          </div>
+        ) : null}
+
+        {check ? (
+          <div className="exam-card exam-check" data-verdict={check.verdict}>
+            <div className="exam-row">
+              <span className={`exam-badge ${check.verdict === 'ok' ? 'good' : check.verdict === 'fix' ? 'warn' : ''}`}>
+                {t.checkTitle[check.verdict]}
+              </span>
+              <span className="exam-meta">{t.checkTurn(check.turn)}</span>
+              {check.ms ? <span className="exam-meta">{t.msLabel(check.ms)}</span> : null}
+            </div>
+            {check.note ? <div className="exam-check-note">{check.note}</div> : null}
+            {check.revision ? (
+              <div className="exam-check-rev">
+                <MathText text={check.revision} codeLabels={t.codeLabels} />
+              </div>
+            ) : null}
+            {check.streaming ? <span className="exam-hint">{t.checkThinking}</span> : null}
           </div>
         ) : null}
 
@@ -371,6 +434,17 @@ export function ExamApp() {
             />
             <button className="btn" onClick={() => void ask({ question: answer.question, again: true })}>
               {t.reask}
+            </button>
+            {/* no requestId travels: the main process checks the one answer in
+                its own lastExam slot, so this and the phone re-check the same题.
+                Gated on any in-flight round, not just the check: lastExam is only
+                written at `done`, so a mid-ask press would be a silent no-op. */}
+            <button
+              className="btn"
+              disabled={!!check?.streaming || !!answer?.streaming || !!stage}
+              onClick={() => window.mcExam.check(instruction.trim() || undefined)}
+            >
+              {t.checkAgain}
             </button>
           </div>
         ) : null}

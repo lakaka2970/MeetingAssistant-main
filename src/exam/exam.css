@@ -312,3 +312,27 @@ body {
 .exam-katex-warn {
   color: var(--exam-bad);
 }
+
+/* the self-check round: a card under the answer, colour-coded by verdict so
+   「查过没问题」and「没查成」are never confused at a glance */
+.exam-check {
+  border-left: 3px solid var(--exam-warn);
+}
+.exam-check[data-verdict='ok'] {
+  border-left-color: var(--exam-good);
+}
+.exam-check[data-verdict='unknown'] {
+  border-left-color: var(--exam-bad);
+}
+.exam-check-note {
+  font-size: 12px;
+  color: var(--exam-warn);
+  margin-top: 4px;
+  white-space: pre-wrap;
+}
+.exam-check-rev {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--exam-border);
+  font-size: 14px;
+}

@@ -224,6 +224,10 @@ const ORIGINS = {
   bank: '题库命中', 'bank+model': '题库 + AI', model: 'AI',
   'model+web': 'AI + 联网', none: '未命中',
 };
+/* 复核卡的标题：与桌面 i18n 同词。「没查成」和「查过没问题」必须一眼能分。 */
+const CHECK_TITLE = {
+  ok: '复核：没发现问题', fix: '复核：已订正', unknown: '复核未完成',
+};
 let current = null;
 
 function newAnswer(id, kind) {
@@ -231,6 +235,9 @@ function newAnswer(id, kind) {
   current = {
     id, kind, text: '', state: 'streaming', startedAt: Date.now(),
     serverMs: 0, question: '', qa: '', origin: '', rendered: false,
+    // the self-check round lives here, never merged into `text`, so the phone
+    // shows the original answer above the revision exactly like the desktop
+    check: null,
   };
   hero.hidden = false;
   hero.classList.remove('collapsed');
@@ -290,6 +297,15 @@ function answerHtml(a) {
     ? window.renderMarkdown(a.text)
     : `<p>${escapeHtml(a.text)}</p>`;
   if (a.state === 'error') html += `<p class="failed">⚠ ${escapeHtml(a.error || '失败')}</p>`;
+  // the check card rides below the answer it reviewed — the original answer
+  // above stays visible, which is what makes OK / FIX / "didn't run" tellable
+  if (a.check) {
+    const v = a.check.verdict;
+    html += `<div class="x-check" data-verdict="${v}"><div class="x-check-head">${CHECK_TITLE[v] || v} · ${a.check.turn}</div>`
+      + (a.check.note ? `<div class="x-check-note">${escapeHtml(a.check.note)}</div>` : '')
+      + (a.check.text ? `<div class="x-check-body">${window.renderMarkdown(a.check.text)}</div>` : '')
+      + '</div>';
+  }
   return html;
 }
 function typeset(el) {
@@ -716,6 +732,30 @@ function handle(msg) {
         if (a.origin !== 'bank') a.origin = msg.origin;
         finish(msg.id, 'x', msg.text, a.origin, msg.ms);
         if (a.question) { heroQ.hidden = false; heroQ.textContent = `Q：${a.question.slice(0, 300)}`; }
+      } else if (msg.phase === 'check') {
+        // the round rides the id of the answer it reviews: touch() resolves to the
+        // current hero answer, so the revision card attaches below the original.
+        const a = touch(msg.id, 'x');
+        a.check = { turn: msg.turn, verdict: msg.verdict, note: msg.note || '', text: '', streaming: msg.verdict === 'fix', ms: msg.ms || 0 };
+        renderHero(a);
+      } else if (msg.phase === 'checkDelta') {
+        // orphan-tolerant: main streams tokens before the verdict header, so a
+        // delta can arrive with no card yet. Only ever append to an open card for
+        // THIS turn; never touch() here — that would invent a blank hero.
+        if (current && current.id === msg.id && current.check
+          && current.check.turn === msg.turn && current.check.streaming) {
+          current.check.text += msg.text;
+          renderHero(current);
+        }
+      } else if (msg.phase === 'checkDone') {
+        // a stray done for a turn with no card must not invent one; a cancelled
+        // round emits a buffered delta but never a done, and a check without a
+        // header is meaningless anyway
+        if (current && current.id === msg.id && current.check && current.check.turn === msg.turn) {
+          current.check.text = msg.text || current.check.text;
+          current.check.streaming = false;
+          renderHero(current);
+        }
       } else if (msg.phase === 'error') { const a = touch(msg.id, 'x'); a.state = 'error'; a.error = msg.message; renderHero(a); }
       break;
 

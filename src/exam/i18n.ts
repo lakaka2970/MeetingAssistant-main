@@ -78,6 +78,11 @@ const zh = {
   errorNoLlm: '未配置 AI 回答服务：题库命中仍可用，AI 补充不可用',
   errorNoKey: '需要 API Key',
   msLabel: (ms: number) => `${ms}ms`,
+  checkTitle: { ok: '复核：没发现问题', fix: '复核：已订正', unknown: '复核未完成' },
+  checkTurn: (n: number) => `第 ${n} 轮`,
+  checkThinking: '复核中…',
+  checkAgain: '再检查一遍',
+  codeLabels: { wrap: '换行', copy: '复制', copied: '已复制', copyFailed: '复制失败', download: '下载' },
 };
 
 export type ExamDict = typeof zh;
@@ -103,6 +108,11 @@ const en: ExamDict = {
   webbing: 'not in the bank → searching the web…',
   reask: 'Re-ask differently',
   reaskPlaceholder: 'Extra instruction, e.g. "answer only", "second blank", "in Java"',
+  checkTitle: { ok: 'Checked — no problem found', fix: 'Checked — corrected', unknown: 'Check did not finish' },
+  checkTurn: (n: number) => `round ${n}`,
+  checkThinking: 'checking…',
+  checkAgain: 'Check again',
+  codeLabels: { wrap: 'wrap', copy: 'copy', copied: 'copied', copyFailed: 'copy failed', download: 'save' },
   stop: 'Stop',
   copied: 'Copied',
   copy: 'Copy',

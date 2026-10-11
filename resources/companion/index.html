@@ -87,6 +87,18 @@
       padding:.4rem .55rem;margin:.35rem 0;font-size:.95rem}
   .qa b{color:var(--ok);font-size:.72rem;display:block;margin-bottom:.2rem}
 
+  /* 复核卡：贴在答案正文下方，原答案始终在上面。左边框三色与桌面同语义
+     （fix=--warn、ok=--ok、unknown=--bad），一眼能分「查过没问题」「已订正」「没查成」。 */
+  .x-check{border-left:3px solid var(--warn);background:#101418;border-radius:.4rem;
+          padding:.4rem .55rem;margin-top:.5rem}
+  .x-check[data-verdict='ok']{border-left-color:var(--ok)}
+  .x-check[data-verdict='unknown']{border-left-color:var(--bad)}
+  .x-check-head{font-size:.78rem;font-weight:700;color:var(--fg);margin-bottom:.2rem}
+  .x-check-note{font-size:.8rem;color:var(--warn);white-space:pre-wrap;overflow-wrap:anywhere}
+  .x-check-body{font-size:.98rem;line-height:1.6;overflow-wrap:anywhere;margin-top:.3rem;
+               border-top:1px dashed var(--line);padding-top:.3rem}
+  .x-check-body p{margin:.3rem 0}
+
   main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:.55rem;
        display:flex;flex-direction:column;gap:.4rem;-webkit-overflow-scrolling:touch}
 
