@@ -309,7 +309,8 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 
 1. 从 [Releases 页面](https://github.com/lakaka2970/MeetingAssistant-main/releases/latest) 下载
    `MeetingAssistant-<版本>-win-x64.exe`（安装版）或 `...-portable.exe`（免安装版）；
-   建议核对旁边的 `.exe.sha256` 校验文件。
+   Linux 下是 `...-linux-amd64.deb`（Ubuntu / Debian 首选）或 `...-linux-x86_64.AppImage`；
+   建议核对每个产物旁边的 `.sha256` 校验文件。
 2. 启动后跟着 **5 步配置向导**走：欢迎 → 选择方案 → 配置服务（粘贴 Key 并「保存并测试连接」）→ 连接测试（检测电脑声音）→ 完成。
 3. 播放会议 / 视频，点标题栏 **▶ 开始**，转录导轨开始出字（点导轨展开全部转录）。
 4. 在对方那句上点 **⚡答** 生成回答；点亮 **⚡** 让它自动接话；在提词卡导入 **📄简历 / 📋JD** 让回答贴合你的经历。
@@ -340,7 +341,7 @@ macOS 暂无安装包，需从源码运行（系统声音需 BlackHole 虚拟音
 
 其余新增（气泡导轨、可折叠历史回答、🎚 回答风格与应答人设、◐ 面板透明度、逐文件导入进度与节摘要、
 做题模式）都不改变默认观感：**装完新版本什么都不设置时，发给模型的提示词与 v1.0.0 逐字节相同**（有测试钉住）。
-完整版本说明：[RELEASE_NOTES_v1.0.2.md](docs/user/RELEASE_NOTES_v1.0.2.md)（v1.0.2 是连接可靠性补丁，功能与 v1.0.1 相同）。
+完整版本说明：[RELEASE_NOTES_v1.0.3.md](docs/user/RELEASE_NOTES_v1.0.3.md)（v1.0.3：Linux 原生打包发布、做题模式代码块与答后复核、新增 Kimi / 硅基流动 / 火山方舟，包体与链路延迟都有实测数字）。
 
 ## 📱 单屏 / 双屏
 
@@ -538,7 +539,8 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 | [docs/windows/SETUP.md](docs/windows/SETUP.md) / [zh-CN](docs/windows/SETUP.zh-CN.md) | Windows 平台完整配置（Python / 本地 ASR） |
 | [docs/macos/SETUP.md](docs/macos/SETUP.md) | macOS 平台完整配置 |
 | [docs/linux/SETUP.md](docs/linux/SETUP.md) / [zh-CN](docs/linux/SETUP.zh-CN.md) | Linux 平台完整配置（PipeWire 环回采集、X11 后端与快捷键、XDG 开机自启） |
-| [RELEASE_NOTES_v1.0.2.md](docs/user/RELEASE_NOTES_v1.0.2.md) | **当前版本**说明：换台机器就连不上的四类修复（虚拟网卡配对地址、证书重签、系统保留端口、出站请求挂起） |
+| [RELEASE_NOTES_v1.0.3.md](docs/user/RELEASE_NOTES_v1.0.3.md) | **当前版本**说明：Linux 原生打包、做题模式代码块与答后复核、三家国内平台、包体与延迟实测 |
+| [RELEASE_NOTES_v1.0.2.md](docs/user/RELEASE_NOTES_v1.0.2.md) | 上一版说明：换台机器就连不上的四类修复（虚拟网卡配对地址、证书重签、系统保留端口、出站请求挂起） |
 | [RELEASE_NOTES_v1.0.1.md](docs/user/RELEASE_NOTES_v1.0.1.md) | 上一版说明：升级必读的三个默认行为变更、新增内容、已知问题 |
 | [RELEASE_NOTES_v1.0.0.md](docs/user/RELEASE_NOTES_v1.0.0.md) | 首个正式版说明与已知问题 |
 
@@ -684,9 +686,9 @@ reports a normalized error code on failure. Keys are encrypted via DPAPI (Window
 (macOS), live only in the main process, and the UI only ever shows the last 4 characters. Step-by-step
 per-provider instructions: [API_KEYS.en.md](docs/user/API_KEYS.en.md).
 
-**Install (Windows)**: download the NSIS installer or portable `.exe` from the
-[Releases page](https://github.com/lakaka2970/MeetingAssistant-main/releases/latest) and verify the
-SHA256 sidecar file. macOS: run from source (needs a virtual audio device such as BlackHole) — see
+**Install**: Windows — the NSIS installer or the portable `.exe`; Linux — the `.deb` (preferred: it
+configures Chromium's sandbox for you) or the `.AppImage`. Verify the `.sha256` sidecar file each
+artifact ships with. macOS: run from source (needs a virtual audio device such as BlackHole) — see
 [INSTALL_MACOS.en.md](docs/user/INSTALL_MACOS.en.md).
 
 **Upgrading from v1.0.0**: install over the top — settings and sessions are kept (both live in

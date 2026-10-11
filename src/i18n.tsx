@@ -491,6 +491,9 @@ const zh = {
           '需要先框选：用主窗口的 📷 按钮，或做题小窗里的「截屏答题」，拖框圈住题干再作答。',
           '做题模式（标题栏「做题」）是小窗悬浮面板，对录屏 / 截图强制不可见；四种题型各绑定题库目录，原题命中约 1 毫秒直接给答案，完全离线。',
           '读题需要本地 OCR（npm i tesseract.js）或支持图片的模型 Key，两者都没有时会明确提示缺什么；此时可把题干粘进做题小窗用「作答这题」。',
+          '算法题的答复以代码块呈现：等宽、长行不硬折而是左右滚动看全行，每个块带「换行 / 复制 / 下载」三个按钮；双屏时手机上同样如此。',
+          '技术子模式（以及自动识别出的编码题）答完后模型会自己复查一遍，结果是一条独立卡片：没发现问题 / 已订正（附修订稿，原答案仍保留在旁边）/ 复核未完成。复核在答案完整上屏之后才发起，不拖慢首答；题库直答的题不触发。',
+          '双屏的手机控制栏里有「做题子模式」段选和「再检查一遍」，后者可以附一句错在哪，复核会带着它去查；不想给这两项权限就在同一处取消勾选。',
         ],
       },
       windowsSecurity: {
@@ -1278,6 +1281,9 @@ const en: Dict = {
           'To crop instead: use the 📷 button in the main window, or "Capture & answer" in the exam window, and drag a box around the question.',
           'Exam mode ("做题" in the title bar) is a small floating panel, forcibly invisible to recording and screenshots; each of the four sub-modes binds its own bank folder, and an exact bank hit answers in ~1 ms, fully offline.',
           'Reading the screen needs local OCR (npm i tesseract.js) or a vision-capable key; with neither the app says exactly what is missing — paste the stem into the exam window and use "Answer this" meanwhile.',
+          'Algorithm answers render as real code blocks: monospace, long lines scroll sideways instead of breaking, and every block carries wrap / copy / download buttons — the same on the phone in dual-screen mode.',
+          'In technical mode (and on questions detected as coding) the model re-reads its own answer afterwards. The result is a separate card: no problem found / corrected (a revision, with the original answer kept beside it) / check did not finish. It starts only after the answer is fully on screen, so it never delays the first answer, and bank hits skip it.',
+          'The phone control bar grows an exam sub-mode picker and "re-check", the latter with an optional one-line note on what went wrong; untick either one in the same grants to hide it.',
         ],
       },
       windowsSecurity: {
