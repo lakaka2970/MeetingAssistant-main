@@ -12,7 +12,7 @@ Disclaimer: this tool is a personal technical experiment and open-source researc
 
 | Item | Notes |
 |---|---|
-| OS | Windows 10 / 11 (64-bit). There is no macOS installer yet — see [INSTALL_MACOS.en.md](INSTALL_MACOS.en.md) |
+| OS | Windows 10 / 11 (64-bit); Linux x86_64 with a PipeWire desktop (Ubuntu 22.10+, Debian 12+). There is no macOS installer yet — see [INSTALL_MACOS.en.md](INSTALL_MACOS.en.md) |
 | Network | Enough to reach the providers you choose |
 | API keys | One for speech recognition, one for AI answers (a single provider can cover both). You create them; the provider bills you |
 | Time | About 5 minutes the first time, mostly signing up and copying keys |
@@ -24,9 +24,14 @@ MeetingAssistant is **bring-your-own-key**: no accounts, no server, no fee colle
 ## Step 1 — download and install
 
 1. Open the [Releases page](https://github.com/lakaka2970/MeetingAssistant-main/releases/latest).
-2. Download `MeetingAssistant-<version>-win-x64.exe` (installer) or `...-win-x64-portable.exe` (portable). The difference and the install locations are in [INSTALL_WINDOWS.en.md](INSTALL_WINDOWS.en.md).
-3. The installers are not code-signed (functionality is unaffected), so Windows SmartScreen shows "Windows protected your PC". Once you have confirmed the file came from the official release page above, click **More info → Run anyway**.
-4. Verify the download first if you can: every `.exe` ships with a matching `.exe.sha256` file containing the hash CI computed at build time.
+2. **Windows**: download `MeetingAssistant-<version>-win-x64.exe` (installer) or `...-win-x64-portable.exe` (portable). The difference and the install locations are in [INSTALL_WINDOWS.en.md](INSTALL_WINDOWS.en.md).
+3. **Linux**: download `MeetingAssistant-<version>-linux-amd64.deb` or `...-linux-x86_64.AppImage`.
+   - `.deb` (apt users, preferred): `sudo apt install ./MeetingAssistant-<version>-linux-amd64.deb`, then start it from your applications list. The installer sets Chromium's sandbox helper up for you, including on Ubuntu 23.10+, which tightened unprivileged user namespaces.
+   - `.AppImage` (no install, any distro): `chmod +x` and run it. It structurally cannot carry that sandbox setup, so on a system with restricted userns it may refuse to start — use the `.deb`, or pass `--no-sandbox`.
+   - System audio is captured through a PipeWire loopback; nothing extra to install. Without `pw-record` the app falls back to a manually chosen input device and says so in Settings.
+   - Global hotkeys cannot register on native Wayland, so on launch the app relaunches itself once with the X11 (XWayland) backend. That is the default, it loses nothing, and you can change it under **Settings → Interface → Display backend**.
+4. The installers are not code-signed (functionality is unaffected), so Windows SmartScreen shows "Windows protected your PC". Once you have confirmed the file came from the official release page above, click **More info → Run anyway**.
+5. Verify the download first if you can: every artifact ships with a matching `.sha256` file containing the hash CI computed at build time.
 
 ---
 

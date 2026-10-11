@@ -12,7 +12,7 @@ English version: [QUICK_START.en.md](QUICK_START.en.md)
 
 | 项目 | 说明 |
 |---|---|
-| 系统 | Windows 10 / 11（64 位）。macOS 暂无安装包，请见 [INSTALL_MACOS.en.md](INSTALL_MACOS.en.md) |
+| 系统 | Windows 10 / 11（64 位）；Linux x86_64（带 PipeWire 的桌面，如 Ubuntu 22.10+ / Debian 12+）。macOS 暂无安装包，请见 [INSTALL_MACOS.en.md](INSTALL_MACOS.en.md) |
 | 网络 | 能访问你所选服务商的接口即可 |
 | API Key | 语音识别与 AI 回答各需要一个（同一服务商可复用）；Key 由你自己创建，费用由服务商收取 |
 | 时间 | 第一次配置约 5 分钟，主要花在注册和复制 Key 上 |
@@ -24,9 +24,14 @@ MeetingAssistant 采用 **BYOK（自带 Key）**：没有账号系统、没有�
 ## 第一步：下载并安装
 
 1. 打开 [Releases 页面](https://github.com/lakaka2970/MeetingAssistant-main/releases/latest)。
-2. 下载 `MeetingAssistant-<版本>-win-x64.exe`（安装版）或 `...-win-x64-portable.exe`（免安装版）。两者的区别与安装位置见 [INSTALL_WINDOWS.zh-CN.md](INSTALL_WINDOWS.zh-CN.md)。
-3. 安装包**未做代码签名**（不影响功能），Windows SmartScreen 会提示「已保护你的电脑」。确认文件来自上面的官方发布页后，点「更多信息」→「仍要运行」。
-4. 建议先核对下载文件的 SHA256：每个 `.exe` 旁边都有同名的 `.exe.sha256` 文件，里面是 CI 构建时算出的哈希值。
+2. **Windows**：下载 `MeetingAssistant-<版本>-win-x64.exe`（安装版）或 `...-win-x64-portable.exe`（免安装版）。两者的区别与安装位置见 [INSTALL_WINDOWS.zh-CN.md](INSTALL_WINDOWS.zh-CN.md)。
+3. **Linux**：下载 `MeetingAssistant-<版本>-linux-amd64.deb` 或 `...-linux-x86_64.AppImage`。
+   - `.deb`（apt 用户，推荐）：`sudo apt install ./MeetingAssistant-<版本>-linux-amd64.deb`，之后从应用列表启动。安装脚本会顺手把 Chromium 沙箱组件配好（包括 Ubuntu 23.10+ 收紧的非特权命名空间）。
+   - `.AppImage`（免安装、任何发行版）：`chmod +x` 后直接双击或运行。它无法自带那套沙箱配置，所以在收紧了 userns 的系统上可能起不来——这时用 `.deb`，或加 `--no-sandbox` 启动。
+   - 系统声音靠 PipeWire 环回采集，不需要额外装软件；`pw-record` 缺失时应用会退回手动选择输入设备并在设置里写明原因。
+   - Wayland 会话里注册不了全局快捷键，所以应用启动时会自动带 X11（XWayland）后端重启一次——这是默认行为，不用设置，也不会丢数据。想改回来在 **设置 → 界面 → 显示后端**。
+4. 安装包**未做代码签名**（不影响功能），Windows SmartScreen 会提示「已保护你的电脑」。确认文件来自上面的官方发布页后，点「更多信息」→「仍要运行」。
+5. 建议先核对下载文件的 SHA256：每个产物旁边都有同名的 `.sha256` 文件，里面是 CI 构建时算出的哈希值。
 
 ---
 

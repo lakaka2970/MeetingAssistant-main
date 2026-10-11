@@ -49,8 +49,10 @@ worker `PARTIAL_INTERVAL_MS=1400` / `RING_MS=300` / `STREAM_IDLE_CLOSE_MS=10000`
 - **平台级 `files` 会整体替换全局 `files`，不是合并。** 只写负向 pattern 会丢掉正向的 `out/**`，
   electron-builder 回落到"全收"，实测把 308 个条目（含 6.5 MB 演示视频、README.pdf、测试夹具）塞进 app.asar。
   因此 `linux.files` 完整重列了全局清单再追加 Linux 专属负向项，两处需同步维护。
-- 与平台无关的裁剪（S4/S8/S7/ort-web）已提升到全局 `files`，Windows 包同样省 ~500 MB；
-  `win` 未写自己的 `files`，因此继承全局。
+- 与平台无关的裁剪（S3/S4/S7/S8/S9/S10，合计 ~158 MB 解包态）在全局 `files` 里，Windows 也吃到；
+  Windows 真正的大头是 S12——`onnxruntime-node` 一个包里带着三个平台的原生二进制，而
+  `dist/binding.js` 只解析 `bin/napi-v3/${platform}/${arch}`，所以 v1.0.2 的 .exe 里白装了
+  darwin 65 MB + linux 404 MB（CUDA/TensorRT 都在里面）+ win32/arm64 34 MB = **503 MB**。
 
 ## 2. 延迟
 
@@ -314,3 +316,22 @@ autostart 条目）全绿；AppImage 直跑 40 s 无异常，日志走到 `[setu
 
 包体在 §1 的基础上再降（S9/S10），并记下一条**否掉的**收益：`@napi-rs/canvas` 那 29.8 MB skia
 看着只服务渲染，实际移走之后 PDF 文本抽取直接 `DOMMatrix is not defined`（见 S11）。
+
+## 10. v1.0.3 发版核对（2026-10-11）
+
+**应用侧开销量了，没有退化**：当前树上复跑 `npm run latency:local`（离线 mock，零首字延迟，
+不需要 Key，也不含网络抖动）——gate TTFT min 1 / p50 2 / p95 14 ms，answer-short 与
+answer-context 均 p50 1 / p95 2 ms，预算 50 ms ✓。与 §5 在 2026-10-02 记的数字一致。
+
+**用户能感知的降低只有两处，都不是"LLM 变快"**：
+
+| 环节 | v1.0.2 | v1.0.3 | 生效范围 |
+| --- | --- | --- | --- |
+| 本地 ASR：语音结束 → segment | ~1850 ms | 872–882 ms（§8，5/5 转写正确） | 本地实时引擎，默认生效，无需设置 |
+| Linux：▶ → 首个 PCM 帧 | ~575 ms | 211 ms（§2 L2/L3） | 仅 Linux 环回采集 |
+| 句子关闭 → 发出请求 | 固定等 1100 ms | 不变（投机作答在 §6，默认关闭） | — |
+| 复核回合 | 无此功能 | 结构上不占首答时间（`done` 已发出才启动） | 做题模式算法题 |
+
+投机作答本版仍不默认启用：真实音频上的命中率、撤销率与重复计费增量都没测过（§6）。
+provider TTFT、真机"语音结束→首答可见"的墙钟、桌面 Electron 里代码块的呈现，
+本版依旧没有测到，发布说明里按"待测"写，不算已完成。

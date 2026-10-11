@@ -133,6 +133,21 @@ Work through this in order:
 4. **The text did not fade along with it**: by design. Only the backdrop layer fades; text, icons and borders stay full-strength, because a 30% panel with 30% text would be unreadable.
 5. **The exam window and the pairing window did not change**: also by design. ◐ applies to the main window's backdrop only; the separate small windows (exam, dual-screen pairing, region capture) do not share the value.
 
+## 13. Starting and capturing on Linux
+
+1. **Double-clicking the AppImage does nothing, and a terminal prints only `dlopen(): error loading libfuse.so.2`**: that is the old bundling runtime, which speaks only FUSE2 while Ubuntu 24.04-class systems ship libfuse3. Since v1.0.3 the package carries the static libappimage runtime and starts directly; with an older build, work around it with `APPIMAGE_EXTRACT_AND_RUN=1 ./MeetingAssistant-*.AppImage`.
+2. **It exits immediately, with a `setuid_sandbox_host.cc` FATAL in the log**: Chromium's sandbox is not configured. Ubuntu 23.10+ tightened unprivileged user namespaces, and an AppImage structurally cannot carry the fix it needs (the extracted files belong to an ordinary user and the mount is `nosuid`, so setuid does nothing). **Use the `.deb`** — its installer probes `unshare --user`, and if that fails it sets the sandbox helper setuid (4755) and installs a path-bound AppArmor profile. Only if neither works, add `--no-sandbox`.
+3. **None of the global hotkeys fire**: you are on a native Wayland session. By default the app relaunches itself once with the X11 (XWayland) backend, under which the hotkeys do register; if **Settings → Interface → Display backend** was set to wayland, set it back to x11.
+4. **"Listen to system audio" hears nothing**: this path needs PipeWire's `pw-record` / `pw-link` (the package name differs per distro). Without them the app does not crash — it falls back to a manually chosen input device and says why in Settings. When choosing manually, note you want the playback device's **monitor**, not your microphone.
+5. **The window has a solid background and ignores the opacity slider**: overlays render opaque on Linux. Known upstream compositor limitation, not a lost setting.
+
+## 14. Exam answers: code blocks and "re-check"
+
+1. **"Copy" fails on the phone**: browsers only allow clipboard writes in a secure context (https or localhost), so opening the page as `http://<pc-ip>` refuses it by design. Long-press to select the code, or use **download** — both give you the full text.
+2. **A long line runs off screen**: that is the default — lines are kept whole and scroll sideways. Press **wrap** above the block to switch to soft wrapping, where continuation lines are indented and stay distinguishable from new statements.
+3. **The check card is stuck on "checking"**: the check is a **separate, full round trip** after the answer, carrying the whole question and the whole answer, so being slower than the first answer is normal. After 20 s with no update it closes itself as "check did not finish", and the original answer is untouched. To stop every algorithm answer being checked: untick "Re-check the last algorithm answer" in Settings.
+4. **A question answered straight from the bank got no card**: by design. The bank already holds a definite answer, and having a model look for mistakes in it only trades certainty for uncertainty. **再检查一遍 / re-check** still runs it when you ask.
+
 ## Still stuck
 
 1. Settings → General → "Diagnostics" (also in the title-bar `⋯` menu) → "Copy diagnostics". The report is built locally and copied to the clipboard only (nothing is written to disk); it contains **no API keys, resume/JD text or transcripts**, so it is safe to paste into a public issue.
