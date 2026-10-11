@@ -108,7 +108,8 @@ const ALGO_FORMAT_RULES = [
   '- 一个功能只放一个块，不要「边讲边写」把同一段实现拆成几块；',
   '- 保留题目给定的函数签名、类名、参数名与返回类型，要能直接粘进作答框运行；',
   '- 块内不写行号，不用 `...` 省略已给定的模板代码；',
-  '- 块外只允许两行：开头一句思路，结尾一行复杂度（时间/空间）；',
+  '- 块外的说明只允许这几行：开头一句思路、结尾一行复杂度；题干信息不全时末尾再加一行假设说明，',
+  '  有坑时再加一行提示。除这些之外块外不写任何东西；',
   '- 取模常量、大数组上限这类预处理写在函数外，与实现放进同一个块。',
 ];
 
@@ -291,6 +292,8 @@ export function buildExamCheckMessages(input: ExamCheckInput): ChatMessage[] {
     '⑤ 是否引入题目环境里不可能有的第三方库。',
     '没有问题就只输出 VERDICT: OK，不要复述答案、不要补充说明、',
     '不要把能跑的代码改写成「更好的写法」。',
+    '【修订】部分必须遵守下面的格式要求，否则排版层拿不到代码块：',
+    ...ALGO_FORMAT_RULES.slice(1),
   ].join('\n');
   const parts = [`【题目】\n${input.question.slice(0, MAX_SCREEN_TEXT_CHARS)}`, `【我的答案】\n${input.answer.slice(0, CHECK_ANSWER_MAX_CHARS)}`];
   const hint = input.hint?.trim();
