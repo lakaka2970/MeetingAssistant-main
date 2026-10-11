@@ -128,7 +128,8 @@ jobs:
       # it is true, so turning it on silently discards the notes (seen on the first
       # v1.0.3 build, where the draft came back with nothing but the compare line).
       # The compare link the auto-notes used to add is written into the notes file.
-      - uses: softprops/action-gh-release@v2
+      - id: release
+        uses: softprops/action-gh-release@v2
         with:
           draft: true
           generate_release_notes: false
@@ -140,18 +141,26 @@ jobs:
       # a release that already exists — proven by the first two v1.0.3 builds, where the
       # draft kept nothing but the compare line no matter what body_path pointed at. So
       # patch it afterwards through the API, which has no such exception. Re-tagging an
-      # existing version now actually updates its notes.
+      # existing version now actually updates its notes. The tag is matched by shell
+      # interpolation, not jq env(): this gh builds jq without the env/1 function, and the
+      # step failed on that alone (seen in probe issue #3).
       - name: Put the repo notes into the release body
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          RELEASE_ID: ${{ steps.release.outputs.id }}
+          NOTES: docs/user/RELEASE_NOTES_${{ github.ref_name }}.md
         run: |
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
-                 --jq ".[] | select(.tag_name == env(TAG)) | .id" | head -n 1)
-          if [ -z "$id" ]; then
-            echo "no release found for $TAG" >&2
+          # PATCH by the id the action reported. Listing releases is not an option: with
+          # the workflow token the drafts do not come back at all (probe issue #3 showed
+          # only the three published ones), and this gh build has no jq env/1 either.
+          if [ -z "$RELEASE_ID" ]; then
+            echo "action-gh-release gave no release id" >&2
             exit 1
           fi
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$id" \
-            -F body="@docs/user/RELEASE_NOTES_${TAG}.md" \
-            --jq '"body set: \(.body | split("\n")[0]) (\(.body | length) chars)"'
+          if [ ! -f "$NOTES" ]; then
+            echo "missing $NOTES" >&2
+            exit 1
+          fi
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -F body="@$NOTES" \
+            --jq "'body chars now: ' + (.body | length | tostring)"

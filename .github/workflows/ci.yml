@@ -11,39 +11,6 @@ concurrency:
 
 jobs:
 
-  # TEMPORARY PROBE (2026-10-11): reproduces the release job's two gh calls against the
-  # live repo and files what they return, so the failing PATCH step in release.yml can be
-  # diagnosed in a 4-minute CI run instead of a 10-minute release rebuild. Delete with the
-  # release-notes wiring once it is green.
-  release-notes-probe:
-    name: probe the release body patch (temporary)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      issues: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      TAG: v1.0.3
-    steps:
-      - uses: actions/checkout@v4
-      - name: Report what the patch step sees
-        run: |
-          {
-            echo "## files present"
-            ls -la docs/user/ | grep RELEASE_NOTES || true
-            echo
-            echo "## releases list (id, tag, draft, target)"
-            gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | [.id, .tag_name, .draft, .target_commitish] | @tsv' || echo "LIST FAILED"
-            echo
-            echo "## the exact select the patch step uses"
-            id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == env(TAG)) | .id" | head -n 1) || echo "SELECT FAILED rc=$?"
-            echo "resolved id: [${id}]"
-            echo
-            echo "## gh version"
-            gh --version
-          } > probe.md 2>&1
-          gh issue create --repo "$GITHUB_REPOSITORY" --title "release-body probe ($TAG)" --body-file probe.md
   windows:
     name: typecheck, test, build (windows)
     runs-on: windows-latest
