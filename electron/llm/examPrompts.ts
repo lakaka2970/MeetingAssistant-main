@@ -56,6 +56,7 @@ export function buildTranscribeMessages(wholeScreen = false): ChatMessage[] {
         ...locating,
         '要求：题干一字不改；选项保留原字母与原顺序（A./B./C./D. 各占一行）；',
         '有输入框/代码框时把已填写内容也转出来；不要作答、不要解释、不要重复说明是截图。',
+        '代码框里的内容按原始缩进逐行转录，题目给定的函数签名与模板代码一行都不要省；',
         '若图中没有题目，只输出一行：NO_QUESTION',
       ].join('\n'),
     },
@@ -92,6 +93,25 @@ const CODE_STYLE_RULES = [
   '- 不要输出免责声明、不要复述题目、不要给出多种语言版本（除非题目要求）。',
 ];
 
+/**
+ * The shape the renderer parses. CODE_STYLE_RULES says what a human-written
+ * answer sounds like; this says what the display layer needs: a fenced block
+ * with a language tag, and nothing but the approach line and the complexity
+ * line outside it. Without the fence the code arrives as prose and gets
+ * re-flowed by the markdown passes (shared/markdownLite.ts:8-11).
+ */
+const ALGO_FORMAT_RULES = [
+  '',
+  '算法题输出格式（必须遵守，屏幕那侧按它排版）：',
+  '- 代码一律放进带语言标签的围栏块，标签只用 cpp / java / python / javascript / typescript / go；',
+  '  没有围栏的代码会被排版引擎当普通散文处理；',
+  '- 一个功能只放一个块，不要「边讲边写」把同一段实现拆成几块；',
+  '- 保留题目给定的函数签名、类名、参数名与返回类型，要能直接粘进作答框运行；',
+  '- 块内不写行号，不用 `...` 省略已给定的模板代码；',
+  '- 块外只允许两行：开头一句思路，结尾一行复杂度（时间/空间）；',
+  '- 取模常量、大数组上限这类预处理写在函数外，与实现放进同一个块。',
+];
+
 const APTITUDE_RULES = [
   '行测/客观题作答要求：',
   '- 先给结论：选项字母 + 选项原文（屏幕上选项可能被打乱，一律以屏幕上的字母为准）；',
@@ -116,7 +136,7 @@ const PERSONA_RULES = [
 function systemFor(mode: ExamSubMode): string {
   switch (mode) {
     case 'technical':
-      return ['你在帮用户现场作答技术/代码题。', ...CODE_STYLE_RULES].join('\n');
+      return ['你在帮用户现场作答技术/代码题。', ...CODE_STYLE_RULES, ...ALGO_FORMAT_RULES].join('\n');
     case 'aptitude':
       return ['你在帮用户现场作答行测类客观题（言语理解、数量关系、判断推理、资料分析）与少量申论题。', ...APTITUDE_RULES, '', ...ESSAY_RULES].join('\n');
     case 'personality':
@@ -237,5 +257,47 @@ export function buildPersonaResearchMessages(
         .filter(Boolean)
         .join('\n'),
     },
+  ];
+}
+
+export const CHECK_ANSWER_MAX_CHARS = 6000;
+
+export interface ExamCheckInput {
+  question: string;
+  answer: string;
+  /** the user's own words about what is wrong, typed on the phone or in the window */
+  hint?: string;
+  /** notes from earlier rounds, so round 3 does not re-report round 2 */
+  priorNotes?: string[];
+}
+
+/**
+ * The adjudication pass. A separate call with an adversarial brief, because the
+ * model that wrote the bug is the same model that just defended it — and
+ * because the pipeline's one forbidden outcome is a confidently wrong answer
+ * (see buildTranscribeMessages' AMBIGUOUS rule for the same shape of worry).
+ */
+export function buildExamCheckMessages(input: ExamCheckInput): ChatMessage[] {
+  const system = [
+    '你是挑错的，不是重做的。只判断下面这份现场手写答案能不能通过这道题。',
+    '第一行只写 VERDICT: OK 或 VERDICT: FIX',
+    '第二行（仅 FIX）：一句话错因，指名到具体一行或具体条件',
+    '第三段（仅 FIX）：以【修订】开头，按同样的写法要求给出改完的完整答案',
+    '判据按顺序：',
+    '① 是否真解了题意，含 n=0/n=1、空输入、下标越界、取模与溢出；',
+    '② 能否编译：函数签名、返回类型、括号分号、缩进、缺的头文件与 import；',
+    '③ 声称的时间/空间复杂度与实现是否一致；',
+    '④ 是否擅自改了题目给定的签名或参数名；',
+    '⑤ 是否引入题目环境里不可能有的第三方库。',
+    '没有问题就只输出 VERDICT: OK，不要复述答案、不要补充说明、',
+    '不要把能跑的代码改写成「更好的写法」。',
+  ].join('\n');
+  const parts = [`【题目】\n${input.question.slice(0, MAX_SCREEN_TEXT_CHARS)}`, `【我的答案】\n${input.answer.slice(0, CHECK_ANSWER_MAX_CHARS)}`];
+  const hint = input.hint?.trim();
+  if (hint) parts.push(`【用户指出的问题】\n${hint.slice(0, 500)}`);
+  if (input.priorNotes?.length) parts.push(`【此前几轮复核的结论】\n${input.priorNotes.join('\n').slice(0, 1200)}`);
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: parts.join('\n\n') },
   ];
 }
