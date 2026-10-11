@@ -494,7 +494,7 @@ const siliconflowHelp: ProviderHelp = {
 const arkHelp: ProviderHelp = {
   platformUrl: 'https://console.volcengine.com/ark',
   keyUrl: 'https://ark.volcengine.com/region:cn-beijing/apikey',
-  docsUrl: 'https://www.volcengine.com/docs/82379/1399009',
+  docsUrl: 'https://www.volcengine.com/docs/82379/1404713',
   stepsZh: [
     '打开火山方舟控制台（火山引擎账号）。',
     '首次进入需开通方舟服务并同意模型协议。',
@@ -921,4 +921,22 @@ export function providerIdForEndpoint(
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '').toLowerCase();
+}
+
+/**
+ * Kimi pins `temperature` per model: platform.kimi.com/docs/api/models-overview
+ * gives kimi-k3 and the k2.7-code family 固定 1.0 and states 传入其他值报错, while
+ * Moonshot's own examples send only `model` + `messages`. A value we would have to
+ * guess right is worse than no value, so the adapter leaves the field out for these
+ * hosts and lets the service apply its pinned one.
+ */
+const PINNED_TEMPERATURE_HOSTS = new Set(['api.moonshot.cn', 'api.moonshot.ai']);
+
+export function omitsTemperature(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return false;
+  try {
+    return PINNED_TEMPERATURE_HOSTS.has(new URL(baseUrl.trim()).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
 }

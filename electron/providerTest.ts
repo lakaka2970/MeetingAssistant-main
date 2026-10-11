@@ -215,7 +215,9 @@ function staticFailure(code: 'INVALID_KEY' | 'MODEL_NOT_FOUND'): ProviderTestRes
 // ---------- per-capability probes ----------
 
 /** 1 output token, temperature 0, one throwaway word in — the cheapest call
- * an OpenAI-compatible endpoint accepts. Empty content still counts as OK:
+ * an OpenAI-compatible endpoint accepts. Kimi pins temperature per model, so the
+ * adapter drops that field for its hosts (see omitsTemperature); this probe body
+ * is what every other host gets. Empty content still counts as OK:
  * the question is transport + auth + model, not the reply. */
 async function testTextLlm(
   req: ProviderTestRequest,

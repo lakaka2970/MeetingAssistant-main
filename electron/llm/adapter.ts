@@ -5,6 +5,7 @@
  */
 
 import { buildThinkingParams, type ThinkingLevel, type ThinkingStyle } from '../../shared/thinking';
+import { omitsTemperature } from '../../shared/providerCatalog';
 import { fetchWithFirstByte, firstByteTimeoutFor } from '../fetchDeadline';
 
 export interface LlmConfig {
@@ -147,7 +148,7 @@ export async function chatOnce(
           model: config.model,
           messages,
           stream: false,
-          temperature: opts?.temperature ?? 0.5,
+          ...(omitsTemperature(config.baseUrl) ? {} : { temperature: opts?.temperature ?? 0.5 }),
           ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
         }),
         signal,
@@ -189,7 +190,7 @@ export async function chatStream(
           model: config.model,
           messages,
           stream: true,
-          temperature: opts?.temperature ?? 0.5,
+          ...(omitsTemperature(config.baseUrl) ? {} : { temperature: opts?.temperature ?? 0.5 }),
           ...(opts?.thinking
             ? buildThinkingParams(opts.thinking.style, opts.thinking.level)
             : {}),
