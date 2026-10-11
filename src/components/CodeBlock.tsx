@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { codeFileExt } from '../../shared/codeFences';
-import { tokenizeCode } from '../../shared/highlight';
+import { splitTokensIntoLines, tokenizeCode } from '../../shared/highlight';
 import './codeblock.css';
 
 /**
@@ -10,8 +10,12 @@ import './codeblock.css';
  *
  * Wide lines scroll sideways by default — the previous behaviour was a
  * word-break in the middle of an identifier. The 换行 toggle switches to soft
- * wrapping with a hanging indent, which is the option that has to win when the
- * window is 380px wide and the reader would rather see the whole line.
+ * wrapping, which is the option that has to win when the window is 380px wide
+ * and the reader would rather see the whole line. Each source line is its own
+ * `span.code-line` block: text-indent only acts on the first line box of a
+ * block container, so per-line blocks are what lets the wrap mode give a
+ * soft-wrapped continuation a real hanging indent instead of letting it run
+ * into the left edge like a new source line.
  */
 
 const TOK_CLASS: Record<string, string> = {
@@ -36,21 +40,32 @@ export interface CodeBlockLabels {
   wrap: string;
   copy: string;
   copied: string;
+  copyFailed: string;
   download: string;
 }
 
-const ZH: CodeBlockLabels = { wrap: '换行', copy: '复制', copied: '已复制', download: '下载' };
+const ZH: CodeBlockLabels = { wrap: '换行', copy: '复制', copied: '已复制', copyFailed: '复制失败', download: '下载' };
 
 export function CodeBlock({ lang, code, labels = ZH }: { lang?: string; code: string; labels?: CodeBlockLabels }) {
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
-  const tokens = useMemo(() => tokenizeCode(code, lang), [code, lang]);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const lines = useMemo(() => splitTokensIntoLines(tokenizeCode(code, lang)), [code, lang]);
 
   const copy = (): void => {
-    void navigator.clipboard.writeText(code).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    });
+    // a rejected write (permission denied, document not focused, Electron edge
+    // cases) must not vanish into an unhandled rejection with a dead button —
+    // show it on the button for the same 1.2s the success state gets.
+    navigator.clipboard.writeText(code).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      },
+      () => {
+        setCopyFailed(true);
+        setTimeout(() => setCopyFailed(false), 1200);
+      },
+    );
   };
 
   return (
@@ -66,7 +81,7 @@ export function CodeBlock({ lang, code, labels = ZH }: { lang?: string; code: st
           {labels.wrap}
         </button>
         <button type="button" className="code-ctrl code-copy" onClick={copy}>
-          {copied ? labels.copied : labels.copy}
+          {copied ? labels.copied : copyFailed ? labels.copyFailed : labels.copy}
         </button>
         <button
           type="button"
@@ -78,9 +93,13 @@ export function CodeBlock({ lang, code, labels = ZH }: { lang?: string; code: st
       </div>
       <pre className="code-pre">
         <code>
-          {tokens.map((t, i) =>
-            TOK_CLASS[t.kind] ? <span key={i} className={TOK_CLASS[t.kind]}>{t.text}</span> : <span key={i}>{t.text}</span>,
-          )}
+          {lines.map((line, i) => (
+            <span className="code-line" key={i}>
+              {line.map((t, j) =>
+                TOK_CLASS[t.kind] ? <span key={j} className={TOK_CLASS[t.kind]}>{t.text}</span> : <span key={j}>{t.text}</span>,
+              )}
+            </span>
+          ))}
         </code>
       </pre>
     </div>

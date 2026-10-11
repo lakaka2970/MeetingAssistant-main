@@ -200,3 +200,39 @@ export function tokenizeCode(code: string, lang: string | undefined): Token[] {
   pushPlain();
   return out;
 }
+
+/**
+ * Lay the token runs out one source line per array so the renderer can make
+ * each line its own block — the only way the wrap mode's hanging indent can
+ * tell a soft-wrapped continuation apart from a new source line (text-indent
+ * acts on the first line box of a *block*, not on inline runs).
+ *
+ * A token that spans lines (block comment, Python triple-quoted string) is
+ * cut at every `\n`; each fragment keeps the token's kind, so the comment
+ * stays coloured as it continues. The split is lossless in the strong sense:
+ * joining each line's fragments and rejoining the lines with '\n' recovers
+ * the source exactly — the newlines themselves become line structure and
+ * appear in no fragment. Empty fragments are never emitted; a blank source
+ * line is legitimately an empty array, which is why the stylesheet gives
+ * empty lines a min-height.
+ */
+export function splitTokensIntoLines(tokens: Token[]): Token[][] {
+  const lines: Token[][] = [[]];
+  const push = (kind: TokenKind, text: string): void => {
+    if (text) lines[lines.length - 1].push({ kind, text });
+  };
+  for (const t of tokens) {
+    let rest = t.text;
+    for (;;) {
+      const nl = rest.indexOf('\n');
+      if (nl === -1) {
+        push(t.kind, rest);
+        break;
+      }
+      push(t.kind, rest.slice(0, nl));
+      lines.push([]);
+      rest = rest.slice(nl + 1);
+    }
+  }
+  return lines;
+}

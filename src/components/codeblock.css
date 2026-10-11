@@ -85,12 +85,22 @@ html[data-theme='light'] {
 .code-block.wrap .code-pre code {
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  padding-left: 1.4em;
-  text-indent: -1.4em;
 }
 
-.code-block.wrap .code-pre code > span:first-child {
-  text-indent: 0;
+.code-line {
+  display: block;
+  /* an empty source line has no content to give the block height — without this
+     the blank lines that make code readable collapse in both surfaces */
+  min-height: 1.6em;
+}
+
+/* Hanging indent on the LINE, not the whole <code>: text-indent only moves
+   the first line box of a block container, so on a per-line block the -1.4em
+   pulls the source line's own start back to the margin while soft-wrapped
+   continuations stay at +1.4em — aligned, and never flush left. */
+.code-block.wrap .code-line {
+  padding-left: 1.4em;
+  text-indent: -1.4em;
 }
 
 .tok-kw { color: var(--code-kw); }
