@@ -131,3 +131,23 @@ jobs:
           body_path: docs/user/RELEASE_NOTES_${{ github.ref_name }}.md
           fail_on_unmatched_files: true
           files: artifacts/**/*
+
+      # The action creates a release with the body, but it does not rewrite the body of
+      # a release that already exists — proven by the first two v1.0.3 builds, where the
+      # draft kept nothing but the compare line no matter what body_path pointed at. So
+      # patch it afterwards through the API, which has no such exception. Re-tagging an
+      # existing version now actually updates its notes.
+      - name: Put the repo notes into the release body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+                 --jq ".[] | select(.tag_name == env(TAG)) | .id" | head -n 1)
+          if [ -z "$id" ]; then
+            echo "no release found for $TAG" >&2
+            exit 1
+          fi
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$id" \
+            -F body="@docs/user/RELEASE_NOTES_${TAG}.md" \
+            --jq '"body set: \(.body | split("\n")[0]) (\(.body | length) chars)"'
