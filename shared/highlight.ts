@@ -54,6 +54,34 @@ for (const lang of SUPPORTED_LANGS) {
 /** the generic spec used when the fence tag is not one of ours: no keyword guessing */
 const GENERIC: LangSpec = { keywords: new Set(), line: ['//', '#'], block: ['/*', '*/'], hashBang: false, preproc: false, triple: false };
 
+/**
+ * Fence tags arrive as model prose, not as canonical names: ` ```js `, ` ```py `,
+ * ` ```c++ ` show up as often as the full language. The SPECS lookup is exact-key,
+ * so an unmapped alias silently degrades to GENERIC — no crash, just no keyword
+ * colouring nobody would notice. codeFences' LANG_EXT serves download filenames,
+ * a different purpose, so the alias table lives here instead.
+ */
+const LANG_ALIAS: Record<string, string> = {
+  js: 'javascript',
+  jsx: 'javascript',
+  node: 'javascript',
+  nodejs: 'javascript',
+  ts: 'typescript',
+  tsx: 'typescript',
+  py: 'python',
+  python3: 'python',
+  'c++': 'cpp',
+  cxx: 'cpp',
+  cc: 'cpp',
+  golang: 'go',
+  rs: 'rust',
+};
+
+function normalizeLang(lang: string | undefined): string {
+  const key = (lang ?? '').trim().toLowerCase();
+  return LANG_ALIAS[key] ?? key;
+}
+
 const isDigit = (c: string): boolean => c >= '0' && c <= '9';
 const isIdentStart = (c: string): boolean => /[A-Za-z_]/.test(c);
 const isIdentPart = (c: string): boolean => /[A-Za-z0-9_]/.test(c);
@@ -103,7 +131,7 @@ function scanNumber(src: string, i: number): number {
 }
 
 export function tokenizeCode(code: string, lang: string | undefined): Token[] {
-  const spec = (lang && SPECS[lang]) || GENERIC;
+  const spec = SPECS[normalizeLang(lang)] ?? GENERIC;
   const out: Token[] = [];
   let plain = '';
   const pushPlain = (): void => {

@@ -62,6 +62,19 @@ describe('tokenizeCode', () => {
     const src = 'if ($x -gt 0) {\r\n  echo $((a+b))\r\n}';
     expect(joined(src, 'sh')).toBe(src);
   });
+
+  it('maps common fence aliases onto the canonical language, not onto GENERIC', () => {
+    const src = 'function f() {\n  return "s";\n}\n';
+    // js is what models actually write; it must classify exactly like javascript
+    expect(tokenizeCode(src, 'js')).toEqual(tokenizeCode(src, 'javascript'));
+    expect(kindOf(src, 'js', 'function')).toBe('kw');
+    expect(kindOf(src, 'js', '"s"')).toBe('str');
+    // the other aliases models emit constantly
+    expect(tokenizeCode('return 1', 'py')).toEqual(tokenizeCode('return 1', 'python'));
+    expect(tokenizeCode('int x = 1;', 'c++')).toEqual(tokenizeCode('int x = 1;', 'cpp'));
+    expect(kindOf('let mut x = 1;', 'rs', 'let')).toBe('kw');
+    expect(kindOf('func main() {}', 'golang', 'func')).toBe('kw');
+  });
 });
 
 describe('SUPPORTED_LANGS', () => {
