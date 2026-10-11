@@ -224,9 +224,17 @@ export class CompanionBridge {
     this.started = false;
     if (this.flushTimer) clearTimeout(this.flushTimer);
     this.flushTimer = null;
+    // Both halves of the check stream die with the connection. `push` already
+    // drops while disconnected, so the leak alone would be bounded — but a
+    // `start()` inside the pending tick's window would replay this session's
+    // tokens to a freshly-connected phone, and a surviving buffer would let the
+    // next round resume a sentence the old bridge abandoned.
+    if (this.checkFlushTimer) clearTimeout(this.checkFlushTimer);
+    this.checkFlushTimer = null;
     this.partials.clear();
     this.deltas.clear();
     this.deltaKind.clear();
+    this.checkDeltas.clear();
     this.answerStartedAt.clear();
   }
 

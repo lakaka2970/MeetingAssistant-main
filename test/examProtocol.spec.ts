@@ -1,3 +1,10 @@
+/**
+ * Type-level only: these assertions read object literals this file builds, and
+ * vitest strips the annotations, so the gate here is `npm run typecheck` (an
+ * unknown `kind` stops compiling). What the events actually do on the wire —
+ * the buffering, the round separation, `subMode` staying silent — is pinned by
+ * test/companionExamStream.spec.ts, which drives publishExam for real.
+ */
 import { describe, expect, it } from 'vitest';
 import type { ExamEvent } from '../shared/protocol';
 
