@@ -532,13 +532,13 @@ git commit -m "feat(exam): tiny in-house tokenizer for answer code blocks
 
 **Files:**
 - Create: `src/components/CodeBlock.tsx`
+- Create: `src/components/codeblock.css`
 - Modify: `src/components/MathText.tsx:33-48`
-- Modify: `src/exam/exam.css`（在 `:303` 附近的答案区规则之后追加）
-- Test: 无新增单测（逻辑已在 Task 1/2）；靠 `typecheck` + `build` + Step 6 真机
+- Test: 无新增单测（逻辑已在 Task 1/2）；靠 `typecheck` + `build` + Step 5 真机
 
 **Interfaces:**
 - Consumes: `splitCodeFences` / `codeFileExt`（Task 1）、`tokenizeCode`（Task 2）
-- Produces: `CodeBlock({ lang, code }: { lang?: string; code: string })`；DOM 契约（Task 4 手机端与验收脚本按它选择器）：
+- Produces: `CodeBlock({ lang, code, labels })`；`interface CodeBlockLabels { wrap: string; copy: string; copied: string; download: string }`（默认中文，由调用方按界面语言覆盖）；DOM 契约（Task 4 手机端与验收脚本按它选择器）：
   - `.code-block[data-lang]` > `.code-bar` > `.code-lang` + `button.code-ctrl.code-wrap[aria-pressed]` + `button.code-ctrl.code-copy` + `button.code-ctrl.code-dl`
   - `.code-block > pre.code-pre > code > span.tok-kw|.tok-str|.tok-num|.tok-cmt|.tok-pre`
   - 换行态：`.code-block.wrap`
@@ -551,6 +551,7 @@ git commit -m "feat(exam): tiny in-house tokenizer for answer code blocks
 import { useMemo, useState } from 'react';
 import { codeFileExt } from '../../shared/codeFences';
 import { tokenizeCode } from '../../shared/highlight';
+import './codeblock.css';
 
 /**
  * One fenced block from an exam answer, laid out like the DeepSeek web client's
@@ -581,7 +582,16 @@ function downloadText(filename: string, text: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function CodeBlock({ lang, code }: { lang?: string; code: string }) {
+export interface CodeBlockLabels {
+  wrap: string;
+  copy: string;
+  copied: string;
+  download: string;
+}
+
+const ZH: CodeBlockLabels = { wrap: '换行', copy: '复制', copied: '已复制', download: '下载' };
+
+export function CodeBlock({ lang, code, labels = ZH }: { lang?: string; code: string; labels?: CodeBlockLabels }) {
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
   const tokens = useMemo(() => tokenizeCode(code, lang), [code, lang]);
@@ -603,17 +613,17 @@ export function CodeBlock({ lang, code }: { lang?: string; code: string }) {
           aria-pressed={wrap}
           onClick={() => setWrap((v) => !v)}
         >
-          换行
+          {labels.wrap}
         </button>
         <button type="button" className="code-ctrl code-copy" onClick={copy}>
-          {copied ? '已复制' : '复制'}
+          {copied ? labels.copied : labels.copy}
         </button>
         <button
           type="button"
           className="code-ctrl code-dl"
           onClick={() => downloadText(`answer.${codeFileExt(lang)}`, code)}
         >
-          下载
+          {labels.download}
         </button>
       </div>
       <pre className="code-pre">
@@ -632,16 +642,16 @@ React 对 `<pre>` 里的文本子节点会原样保留空白，`tokenizeCode` �
 
 - [ ] **Step 2: 接进 MathText**
 
-把 `src/components/MathText.tsx:33-48` 的 `MathText` 改为：
+把 `src/components/MathText.tsx:33-48` 的 `MathText` 改为（多一个可选的 `codeLabels`，转发给 `CodeBlock`）：
 
 ```tsx
-export function MathText({ text }: { text: string }) {
+export function MathText({ text, codeLabels }: { text: string; codeLabels?: CodeBlockLabels }) {
   const segs = useMemo(() => splitCodeFences(text), [text]);
   return (
     <>
       {segs.map((seg, i) =>
         seg.kind === 'code' ? (
-          <CodeBlock key={i} lang={seg.lang} code={seg.body} />
+          <CodeBlock key={i} lang={seg.lang} code={seg.body} labels={codeLabels} />
         ) : (
           <ProseText key={i} text={seg.text} />
         ),
@@ -653,34 +663,46 @@ export function MathText({ text }: { text: string }) {
 
 并把原来 `segs.map(...)` 里那段（`splitMath` + 两个 `dangerouslySetInnerHTML` 分支）原样搬进同文件的 `function ProseText({ text }: { text: string })`。`ProseText` 的渲染逻辑与 key 规则一字不改——这是"没有围栏的存量答案输出不变"的落点。
 
-- [ ] **Step 3: 加样式**
+- [ ] **Step 3: 加样式（组件自带表，不放进 exam.css）**
 
-在 `src/exam/exam.css` 末尾追加（`--mono` 与 token 色放在 `:root` 里，与 `:5-18` 现有变量同一处，浅色主题在 `:20-31` 的覆盖块里补一份）：
+`.code-*` 规则**必须**住在 `src/components/codeblock.css` 里，由 `CodeBlock.tsx` 顶部 `import './codeblock.css';` 引入。理由：`MathText` 同时被做题窗口（`src/exam/ExamApp.tsx`）和面试窗口（`src/components/prompt/PromptFocus.tsx`）使用，而 `exam.css` 只在做题窗口加载——写在 exam.css 里的话面试窗口的代码块会**没有 `overflow-x`、没有条、没有配色**，等于把这次的显示修复做成只对一半界面生效。
+
+创建 `src/components/codeblock.css`：
 
 ```css
+/* Component-owned sheet: MathText serves both the exam window and the
+   interview window, so the code-block styles cannot live in exam.css —
+   the interview window never loads that file. */
+
 :root {
   --mono: ui-monospace, Menlo, Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK SC', monospace;
   --code-bg: #0d1117;
+  --code-bar: rgba(255, 255, 255, 0.06);
+  --code-line: rgba(255, 255, 255, 0.1);
   --code-kw: #c586c0;
   --code-str: #ce9178;
   --code-num: #b5cea8;
   --code-cmt: #7d8794;
   --code-pre: #d69d85;
+  --code-accent: #9dc0ff;
 }
 
 html[data-theme='light'] {
   --code-bg: #f4f6fa;
+  --code-bar: rgba(20, 30, 50, 0.04);
+  --code-line: rgba(20, 30, 50, 0.14);
   --code-kw: #8a2be2;
   --code-str: #a31515;
   --code-num: #098658;
   --code-cmt: #6a737d;
   --code-pre: #8b3a00;
+  --code-accent: #1b4fc0;
 }
 
 .code-block {
   margin: 6px 0;
   background: var(--code-bg);
-  border: 1px solid var(--exam-border);
+  border: 1px solid var(--code-line);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -690,27 +712,28 @@ html[data-theme='light'] {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  border-bottom: 1px solid var(--exam-border);
+  background: var(--code-bar);
+  border-bottom: 1px solid var(--code-line);
 }
 
 .code-lang {
   margin-right: auto;
   font: 11px/1.4 var(--mono);
-  color: var(--exam-muted);
+  color: var(--code-cmt);
 }
 
 .code-ctrl {
   font-size: 11px;
   padding: 2px 7px;
   border-radius: 5px;
-  border: 1px solid var(--exam-border);
+  border: 1px solid var(--code-line);
   background: transparent;
-  color: var(--exam-accent-text);
+  color: var(--code-accent);
   cursor: pointer;
 }
 
 .code-ctrl[aria-pressed='true'] {
-  background: var(--exam-accent);
+  background: #2563eb;
   color: #fff;
 }
 
@@ -745,7 +768,7 @@ html[data-theme='light'] {
 .tok-pre { color: var(--code-pre); }
 ```
 
-`.exam-a`（`:158-166`）保持 `white-space: pre-wrap` 不动——它现在只管散文段，`user-select: text` 已有（`:164`），代码可选中复制。
+`src/exam/exam.css` 本次**不需要**加代码块规则（只保留既有的 `.exam-a`）。`.exam-a`（`:158-166`）保持 `white-space: pre-wrap` 不动——它现在只管散文段，`user-select: text` 已有（`:164`），代码可选中复制。
 
 - [ ] **Step 4: 类型与构建**
 
@@ -764,7 +787,7 @@ npm run dev
 - [ ] **Step 6: 提交**
 
 ```bash
-git add src/components/CodeBlock.tsx src/components/MathText.tsx src/exam/exam.css
+git add src/components/CodeBlock.tsx src/components/codeblock.css src/components/MathText.tsx
 git commit -m "feat(exam): render answer code blocks with horizontal scroll and wrap toggle
 
 对齐 DeepSeek 网页端的代码块形态：语言标签在左上、操作在右上、无行号、
@@ -1758,6 +1781,7 @@ re-ask 那一行（`:361-376`）的按钮组里追加一个：
   checkTurn: (n: number) => `第 ${n} 轮`,
   checkThinking: '复核中…',
   checkAgain: '再检查一遍',
+  codeLabels: { wrap: '换行', copy: '复制', copied: '已复制', download: '下载' },
 ```
 
 ```ts
@@ -1765,7 +1789,10 @@ re-ask 那一行（`:361-376`）的按钮组里追加一个：
   checkTurn: (n: number) => `round ${n}`,
   checkThinking: 'checking…',
   checkAgain: 'Check again',
+  codeLabels: { wrap: 'wrap', copy: 'copy', copied: 'copied', download: 'save' },
 ```
+
+`codeLabels` 要传给两处 `MathText`：答案正文 `<MathText text={answer.text} codeLabels={t.codeLabels} />`，以及复核卡里的 `<MathText text={check.revision} codeLabels={t.codeLabels} />`。面试窗口（`PromptFocus`）本任务不传，代码块按钮沿用中文默认值——记为 deferred minor（见台账），因为那边的界面语言切换是另一条链路。
 
 `exam.css` 加：
 
