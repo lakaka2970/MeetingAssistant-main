@@ -270,8 +270,10 @@ function finish(id, kind, text, origin, ms) {
   renderHero(a);
 }
 function renderHero(a) {
+  const html = answerHtml(a);
   heroBody.className = '';
-  heroBody.innerHTML = answerHtml(a);
+  heroBody.innerHTML = html;
+  hero.classList.toggle('has-code', /class="code-block"/.test(html));
   typeset(heroBody);
   heroOrigin.textContent = ORIGINS[a.origin] || (a.origin ? a.origin : '');
   heroStage.textContent = a.state === 'error' ? '' : '';
@@ -308,6 +310,41 @@ function typeset(el) {
     });
   } catch { /* 保留原文 */ }
 }
+/* 代码块按钮：一个容器级委托统管 hero 与 feed，不给每块绑 handler。
+ * 返回 true 表示事件已消费，外层折叠逻辑必须放行——否则点「换行」
+ * 会把整块答案折起来。 */
+function onCodeCtrl(e) {
+  const btn = e.target.closest && e.target.closest('.code-ctrl');
+  if (!btn) return false;
+  e.stopPropagation();
+  const block = btn.closest('.code-block');
+  const pre = block && block.querySelector('.code-pre code');
+  if (!block || !pre) return true;
+  if (btn.classList.contains('code-wrap')) {
+    const on = block.classList.toggle('wrap');
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  } else if (btn.classList.contains('code-copy')) {
+    // 手机多走 http://192.168.x.x：非安全上下文里 navigator.clipboard 是 undefined，
+    // 权限拒绝也会 reject——两种结果都写到按钮上，与桌面 CodeBlock 行为一致
+    const flash = (t) => {
+      btn.textContent = t;
+      setTimeout(() => { btn.textContent = '复制'; }, 1200);
+    };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(pre.textContent).then(() => flash('已复制'), () => flash('复制失败'));
+    } else {
+      flash('复制失败');
+    }
+  } else {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([pre.textContent], { type: 'text/plain' }));
+    a.download = `answer.${block.dataset.ext || 'txt'}`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  return true;
+}
+
 function archiveCurrent() {
   if (!current) return;
   const a = current;
@@ -321,19 +358,28 @@ function archiveCurrent() {
     `<div class="tag"><span>${escapeHtml(tag)}</span>` +
     `<span>${escapeHtml(clock())}</span></div>` +
     (a.question ? `<div class="tag"><span>Q：${escapeHtml(a.question.slice(0, 120))}</span></div>` : '') +
-    '<div class="body"></div><div class="meta"></div>';
+    '<div class="body"></div><div class="more">含代码，点按展开</div><div class="meta"></div>';
   const body = el.querySelector('.body');
-  body.innerHTML = answerHtml(a);
+  const html = answerHtml(a);
+  body.innerHTML = html;
+  el.classList.toggle('has-code', /class="code-block"/.test(html));
   typeset(body);
   const wall = Date.now() - a.startedAt;
   el.querySelector('.meta').textContent =
     `${fmtMs(wall)}${a.serverMs ? ` · 电脑侧 ${fmtMs(a.serverMs)}` : ''} · 点按展开`;
-  el.addEventListener('click', () => el.classList.toggle('open'));
   prepend(el);
 }
+/* 折叠豁免 + 卡片展开都走委托：代码块按钮优先消费事件，其余点击维持原交互。
+ * 只认真正的答案卡（含 .body）；截图回执卡本来就没有 click 行为，不顺手加。 */
 hero.addEventListener('click', (e) => {
+  if (onCodeCtrl(e)) return;
   if (e.target.tagName === 'A') return;
   hero.classList.toggle('collapsed');
+});
+feed.addEventListener('click', (e) => {
+  if (onCodeCtrl(e)) return;
+  const card = e.target.closest && e.target.closest('.ans');
+  if (card && card.querySelector('.body')) card.classList.toggle('open');
 });
 
 /* ---- 截图回执 ----

@@ -42,9 +42,15 @@ describe('phone page wiring', () => {
 
   it('never renders the screenshot as an image', () => {
     // deliberate: the answer text is the payload, an <img> is an unshrinkable
-    // element that wrecks the zoom-reflow layout on a narrow screen
+    // element that wrecks the zoom-reflow layout on a narrow screen.
+    // createObjectURL itself is allowed again — the code-block download button
+    // uses it for a text/plain blob — so pin the real invariant instead:
+    // no <img> elements, and every blob handed to a URL is text, never an image.
     expect(appJs).not.toMatch(/createElement\('img'\)/);
-    expect(appJs).not.toMatch(/createObjectURL/);
+    expect(appJs).not.toMatch(/type:\s*['"]image\//);
+    const blobTypes = [...appJs.matchAll(/new Blob\(\[[^\]]*\],\s*\{ type: '([^']+)' \}\)/g)].map((m) => m[1]);
+    expect(blobTypes.length).toBeGreaterThan(0);
+    for (const t of blobTypes) expect(t).toBe('text/plain');
   });
 });
 
@@ -89,7 +95,11 @@ describe('phone markdown renderer', () => {
 
   it('keeps code fences out of inline processing', () => {
     const out = md('```\nnot **bold** <b>tag</b>\n```');
-    expect(out).toContain('<pre><code>not **bold** &lt;b&gt;tag&lt;/b&gt;</code></pre>');
+    // block output since Task 4: escaped source stays verbatim inside a
+    // per-line span of the code-block contract; inline rules never touch it
+    expect(out).toContain('<span class="code-line">not **bold** &lt;b&gt;tag&lt;/b&gt;</span>');
+    expect(out).not.toContain('<strong>');
+    expect(out).not.toContain('<b>');
   });
 
   it('renders the shapes real answers use', () => {

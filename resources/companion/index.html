@@ -9,6 +9,7 @@
   :root{ --fg:#e8e8e8; --bg:#0d0d0d; --panel:#181818; --line:#282828;
          --dim:#8a8a8a; --them:#7dd3fc; --me:#86efac; --warn:#fbbf24;
          --bad:#f87171; --ok:#4ade80; --accent:#60a5fa;
+         --mono:ui-monospace,Menlo,Consolas,'Cascadia Mono','Noto Sans Mono CJK SC',monospace;
          /* 桌面端 styles.css 深色组的语义色，逐值抄过来（R10） */
          --live:#d33a3a; --on-bg:rgba(46, 160, 92, 0.28);
          --on-border:rgba(46, 160, 92, 0.65); --on-text:#86dda9; }
@@ -52,9 +53,29 @@
   #heroBody code{background:#242424;padding:.05rem .3rem;border-radius:.2rem;
                  font-family:ui-monospace,Consolas,monospace;font-size:.9em;
                  overflow-wrap:anywhere}
-  #heroBody pre{background:#080808;padding:.5rem;border-radius:.4rem;margin:.4rem 0;max-width:100%;overflow:hidden}
-  #heroBody pre code{background:none;padding:0;display:block;white-space:pre-wrap;
-                     overflow-wrap:anywhere;padding-left:1.1em;text-indent:-1.1em}
+  /* 代码块：与桌面 CodeBlock 同一套 DOM 与布局（长行横向滚动、换行模式挂缩进）。
+     旧的 pre{overflow:hidden} + pre-wrap/anywhere 会在标识符中间断行，
+     text-indent:-1.1em 会让首行带缩进的代码整体错位——两条都已删除。
+     hero 与归档卡（.ans .body）共用这套：两处都会渲染 markdown 代码块。
+     overflow-wrap/word-break 复位是防弹：#heroBody{...anywhere}、
+     #heroBody code{...anywhere} 与 .ans .body{...anywhere} 都会继承进 pre code，
+     桌面端 codeblock.css:79-82 因同样的继承被迫写死 word-break:normal。 */
+  #heroBody .code-block,.ans .body .code-block{background:#0b0f14;border:1px solid #1f2a35;border-radius:.5rem;
+                        margin:.45rem 0;overflow:hidden}
+  #heroBody .code-bar,.ans .body .code-bar{display:flex;align-items:center;gap:.4rem;padding:.3rem .55rem;
+                      border-bottom:1px solid #1f2a35}
+  #heroBody .code-lang,.ans .body .code-lang{margin-right:auto;font:.72rem/1.4 var(--mono);color:#6f7c8c}
+  #heroBody .code-ctrl,.ans .body .code-ctrl{background:#161c24;color:var(--accent);border:1px solid #263140;
+                       border-radius:.3rem;font-size:.7rem;padding:.12rem .45rem}
+  #heroBody .code-ctrl[aria-pressed=true],.ans .body .code-ctrl[aria-pressed=true]{background:#2563eb;color:#fff}
+  #heroBody .code-pre,.ans .body .code-pre{margin:0;padding:.55rem .7rem;overflow-x:auto;
+                      -webkit-overflow-scrolling:touch}
+  #heroBody .code-pre code,.ans .body .code-pre code{display:block;background:none;padding:0;
+                           font:.86rem/1.6 var(--mono);white-space:pre;tab-size:4;
+                           overflow-wrap:normal;word-break:normal}
+  #heroBody .code-line,.ans .body .code-line{display:block;min-height:1.6em}
+  #heroBody .code-block.wrap .code-line,.ans .body .code-block.wrap .code-line{padding-left:1.4em;text-indent:-1.4em}
+  #heroBody .code-block.wrap .code-pre code,.ans .body .code-block.wrap .code-pre code{white-space:pre-wrap;overflow-wrap:break-word}
   #heroBody blockquote{border-left:2px solid #444;margin:.4rem 0;padding-left:.55rem;color:#aaa}
   #heroBody a{color:var(--accent);overflow-wrap:anywhere}
   #heroBody .katex{font-size:1em}
@@ -86,7 +107,8 @@
   .ans.open .body{max-height:none}
   .ans .body.plain{white-space:pre-wrap}
   .ans .meta{font-size:.68rem;color:#666;margin-top:.3rem}
-  .ans .more{font-size:.72rem;color:var(--accent);margin-top:.25rem}
+  .ans .more{display:none;font-size:.72rem;color:var(--accent);margin-top:.25rem}
+  .ans.has-code .more{display:block}
 
   .receipt{font-size:.72rem;color:#777}
   .filter{display:flex;gap:.35rem;padding:.35rem .7rem;background:var(--panel);
