@@ -189,18 +189,23 @@ user turn 依次拼：`【题目】`（截 `MAX_SCREEN_TEXT_CHARS`）、`【我�
 
 ## 6. 复核阶段
 
-**触发条件**（全部满足才跑）：
+**自动复核的触发条件**（全部满足才跑；实现见 `shared/answerCheck.ts` 的 `shouldRunCheck`）：
 
-- `subMode === 'technical'` 或 `classifyQuestion(question) === 'coding'`（复用
-  `shared/textHeuristics.ts:54-64`，不新造分类器）；
-- 答案不是题库直答（`main.ts:2076` 那个提前 `return` 的分支**绝不复核**——原题答案已经是确定的，
-  再让模型挑错只会把确定性换成不确定性）；
+- `subMode === 'technical'`，**或** `subMode === 'open'` 且 `classifyQuestion(question) === 'coding'`
+  （复用 `shared/textHeuristics.ts:54-64`，不新造分类器）。
+  实现比本节初稿更窄：`aptitude` / `personality` 档里偶然出现的编码题**不**自动复核 ——
+  那两档的默认形态不是代码，为一个边缘情况给整档加一次调用不划算（裁定于执行期）；
+- 答案不是题库直答（`main.ts:2076` 那个提前 `return` 的分支**不自动复核**——原题答案已经是确定的，
+  再让模型挑错只会把确定性换成不确定性）。注意是"不自动"：用户**手动**按重查时照样跑，
+  因为那一轮是他要的（`lastExam` 在直答分支也会记录）；
 - 首答文本非空。
 
-**实现**：`runExamAsk` 发完 `done` 后调 `checkExamAnswer({requestId, question, subMode, answer, hint?, turn})`，
+**实现**：`runExamAsk` 发完 `done` 后调 `runExamCheck({requestId, turn, hint?})`，
 流 `check` / `checkDelta` / `checkDone`。新增主进程槽位
 `lastExam: {requestId, question, subMode, answer, at} | undefined`（当前主进程**没有**这个状态，已 grep 确认），
-`examCheck` op 与 `mcExam.check()` 都读它。耗时记进 `ms.check`。
+`examCheck` op 与 `mcExam.check()` 都读它。
+**耗时不在 ask 的 `ms` 记录里**：`done` 在复核之前就已发出，`ms` 只有 `read/bank/model/total` 四段；
+复核轮的耗时骑在 `check` 事件自己的 `ms` 字段上，日志行是 `[exam] check turn=… verdict=… ms=…`。
 
 **竞态**：`IPC.examCancel`（`main.ts:2193-2198`）现有的 `AbortController` 必须同时中止复核轮；
 新 ask 一到 `lastExam.requestId` 就变，两个渲染面都要按 `requestId` 丢弃迟到的 `check*` 事件

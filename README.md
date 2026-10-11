@@ -31,7 +31,7 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 - **右下角延迟 HUD**：状态栏右侧显示「话落→出字」端到端延迟（末条 / p50 / p95）、首字延迟与推理耗时；悬停每项都有解释，用于判断慢在防抖门控、检索还是模型本身。
 - **手机显示（局域网）**：设置里打开 **手机显示** 后，本机变成一个只在局域网里说话的网页服务，**手机浏览器扫码即看**——左边实时转写、上面大字显示当前答案（流式逐字、公式照常排版）。它挂在主进程的事件源上，**不经过界面窗口**，所以电脑这边可以彻底隐身、不开任何窗口，屏幕上没有任何东西会被共享或拍到。同时它也接管「**后台截屏答题**」：按下截屏热键 → 拍屏 → 读题 → **先查本机题库** → 答案直接出现在手机上，全程不用回头看电脑。延迟在这条链路上是显式量：手机上每次 ping/pong 校准两机时钟差后显示真实端到端毫秒数，设置面板显示线路延迟与「因手机跟不上而丢弃」的计数。
   - 配对走「**6 位配对码 → 长期令牌**」：配对码**只显示在这台电脑上**，绝不回传给发起请求的设备，所以同一局域网里别人无法自助连进来；令牌存在手机本地，之后免配对直连。
-  - **在手机上实时改设置**：连上后手机页面顶部多出一条 **控制** 栏——远程开关**转录**与**持续答**、切换**回答内容量 / 专业度**、**输入问题**（纯文本）、回看本次会议**历史回答**。**颜色即电脑真实状态，点了不等于生效**（1.5 秒没等到回状态标「未确认」），电脑侧不弹任何提示。默认开启，可在 设置 → 通用 → 手机显示 → **允许手机远程控制** 整体关掉或按六项逐个授权。
+  - **在手机上实时改设置**：连上后手机页面顶部多出一条 **控制** 栏——远程开关**转录**与**持续答**、切换**回答内容量 / 专业度**、**输入问题**（纯文本）、回看本次会议**历史回答**。**颜色即电脑真实状态，点了不等于生效**（1.5 秒没等到回状态标「未确认」），电脑侧不弹任何提示。默认开启，可在 设置 → 通用 → 手机显示 → **允许手机远程控制** 整体关掉或按八项逐个授权。
   - 默认 HTTPS（自签证书）：一是加密局域网这一段，二是手机浏览器的 **屏幕常亮 API 只在安全上下文存在**，明文 http 下手机亮到一半就息屏。手机首次访问会提示证书不受信任——**只有报 `ERR_CERT_AUTHORITY_INVALID` 时**才有「高级 → 继续前往」可点；连接窗里备了一颗 **「改用 HTTP」** 按钮，专治那些不提供绕过入口的安卓浏览器（代价是手机不能保持常亮，按钮旁写明了）。也可以下载 `/server.crt` 装进信任列表彻底消除警告。自签证书**挡得住被动嗅探，挡不住主动中间人**，仅限可信局域网。
   - **Windows 防火墙**：第一次监听端口时系统会弹窗，请允许「专用网络」；拒绝后手机会一直连不上而电脑侧毫无异常。
 - **回答可控**：标题栏那颗 **中 / EN** 切换回答语言；**👁** 在纯文本大模型与视觉模型（可**截图提问**）之间切换。
@@ -172,7 +172,7 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 
 - **入口**：标题栏 **双屏** 分段控件，或 设置 → 通用 → 手机显示 → 打开连接窗口。进入双屏时**自动打开持续答**，主窗自动隐藏并强制隐身。
 - **手机上看到什么**：左边实时转写流，上方大字显示当前答案（流式逐字、公式照常排版）。每次 ping/pong 校准两机时钟差，所以手机上打印的毫秒数是真实端到端延迟；设置面板另有线路延迟与「因手机跟不上而丢弃」计数。
-- **在手机上实时改设置**：连上后手机页面顶部多出一条 **控制** 栏——远程开/关 **转录** 与 **持续答**、切换 **回答内容量 / 专业度**、**输入问题**、回看本次会议 **历史回答**。颜色即桌面真实状态，点了不等于生效（1.5 秒内没等到桌面回状态就标「未确认」），且**电脑侧不弹任何提示**。授权见 设置 → 通用 → 手机显示 → **允许手机远程控制**（默认开启，含六项逐项开关）。详见下文「在手机上实时改设置」。
+- **在手机上实时改设置**：连上后手机页面顶部多出一条 **控制** 栏——远程开/关 **转录** 与 **持续答**、切换 **回答内容量 / 专业度**、**输入问题**、回看本次会议 **历史回答**。颜色即桌面真实状态，点了不等于生效（1.5 秒内没等到桌面回状态就标「未确认」），且**电脑侧不弹任何提示**。授权见 设置 → 通用 → 手机显示 → **允许手机远程控制**（默认开启，含八项逐项开关）。详见下文「在手机上实时改设置」。
 - **免看电脑截屏答题**：连接窗口勾选 **「截屏热键只送手机」** 后按 `Ctrl+Shift+S` 或 `Ctrl+Alt+S`——拍屏、读题、查题库、答案直出手机，电脑这边不弹任何窗。不勾选时 `Ctrl+Alt+S` 恢复常规行为（弹做题小窗等你拖框）。
 - **常亮**：手机上必须点一次 **「常亮」**（浏览器规定须用户点击才允许保持亮屏），且只在 https 下可用——这就是默认自签 HTTPS 的第二个理由。
 - **证书**：想彻底消除警告，可从 `/server.crt` 下载证书装进手机信任列表。自签证书挡得住被动嗅探，挡不住主动中间人，**仅限可信局域网**。
@@ -330,7 +330,7 @@ macOS 暂无安装包，需从源码运行（系统声音需 BlackHole 虚拟音
    不解析、不重新嵌入、不动索引。再点一次「导入文件…」不再是全量重建。
 3. **手机远程控制默认开启**。手机上出现 **控制** 栏不是你配出来的——它默认就开着，判断依据是：能连上的
    设备刚被你拿在手里、并输入过那颗只在电脑上显示的 6 位配对码。不想开：设置 → 通用 → 手机显示 →
-   取消勾选 **允许手机远程控制**；只想开一部分：下面六个逐项开关。
+   取消勾选 **允许手机远程控制**；只想开一部分：下面八个逐项开关。
 
 其余新增（气泡导轨、可折叠历史回答、🎚 回答风格与应答人设、◐ 面板透明度、逐文件导入进度与节摘要、
 做题模式）都不改变默认观感：**装完新版本什么都不设置时，发给模型的提示词与 v1.0.0 逐字节相同**（有测试钉住）。
@@ -412,7 +412,7 @@ macOS 暂无安装包，需从源码运行（系统声音需 BlackHole 虚拟音
   点了会被拒绝并给出文字原因；要立刻让按钮消失，重开一次手机页面（或关掉双屏再开）。
 
 权限在 **设置 → 通用 → 手机显示**：**允许手机远程控制** 是总开关（**默认开启**，因为能让它连上的
-设备本来就是你手里那台刚输过 6 位配对码的），关掉后手机上整块控制区直接不出现；下面六个**逐项授权**
+设备本来就是你手里那台刚输过 6 位配对码的），关掉后手机上整块控制区直接不出现；下面八个**逐项授权**
 可单独收掉某一类，被收掉的项是从手机页面上**移除**而不是变灰。只想给看、不想给改，就把总开关关掉——
 推送内容那一栏（转写 / 答案 / 截图）与控制权限是两套独立的开关。
 
@@ -657,7 +657,7 @@ awake** → **▶ Start**; the phone's **控制** bar then drives transcript, au
   into 未确认 if the desktop never reports the value, and **nothing pops up on the desktop** — that is
   the point. Permissions: **Settings → General → Phone display → Allow remote control** defaults to
   **on** (a device that got this far was just held in your hand and typed the 6-digit code shown only
-  here), with six per-item grants underneath; a revoked item disappears from the phone page rather
+  here), with eight per-item grants underneath; a revoked item disappears from the phone page rather
   than greying out. Want a screen with no controls at all? Turn the master switch off.
 - **Hidden window**: default summon hotkey `Ctrl+B`, or the tray menu (start/stop, new session,
   settings, service status, help, update check, quit).
@@ -691,7 +691,7 @@ per preset in Settings → Model → **Thinking effort**); **re-importing an unc
 mtime + content hash instead of rebuilding the index, shown as *unchanged*; and **remote control from
 the phone ships enabled** — a device that got this far was in your hand and typed the 6-digit code that
 only ever displays here (Settings → General → Phone display → *Allow remote control* to switch the whole
-bar off, or use the six per-item grants). Everything else v1.0.1 adds changes nothing unless you touch
+bar off, or use the eight per-item grants). Everything else v1.0.1 adds changes nothing unless you touch
 it: an untouched install sends **the same prompt bytes** to the model that v1.0.0 sent. Full notes:
 [RELEASE_NOTES_v1.0.1.md](docs/user/RELEASE_NOTES_v1.0.1.md).
 
