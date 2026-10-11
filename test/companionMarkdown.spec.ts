@@ -3,15 +3,20 @@ import { createContext, runInContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The phone page loads markdown.js as a plain script that hangs
- * renderMarkdown off `window`, so the only honest way to test it is to run it
- * the way the browser does.
+ * The phone page loads markdown.js as a plain script that hangs renderMarkdown
+ * (and the codeTextFromLines joiner the copy/download read path uses) off
+ * `window`, so the only honest way to test it is to run it the way the browser
+ * does.
  */
-function loadRenderer(): (src: string) => string {
+function loadWindow(): Record<string, unknown> {
   const source = readFileSync(new URL('../resources/companion/markdown.js', import.meta.url), 'utf8');
   const sandbox: { window: Record<string, unknown> } = { window: {} };
   runInContext(source, createContext(sandbox) as never);
-  return (sandbox.window as { renderMarkdown: (s: string) => string }).renderMarkdown;
+  return sandbox.window;
+}
+
+function loadRenderer(): (src: string) => string {
+  return (loadWindow() as { renderMarkdown: (s: string) => string }).renderMarkdown;
 }
 
 describe('companion renderMarkdown', () => {
@@ -59,5 +64,51 @@ describe('companion renderMarkdown', () => {
     expect(html).toContain('# not a heading');
     expect(html).not.toContain('<h1>');
     expect(html).not.toContain('<ol>');
+  });
+
+  it('falls back to txt for an exotic fence tag instead of walking the prototype chain', () => {
+    // CODE_EXT is a plain object literal; CODE_EXT['constructor'] would hit
+    // Object.prototype and stringify a native function into data-ext.
+    const html = md('```constructor\nx\n```');
+    expect(html).toContain('data-ext="txt"');
+    expect(html).not.toMatch(/native code|function Object/);
+  });
+});
+
+describe('companion code-block read path', () => {
+  const md = loadRenderer();
+  const { codeTextFromLines } = loadWindow() as unknown as {
+    codeTextFromLines: (lines: string[]) => string;
+  };
+  const lineSpans = (html: string) =>
+    [...html.matchAll(/<span class="code-line">([^<]*)<\/span>/g)].map((m) => m[1]);
+
+  it('round-trips a two-line block: spans carry the exact lines, the joiner restores newlines', () => {
+    const html = md('```c\nline1\n  line2\n```');
+    expect(lineSpans(html)).toEqual(['line1', '  line2']);
+    expect(codeTextFromLines(lineSpans(html))).toBe('line1\n  line2');
+  });
+
+  it('keeps an interior blank line through the round trip', () => {
+    const html = md('```c\na\n\nb\n```');
+    expect(lineSpans(html)).toEqual(['a', '', 'b']);
+    expect(codeTextFromLines(lineSpans(html))).toBe('a\n\nb');
+  });
+
+  it('joins the spans with the empty string in markup — newlines live only in the read path', () => {
+    // white-space:pre would render a literal \n between spans as a phantom
+    // blank line, so the DOM contract is join(''); copy/download must read
+    // per-line and rejoin, never glue textContent (which has no separator).
+    const html = md('```c\nline1\nline2\n```');
+    expect(html).toContain('<span class="code-line">line1</span><span class="code-line">line2</span>');
+    expect(html).not.toContain('<code>\n');
+  });
+
+  it('app.js reconstructs copy/download text from .code-line via the shared joiner, not raw textContent', () => {
+    const src = readFileSync(new URL('../resources/companion/app.js', import.meta.url), 'utf8');
+    expect(src).toMatch(/querySelectorAll\('\.code-line'\)/);
+    expect(src).toMatch(/codeTextFromLines/);
+    expect(src).not.toMatch(/writeText\([^)]*textContent/);
+    expect(src).not.toMatch(/new Blob\(\[[^\]]*textContent/);
   });
 });

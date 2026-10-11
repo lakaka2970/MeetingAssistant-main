@@ -27,7 +27,12 @@ describe('phone page wiring', () => {
 
   it('every element app.js queries by class exists in the page', () => {
     const classes = [...appJs.matchAll(/querySelectorAll\('\.([a-zA-Z][\w-]*)/g)].map((m) => m[1]);
-    const missing = classes.filter((c) => !new RegExp(`class="${c}`).test(html));
+    // some classes (.code-line and friends) only ever appear in the markup
+    // markdown.js generates at runtime, not in the static page; a class
+    // missing from both is the typo this guard exists to catch.
+    const missing = classes.filter(
+      (c) => !new RegExp(`class="${c}`).test(html) && !new RegExp(`class="${c}`).test(markdownJs),
+    );
     expect(missing).toEqual([]);
   });
 

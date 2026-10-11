@@ -310,6 +310,15 @@ function typeset(el) {
     });
   } catch { /* 保留原文 */ }
 }
+/* 代码文本读回：markup 里行间是 join('')（white-space:pre 下字面换行会渲染成
+ * 幽灵空行），整块 textContent 会把所有行粘成一行——复制/下载必须逐行读
+ * .code-line，再用 markdown.js 导出的同一个 codeTextFromLines 还原换行。 */
+function codeLinesText(block) {
+  const lines = Array.from(block.querySelectorAll('.code-line'), (s) => s.textContent);
+  return typeof window.codeTextFromLines === 'function'
+    ? window.codeTextFromLines(lines)
+    : lines.join('\n');
+}
 /* 代码块按钮：一个容器级委托统管 hero 与 feed，不给每块绑 handler。
  * 返回 true 表示事件已消费，外层折叠逻辑必须放行——否则点「换行」
  * 会把整块答案折起来。 */
@@ -318,8 +327,7 @@ function onCodeCtrl(e) {
   if (!btn) return false;
   e.stopPropagation();
   const block = btn.closest('.code-block');
-  const pre = block && block.querySelector('.code-pre code');
-  if (!block || !pre) return true;
+  if (!block || !block.querySelector('.code-pre code')) return true;
   if (btn.classList.contains('code-wrap')) {
     const on = block.classList.toggle('wrap');
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -331,13 +339,13 @@ function onCodeCtrl(e) {
       setTimeout(() => { btn.textContent = '复制'; }, 1200);
     };
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(pre.textContent).then(() => flash('已复制'), () => flash('复制失败'));
+      navigator.clipboard.writeText(codeLinesText(block)).then(() => flash('已复制'), () => flash('复制失败'));
     } else {
       flash('复制失败');
     }
   } else {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([pre.textContent], { type: 'text/plain' }));
+    a.href = URL.createObjectURL(new Blob([codeLinesText(block)], { type: 'text/plain' }));
     a.download = `answer.${block.dataset.ext || 'txt'}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);

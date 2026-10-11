@@ -60,10 +60,14 @@ const FENCE = /^ {0,3}(`{3,}|~{3,})[ \t]*([A-Za-z0-9+#._-]*)[ \t]*$/;
 
 const CODE_EXT = { cpp: 'cpp', c: 'c', java: 'java', python: 'py', py: 'py', javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts', go: 'go', rust: 'rs' };
 
-/** 语言标签 + 三个按钮；按钮不带 data 内容，代码文本从 <code> 里读，省一份转义 */
+/** 语言标签 + 三个按钮；按钮不带 data 内容，代码文本从 span.code-line 逐行读回、
+ *  经 codeTextFromLines 还原换行，省一份转义 */
 function codeBlockHtml(lang, bodyLines) {
   const code = trimBlankEdges(bodyLines);
-  const ext = CODE_EXT[(lang || '').toLowerCase()] || 'txt';
+  const key = (lang || '').toLowerCase();
+  // 自有属性检查：CODE_EXT 是对象字面量，直接下标会顺原型链摸到
+  // Object.prototype（```constructor 之类的标签会把原生函数拼进 data-ext）。
+  const ext = Object.prototype.hasOwnProperty.call(CODE_EXT, key) ? CODE_EXT[key] : 'txt';
   return (
     `<div class="code-block" data-lang="${escapeHtml(lang || '')}" data-ext="${ext}">` +
     '<div class="code-bar">' +
@@ -76,12 +80,20 @@ function codeBlockHtml(lang, bodyLines) {
   );
 }
 
+/** 逐行内容 → 源码文本：复制/下载读回路径的唯一换行语义。
+ *  标记里行间刻意 join('')——white-space:pre 下标签间的字面 \n 会渲染成
+ *  幽灵空行；所以读回必须逐行拼接，绝不能直接取整块的 textContent
+ *  （textContent 连接文本节点不带分隔符，会把所有行粘成一行）。 */
+function codeTextFromLines(lines) {
+  return lines.join('\n');
+}
+
 function trimBlankEdges(lines) {
   let from = 0;
   let to = lines.length;
   while (from < to && !lines[from].trim()) from++;
   while (to > from && !lines[to - 1].trim()) to--;
-  return lines.slice(from, to).join('\n');
+  return codeTextFromLines(lines.slice(from, to));
 }
 
 function renderMarkdown(source) {
@@ -159,4 +171,8 @@ function renderMarkdown(source) {
   return out.join('\n');
 }
 
-if (typeof window !== 'undefined') window.renderMarkdown = renderMarkdown;
+if (typeof window !== 'undefined') {
+  window.renderMarkdown = renderMarkdown;
+  // app.js 的复制/下载读回路径共用这个换行语义，避免两处各写一份 join。
+  window.codeTextFromLines = codeTextFromLines;
+}
