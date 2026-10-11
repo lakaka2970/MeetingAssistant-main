@@ -41,10 +41,9 @@ interface Answer {
 }
 
 /**
- * The self-check round's shape lives in ./checkCard (its state machine is a pure
- * function there, so the event order is unit-testable without a DOM).
+ * The self-check round's card is NOT merged into `answer`: see ./checkCard for
+ * its shape and for the pure reducer that decides every check event.
  */
-
 export function ExamApp() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [subMode, setSubMode] = useState<ExamSubMode>('aptitude');
