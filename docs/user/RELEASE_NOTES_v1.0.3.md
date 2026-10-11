@@ -5,6 +5,8 @@
 > ⚠️ 安装包**未做代码签名**，Windows 会弹安全提醒；请只从本项目的 Releases 页面下载。
 > ⚠️ The installers are **not code-signed**, so Windows will warn you. Download only from this project's Releases page.
 
+> 完整变更对比 / Full diff: [v1.0.2...v1.0.3](https://github.com/lakaka2970/MeetingAssistant-main/compare/v1.0.2...v1.0.3)
+
 ---
 
 ## 中文

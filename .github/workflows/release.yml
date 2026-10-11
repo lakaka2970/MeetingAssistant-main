@@ -120,10 +120,14 @@ jobs:
       # under it), so a release cannot go out with only a compare link. If a future
       # tag has no notes file the action fails here — that is the forcing function,
       # not a bug; write the file (or pass an empty one) before tagging.
+      # generate_release_notes stays OFF on purpose: GitHub ignores body/body_path when
+      # it is true, so turning it on silently discards the notes (seen on the first
+      # v1.0.3 build, where the draft came back with nothing but the compare line).
+      # The compare link the auto-notes used to add is written into the notes file.
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
-          generate_release_notes: true
+          generate_release_notes: false
           body_path: docs/user/RELEASE_NOTES_${{ github.ref_name }}.md
           fail_on_unmatched_files: true
           files: artifacts/**/*
