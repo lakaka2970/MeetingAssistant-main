@@ -5,7 +5,11 @@
  * read, and it is a plain file we can write and remove ourselves.
  */
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs';
-import { join } from 'path';
+// POSIX on purpose: this writes an XDG autostart file, whose paths are forward-
+// slashed no matter which OS the test suite happens to run on. platform.join()
+// would hand back `C:\...\autostart`-shaped strings on Windows, where this module
+// is never used but is still imported and asserted on.
+import { posix as path } from 'path';
 import { homedir } from 'os';
 
 export const AUTOSTART_ENTRY_NAME = 'com.lakaka2970.meetingassistant.desktop';
@@ -16,12 +20,12 @@ export function autostartExecPath(env: NodeJS.ProcessEnv = process.env): string 
   return env.APPIMAGE || process.execPath;
 }
 
-export function autostartDir(configDir: string = join(homedir(), '.config')): string {
-  return join(configDir, 'autostart');
+export function autostartDir(configDir: string = path.join(homedir(), '.config')): string {
+  return path.join(configDir, 'autostart');
 }
 
 export function autostartEntryPath(configDir?: string): string {
-  return join(autostartDir(configDir), AUTOSTART_ENTRY_NAME);
+  return path.join(autostartDir(configDir), AUTOSTART_ENTRY_NAME);
 }
 
 /**
