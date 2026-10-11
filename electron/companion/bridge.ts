@@ -106,9 +106,19 @@ export class CompanionBridge {
   private deltas = new Map<string, string>();
   /** which channel a buffered delta belongs to, so the flush can re-wrap it */
   private deltaKind = new Map<string, 'a' | 'x'>();
+  /**
+   * The check round's delta text, kept out of `deltas` on purpose. That map is
+   * keyed by request id alone, and a check round rides the id of the answer it
+   * reviews — sharing it would append revision tokens onto the first answer its
+   * `done` has already settled, which reads as the model quietly rewriting
+   * itself. Keyed by id *and* turn, so two re-check rounds of one answer cannot
+   * interleave and a late tick from round 1 cannot land on round 2's card.
+   */
+  private checkDeltas = new Map<string, { id: string; turn: number; text: string }>();
   /** when each in-flight interview answer started, for the ms the phone shows */
   private answerStartedAt = new Map<string, number>();
   private flushTimer: NodeJS.Timeout | null = null;
+  private checkFlushTimer: NodeJS.Timeout | null = null;
   private seq = 0;
 
   constructor(
@@ -373,6 +383,24 @@ export class CompanionBridge {
         this.flush(id);
         this.push({ type: 'x', phase: 'done', id, text: ev.text, origin: ev.origin, ms: ev.ms?.total ?? 0 });
         break;
+      case 'check':
+        this.flush(id);
+        // the round's own tokens go out before its verdict, same rule as above:
+        // a terminal event must never overtake the stream it is closing
+        this.flushCheck(id, ev.turn);
+        this.push({ type: 'x', phase: 'check', id, turn: ev.turn, verdict: ev.verdict, note: ev.note, ms: ev.ms });
+        break;
+      case 'checkDelta':
+        this.bufferCheck(id, ev.turn, ev.text);
+        break;
+      case 'checkDone':
+        this.flushCheck(id, ev.turn);
+        this.push({ type: 'x', phase: 'checkDone', id, turn: ev.turn, text: ev.text });
+        break;
+      case 'subMode':
+        // no push: the phone's own segment state comes from `st.examSubMode`,
+        // and publishing it as an answer event would invent a blank answer card
+        break;
       case 'error':
         this.flush(id);
         this.push({ type: 'x', phase: 'error', id, message: ev.message });
@@ -470,6 +498,44 @@ export class CompanionBridge {
       this.deltas.delete(id);
       this.deltaKind.delete(id);
       if (text) this.push({ type: kind, phase: 'delta', id, text } as CompanionMessage, true);
+    }
+  }
+
+  /**
+   * Coalesce one check-round token. Deliberately not `bufferDelta`: that one
+   * keys by request id, and a check round reuses the id of the answer it
+   * reviews, so routing it there would append revision tokens to an answer the
+   * `done` event already finalised.
+   */
+  private bufferCheck(id: string, turn: number, text: string): void {
+    const key = `${id}#${turn}`;
+    const prev = this.checkDeltas.get(key);
+    this.checkDeltas.set(key, { id, turn, text: (prev?.text ?? '') + text });
+    this.scheduleCheckFlush();
+  }
+
+  /**
+   * Its own tick rather than `scheduleFlush()`, so the first-answer coalescing
+   * path — the latency-critical one — keeps flushing exactly what it always did.
+   */
+  private scheduleCheckFlush(): void {
+    if (this.checkFlushTimer) return;
+    this.checkFlushTimer = setTimeout(() => {
+      this.checkFlushTimer = null;
+      this.flushCheck();
+    }, FLUSH_MS);
+    this.checkFlushTimer.unref?.();
+  }
+
+  /** Send buffered check tokens for one round, or for every round in flight. */
+  private flushCheck(id?: string, turn?: number): void {
+    const only = id === undefined ? null : `${id}#${turn}`;
+    for (const [key, buf] of [...this.checkDeltas]) {
+      if (only && key !== only) continue;
+      this.checkDeltas.delete(key);
+      // lossy like the answer deltas: a dropped token is retold by the round's
+      // `checkDone`, which is not lossy
+      if (buf.text) this.push({ type: 'x', phase: 'checkDelta', id: buf.id, turn: buf.turn, text: buf.text }, true);
     }
   }
 

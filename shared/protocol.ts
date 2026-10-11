@@ -18,6 +18,8 @@ import type { SearchProviderId } from './searchProviders';
 export type { SearchProviderId } from './searchProviders';
 import type { ExamSubMode } from './bankStore';
 export type { ExamSubMode } from './bankStore';
+import type { CheckVerdict } from './answerCheck';
+export type { CheckVerdict } from './answerCheck';
 import type { AnswerExpertise, AnswerRichness } from './answerStyle';
 import type { AnswerPersona } from './personas';
 export type { AnswerPersona, AnswerExpertise, AnswerRichness };
@@ -992,6 +994,17 @@ export type ExamEvent =
   | { requestId: string; kind: 'ambiguous'; candidates: ExamBankCandidateView[] }
   | { requestId: string; kind: 'delta'; text: string }
   | { requestId: string; kind: 'done'; text: string; origin: ExamOrigin; ms: Record<string, number> }
+  /**
+   * The adjudication round on the answer already shown. It rides the same
+   * requestId as the answer it reviews and never replaces it: a checker that
+   * silently rewrote the answer would be indistinguishable from the answerer
+   * having been right, which is the one thing the user must be able to tell.
+   */
+  | { requestId: string; kind: 'check'; turn: number; verdict: CheckVerdict; note: string; ms: number }
+  | { requestId: string; kind: 'checkDelta'; turn: number; text: string }
+  | { requestId: string; kind: 'checkDone'; turn: number; text: string }
+  /** the sub-mode moved somewhere other than this window's own picker (a phone tap) */
+  | { requestId: string; kind: 'subMode'; subMode: ExamSubMode }
   | { requestId: string; kind: 'error'; message: string }
 
 export interface ExamBankStatusView {
@@ -1514,6 +1527,9 @@ export const IPC = {
   examAsk: 'exam:ask',
   /** send: (requestId) — abandon the current exam answer */
   examCancel: 'exam:cancel',
+  /** send: ({hint?}) => void — re-adjudicate the answer last shown; main takes the
+   * context from its own lastExam slot, so no re-capture and no requestId travels */
+  examCheck: 'exam:check',
   /** main -> exam window: ExamEvent stream */
   examEvent: 'exam:event',
   /** invoke: () => ExamStatusView — bank scan state per sub-mode */

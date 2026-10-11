@@ -21,6 +21,7 @@
  */
 
 import type { AnswerExpertise, AnswerRichness } from '../../shared/answerStyle';
+import type { CheckVerdict } from '../../shared/answerCheck';
 import type { CompanionControlItems } from '../../shared/protocol';
 import type { ControlOp } from './control';
 
@@ -169,6 +170,17 @@ export type CompanionMessage =
   | { type: 'x'; phase: 'note'; id: string; text: string }
   | { type: 'x'; phase: 'delta'; id: string; text: string }
   | { type: 'x'; phase: 'done'; id: string; text: string; origin: string; ms: number }
+  /**
+   * The check round on the answer already shown. It is a separate phase rather
+   * than another `delta`/`done` pair on the same id because the first answer is
+   * already finalised on the phone: a revision that arrives as an answer would
+   * read as the answerer having been right all along, and the user must be able
+   * to tell the two apart. `turn` says which re-check round a message belongs
+   * to, so a second round cannot land on the first round's card.
+   */
+  | { type: 'x'; phase: 'check'; id: string; turn: number; verdict: CheckVerdict; note: string; ms: number }
+  | { type: 'x'; phase: 'checkDelta'; id: string; turn: number; text: string }
+  | { type: 'x'; phase: 'checkDone'; id: string; turn: number; text: string }
   | { type: 'x'; phase: 'error'; id: string; message: string };
 
 export const CLOSE_INVALID_TOKEN = 4001;
