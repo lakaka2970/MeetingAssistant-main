@@ -58,9 +58,15 @@ jobs:
           {
             echo "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo "commit: ${{ github.sha }}"
-            printf '```\n'
-            tail -n 100 vitest-tail.log
-            printf '```\n'
+            echo "### what a Windows npm ci actually contains under onnxruntime-node"
+            echo '```'
+            du -sh node_modules/onnxruntime-node/bin/napi-v3/* 2>&1
+            find node_modules/onnxruntime-node/bin/napi-v3 -maxdepth 2 -type f -printf '%10s %p\n' 2>/dev/null | sort -k2
+            echo '```'
+            echo "### vitest tail"
+            echo '```'
+            tail -n 60 vitest-tail.log
+            echo '```'
           } > tail.md
           gh issue create \
             --repo "$GITHUB_REPOSITORY" \
