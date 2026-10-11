@@ -180,6 +180,61 @@ extraResources:
 win:
   icon: build/icon.ico
   artifactName: ${productName}-${version}-win-${arch}.${ext}
+  # Re-listed in full because a platform-level `files` list replaces the global one
+  # — see the identical note in the linux block. The positives and the exclusions
+  # above are the whole contract for this target; keep the three lists in sync.
+  files:
+    - out/**
+    - package.json
+    - '!src/**'
+    - '!test/**'
+    - '!docs/**'
+    - '!tools/**'
+    - '!patches/**'
+    - '!build/**'
+    - '!.github/**'
+    - '!**/*.md'
+    - '!**/*.tsbuildinfo'
+    - '!electron.vite.config.ts'
+    - '!tsconfig*.json'
+    - '!**/{.npmrc,.editorconfig,start.bat,start-funasr-local.bat}'
+    - '!**/*.map'
+    - '!**/*.ts'
+    - '!**/*.tsx'
+    - '!node_modules/onnxruntime-web/**'
+    - '!node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm'
+    - '!node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs'
+    - '!node_modules/@huggingface/transformers/dist/jsep.wasm'
+    - '!node_modules/@huggingface/transformers/dist/jsep.mjs'
+    - '!node_modules/@huggingface/transformers/dist/transformers.js'
+    - '!node_modules/@huggingface/transformers/dist/transformers.min.js'
+    - '!node_modules/@huggingface/transformers/dist/transformers.web.js'
+    - '!node_modules/@huggingface/transformers/dist/transformers.web.min.js'
+    - '!node_modules/@huggingface/transformers/dist/transformers.node.min.mjs'
+    - '!node_modules/@huggingface/transformers/dist/transformers.node.min.cjs'
+    - '!node_modules/pdfjs-dist/build/**'
+    - '!node_modules/pdfjs-dist/web/**'
+    - '!node_modules/pdf-parse/dist/pdf-parse/web/**'
+    - '!node_modules/pdf-parse/dist/worker/**'
+    - '!node_modules/pdfjs-dist/legacy/web/**'
+    - '!node_modules/pdfjs-dist/legacy/build/pdf.min.mjs'
+    - '!node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs'
+    - '!node_modules/pdfjs-dist/legacy/build/pdf.sandbox.mjs'
+    - '!node_modules/pdfjs-dist/legacy/build/pdf.sandbox.min.mjs'
+    - '!node_modules/pdfjs-dist/image_decoders/**'
+    - '!node_modules/pdfjs-dist/legacy/image_decoders/**'
+    - '!node_modules/pdfjs-dist/wasm/**'
+    # ---- Windows-only: onnxruntime-node ships every platform in one tarball ----
+    # dist/binding.js resolves `../bin/napi-v3/${process.platform}/${process.arch}/`, so
+    # a win32/x64 build can never load the darwin or linux trees (65 MB + 404 MB, CUDA
+    # and TensorRT providers included) nor win32/arm64 (34 MB) — all three shipped in
+    # the v1.0.2 installers. win32/x64 itself holds exactly three files
+    # (onnxruntime_binding.node, onnxruntime.dll, DirectML.dll) and is left whole.
+    # Pinned by test/packagingFiles.spec.ts, which also fails if this list drops a
+    # global exclusion: a platform-level `files` list REPLACES the global one.
+    - '!node_modules/onnxruntime-node/bin/napi-v3/darwin/**'
+    - '!node_modules/onnxruntime-node/bin/napi-v3/linux/**'
+    - '!node_modules/onnxruntime-node/bin/napi-v3/win32/arm64/**'
   target:
     - target: nsis
       arch:
