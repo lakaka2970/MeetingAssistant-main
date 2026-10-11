@@ -976,6 +976,8 @@ describe('companion remote-control grants (⑦ dual-screen)', () => {
     continuous: true,
     ask: true,
     history: true,
+    examSubMode: true,
+    examCheck: true,
   };
 
   it('ships with control on and every item allowed', () => {

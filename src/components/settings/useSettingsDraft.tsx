@@ -521,7 +521,7 @@ export function useSettingsDraft(
           pushScreenshot: cShot,
           allowControl: cControl,
           // the whole object every time: a partial here would be merged main-side,
-          // and this form always holds all six values
+          // and this form always holds every grant value
           allowItems: cCtlItems,
         },
         update: { autoCheck: uAuto, apiBase: uBase.trim() },

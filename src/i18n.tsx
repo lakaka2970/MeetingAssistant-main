@@ -686,6 +686,8 @@ const zh = {
     companionCtlCapture: '转录开关（开始 / 停止）',
     companionCtlAsk: '手机输入提问',
     companionCtlHistory: '回看本次会议历史回答',
+    companionCtlExamSubMode: '做题模式子模式（行测/技术/性格/开放）',
+    companionCtlExamCheck: '让模型重新检查上一道算法题',
     companionCtlItemsHint: '取消勾选的项会从手机控制区里移除，而不是变灰——手机上点不到它',
     companionOpen: '打开连接窗口',
     companionOpenHint: '二维码、配对码与设备列表都在那个窗口里——手机要拍的是它，不是这一栏',
@@ -1471,6 +1473,8 @@ const en: Dict = {
     companionCtlCapture: 'Transcript switch (start / stop)',
     companionCtlAsk: 'Typing a question on the phone',
     companionCtlHistory: 'Browsing this meeting’s answer history',
+    companionCtlExamSubMode: 'Exam sub-mode (aptitude / technical / personality / open)',
+    companionCtlExamCheck: 'Re-check the last algorithm answer',
     companionCtlItemsHint:
       'An unticked item is removed from the phone panel rather than greyed out — it cannot be tapped there',
     companionOpen: 'Open the connect window',

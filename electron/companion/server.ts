@@ -108,7 +108,12 @@ interface Client {
  */
 export interface ControlChannel {
   limiter: { allow: () => boolean };
-  onCmd: (cmd: ControlCommand) => void;
+  /**
+   * Apply the command now. A refusal code (e.g. the exam re-check was refused
+   * by the desktop) comes back synchronously, so this connection — and only
+   * this connection — is told its press did not do what it asked.
+   */
+  onCmd: (cmd: ControlCommand) => string | undefined;
 }
 
 /**
@@ -182,8 +187,15 @@ export function handleControlMessage(
       console.log(`[companion-ctl] refused ${d.id || '?'}: ${d.reason}`);
       return { reply: { type: 'error', id: d.id, reason: d.reason } };
     }
+    // run first, then answer: a desktop that refused the command outright gets
+    // an `error` keyed to this press instead of an `ack` for work never done.
+    // (A command that merely queued still acks — its effect shows up in `st`.)
+    const refusal = ctl.onCmd(d.command);
+    if (refusal) {
+      console.log(`[companion-ctl] refused run ${d.command.id || '?'}: ${refusal}`);
+      return { reply: { type: 'error', id: d.command.id, reason: refusal } };
+    }
     console.log(`[companion-ctl] ack ${d.command.id || '?'} ${d.command.op}`);
-    ctl.onCmd(d.command);
     return { reply: { type: 'ack', id: d.command.id, op: d.command.op } };
   }
 
@@ -223,10 +235,11 @@ export interface CompanionServerOptions {
   onAuthenticated?: () => void;
   /**
    * ⑦ one remote control command that passed authorization, argument validation
-   * and this connection's budget. The `ack` is already on its way by then: this
-   * is where the desktop applies it, and the `st` push is what confirms it.
+   * and this connection's budget. This is where the desktop applies it, and the
+   * `st` push is what confirms it. Return a refusal code when the desktop
+   * declined the work itself: the `ack` becomes an `error` keyed to this press.
    */
-  onControl?: (cmd: ControlCommand) => void;
+  onControl?: (cmd: ControlCommand) => string | undefined;
 }
 
 export class CompanionServer {

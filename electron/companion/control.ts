@@ -2,7 +2,7 @@
  * Remote control from a paired phone (v1.0.1 ⑦): the decisions, kept away from
  * sockets and Electron so they can be tested at all.
  *
- * The command surface is six named operations — not a `SettingsPatch` the phone
+ * The command surface is eight named operations — not a `SettingsPatch` the phone
  * shapes freely (R8). That is why `authorizeControl` answers `unknown_op`: a
  * device naming a settings key it was never granted is a bug or an attack, and
  * both deserve the same refusal.
@@ -13,8 +13,10 @@ import { EXPERTISE_STEPS, RICHNESS_STEPS } from '../../shared/answerStyle';
 import type { CompanionControlItems, StoredTurn } from '../../shared/protocol';
 import type { HistoryMessage, StateMessage } from './protocol';
 
-/** the six things a phone may do; `history` is the one read-only member */
-export type ControlOp = 'richness' | 'expertise' | 'capture' | 'continuous' | 'ask' | 'history';
+/** the eight things a phone may do; `history` is the one read-only member */
+export type ControlOp =
+  | 'richness' | 'expertise' | 'capture' | 'continuous' | 'ask' | 'history'
+  | 'examSubMode' | 'examCheck';
 
 const CONTROL_OPS: readonly ControlOp[] = [
   'richness',
@@ -23,11 +25,23 @@ const CONTROL_OPS: readonly ControlOp[] = [
   'continuous',
   'ask',
   'history',
+  'examSubMode',
+  'examCheck',
 ];
 
 /** the two style ladders, shared with the prompt builder and the settings file */
 const RICHNESS_LADDER: readonly string[] = RICHNESS_STEPS;
 const EXPERTISE_LADDER: readonly string[] = EXPERTISE_STEPS;
+
+/**
+ * The 做题 ladder, kept as a local literal on purpose: this module's contract is
+ * "no Electron, no fs, no runtime deps", and pulling the constant from
+ * shared/bankStore would add one more runtime coupling for four strings — the
+ * bank module is free to grow dependencies the wire layer must never inherit.
+ * It is ExamSubMode from shared/bankStore restated as data — the test pins it
+ * against the literal list, because a TS type cannot be checked at runtime.
+ */
+export const EXAM_SUB_MODES: readonly string[] = ['aptitude', 'technical', 'personality', 'open'];
 
 /** a typed question, not a lecture — beyond this the phone meant to send less */
 export const ASK_MAX_CHARS = 500;
@@ -89,6 +103,17 @@ export function parseControlArg(op: ControlOp, arg: unknown): ArgParse {
     }
     case 'history':
       return arg === undefined ? { ok: true, value: undefined } : { ok: false };
+    case 'examSubMode':
+      return typeof arg === 'string' && EXAM_SUB_MODES.includes(arg) ? { ok: true, value: arg } : { ok: false };
+    case 'examCheck': {
+      if (arg === undefined) return { ok: true, value: undefined };
+      if (typeof arg !== 'string') return { ok: false };
+      const hint = arg.trim();
+      // same discipline as `ask`: refused rather than truncated — half a
+      // complaint steers the re-check at something the user never said
+      if (!hint || hint.length > ASK_MAX_CHARS) return { ok: false };
+      return { ok: true, value: hint };
+    }
   }
 }
 
@@ -124,7 +149,7 @@ export function acceptCommand(
   const op = typeof msg.op === 'string' ? msg.op : '';
   const verdict = authorizeControl(op, grants);
   if (verdict !== 'ok') return { accept: false, id, reason: verdict };
-  // `verdict === 'ok'` means op is one of the six, which is what narrows it
+  // `verdict === 'ok'` means op is one of the eight, which is what narrows it
   const parsed = parseControlArg(op as ControlOp, msg.arg);
   if (!parsed.ok) return { accept: false, id, reason: 'bad_arg' };
   if (!limiter.allow()) return { accept: false, id, reason: 'rate_limited' };
@@ -164,6 +189,9 @@ export function sameState(a: StateMessage, b: StateMessage): boolean {
     a.continuous === b.continuous &&
     a.richness === b.richness &&
     a.expertise === b.expertise &&
+    // 做题 sub-mode: hand-listed like the rest — forget it here and `st` never
+    // fires for a sub-mode change, so the phone's segment sits pending forever
+    a.examSubMode === b.examSubMode &&
     sameSession(a.session, b.session)
   );
 }

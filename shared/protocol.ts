@@ -217,9 +217,13 @@ export interface CompanionControlItems {
   ask: boolean;
   /** browse this session's answer history on the phone */
   history: boolean;
+  /** switch the 做题 sub-mode (行测/技术/性格/开放) from the phone's segment */
+  examSubMode: boolean;
+  /** make the model re-check the last algorithm answer, with an optional hint */
+  examCheck: boolean;
 }
 
-/** R2: a paired phone may do all six until the user turns something off */
+/** R2: a paired phone may do all eight until the user turns something off */
 export const COMPANION_CONTROL_GRANTS: CompanionControlItems = Object.freeze({
   richness: true,
   expertise: true,
@@ -227,6 +231,8 @@ export const COMPANION_CONTROL_GRANTS: CompanionControlItems = Object.freeze({
   continuous: true,
   ask: true,
   history: true,
+  examSubMode: true,
+  examCheck: true,
 });
 
 export interface SettingsFile {

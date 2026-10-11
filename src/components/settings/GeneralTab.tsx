@@ -363,6 +363,24 @@ export function GeneralTab({
                   />{' '}
                   {t.settings.companionCtlHistory}
                 </label>
+              </div>
+              <div className="settings-row">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={d.cCtlItems.examSubMode}
+                    onChange={(e) => d.setCtlItem('examSubMode', e.target.checked)}
+                  />{' '}
+                  {t.settings.companionCtlExamSubMode}
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={d.cCtlItems.examCheck}
+                    onChange={(e) => d.setCtlItem('examCheck', e.target.checked)}
+                  />{' '}
+                  {t.settings.companionCtlExamCheck}
+                </label>
                 <span className="settings-inline-hint">{t.settings.companionCtlItemsHint}</span>
               </div>
             </>

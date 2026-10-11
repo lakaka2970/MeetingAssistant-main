@@ -548,6 +548,8 @@ const ROWS = {
   richness: document.getElementById('rowRichness'),
   expertise: document.getElementById('rowExpertise'),
   history: document.getElementById('rowHistory'),
+  examSubMode: document.getElementById('rowExamMode'),
+  examCheck: document.getElementById('rowExamCheck'),
 };
 const PAIRS = {
   capture: [document.getElementById('capOn'), document.getElementById('capOff')],
@@ -556,6 +558,7 @@ const PAIRS = {
 const SEGS = {
   richness: [...document.querySelectorAll('#rowRichness .seg button')],
   expertise: [...document.querySelectorAll('#rowExpertise .seg button')],
+  examSubMode: [...document.querySelectorAll('#rowExamMode .seg button')],
 };
 const askRow = document.getElementById('askRow');
 const askInput = document.getElementById('askInput');
@@ -574,6 +577,8 @@ const REFUSAL = {
   bad_arg: '参数无效',
   rate_limited: '操作太快，请稍候',
   not_wired: '电脑端未启用',
+  exam_check_no_context: '电脑上还没有做完的题可复核',
+  exam_check_busy: '上一轮复核还在跑，稍后再点',
 };
 
 let caps = null;
@@ -772,6 +777,14 @@ function sendAsk() {
 }
 document.getElementById('askSend').addEventListener('click', sendAsk);
 askInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendAsk(); });
+/* 再检查一遍：按钮无状态可等（没有 st 字段回显它），sendCmd 的待确认分支正好
+ * 跳过它。note 先给按下回执；若桌面拒了这轮（无答案可查/上一轮还在跑），
+ * 带 id 的 error 会经 controlReply 再调 note 顶掉这句话——拒绝永远有下文。 */
+document.getElementById('examCheckBtn').addEventListener('click', () => {
+  const hint = document.getElementById('examCheckHint').value.trim();
+  sendCmd('examCheck', hint || undefined);
+  note(hint ? '已让模型带着这句话重查' : '已让模型重查一遍');
+});
 
 /* ---- 消息分发 ---- */
 let analysisEnabled = true;

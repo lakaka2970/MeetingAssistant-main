@@ -22,6 +22,7 @@
 
 import type { AnswerExpertise, AnswerRichness } from '../../shared/answerStyle';
 import type { CheckVerdict } from '../../shared/answerCheck';
+import type { ExamSubMode } from '../../shared/bankStore';
 import type { CompanionControlItems } from '../../shared/protocol';
 import type { ControlOp } from './control';
 
@@ -104,6 +105,8 @@ export interface StateMessage {
   continuous: boolean;
   richness: AnswerRichness;
   expertise: AnswerExpertise;
+  /** 做题 sub-mode the phone's segment echoes; settings is the truth (spec §4.3) */
+  examSubMode?: ExamSubMode;
   /** the interview whose answers the phone is looking at */
   session: { id: string; name: string; answers: number } | null;
 }
@@ -136,7 +139,7 @@ export type CompanionMessage =
   | { type: 'pair_request'; device: string }
   | { type: 'pair_confirm'; code: string }
   | { type: 'ping'; t: number }
-  /** one remote command; `op` is one of six names, never a settings key */
+  /** one remote command; `op` is one of eight names, never a settings key */
   | { type: 'cmd'; id: string; op: ControlOp; arg?: string | boolean }
   // bridge -> phone
   | { type: 'hello_ok'; caps: CompanionCaps }

@@ -50,7 +50,7 @@ const applied: ControlCommand[] = [];
 /** point the bridge's state getter at one of the two fixtures above */
 function useState(
   state: (typeof STATES)[keyof typeof STATES],
-  run: (cmd: ControlCommand) => void = (cmd) => void applied.push(cmd),
+  run: (cmd: ControlCommand) => string | undefined = (cmd) => void applied.push(cmd),
 ): void {
   bridge.attachControl({ state: () => state, turns: () => [], run });
 }
@@ -142,7 +142,7 @@ beforeAll(async () => {
   bridge.attachControl({
     state: () => STATES.off,
     turns: () => [],
-    run: (cmd) => applied.push(cmd),
+    run: (cmd) => void applied.push(cmd),
   });
   await bridge.apply();
 });

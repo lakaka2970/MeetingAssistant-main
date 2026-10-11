@@ -335,7 +335,7 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
     companion: {
       ...defaults.companion,
       ...raw.companion,
-      // grants merge per key: a file naming only some of the six must not
+      // grants merge per key: a file naming only some of the eight must not
       // revoke the ones it never mentions
       allowItems: { ...COMPANION_CONTROL_GRANTS, ...raw.companion?.allowItems },
     },
@@ -891,6 +891,8 @@ export class SettingsStore {
           continuous: d.companion?.allowItems?.continuous !== false,
           ask: d.companion?.allowItems?.ask !== false,
           history: d.companion?.allowItems?.history !== false,
+          examSubMode: d.companion?.allowItems?.examSubMode !== false,
+          examCheck: d.companion?.allowItems?.examCheck !== false,
         },
       },
       update: {

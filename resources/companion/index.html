@@ -177,7 +177,8 @@
   .pend::after{content:'…'}
   .unconf{border-color:var(--warn)!important;color:var(--warn)!important}
   #askRow{display:flex;gap:.35rem}
-  #askInput{flex:1;min-width:0;background:#111;color:var(--fg);border:1px solid #444;
+  /* 复核错因框与提问框同一套外观：同排、同高，键盘弹出时不换行 */
+  #askInput,#examCheckHint{flex:1;min-width:0;background:#111;color:var(--fg);border:1px solid #444;
             border-radius:.35rem;padding:.35rem .45rem;font-size:1rem}
   #askSend{padding:.35rem .8rem}
   #hist{display:flex;flex-direction:column;gap:.3rem;max-height:40vh;overflow-y:auto;
@@ -228,6 +229,18 @@
         <div class="seg" data-op="expertise">
           <button data-v="casual">口语</button><button data-v="professional">职场</button><button data-v="technical">技术</button>
         </div>
+      </div>
+      <!-- 做题控制。双屏时电脑不开窗，子模式只有这里能切；「再检查一遍」旁
+           留一格错因，让复核带着「错在哪」去查。行本身由 paintCtl 按授权摘除。 -->
+      <div class="ctlRow" id="rowExamMode"><span class="k">做题模式</span>
+        <div class="seg" data-op="examSubMode">
+          <button data-v="aptitude">行测</button><button data-v="technical">技术</button>
+          <button data-v="personality">性格</button><button data-v="open">开放</button>
+        </div>
+      </div>
+      <div class="ctlRow" id="rowExamCheck"><span class="k">算法复核</span>
+        <button class="tg" id="examCheckBtn">再检查一遍</button>
+        <input id="examCheckHint" maxlength="500" placeholder="错在哪（可留空）" autocomplete="off">
       </div>
       <div class="ctlRow" id="rowHistory"><span class="k">本次会话</span>
         <button class="tg" id="histBtn">历史回答</button>

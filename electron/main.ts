@@ -2289,27 +2289,35 @@ function bootstrap(): void {
       examControllers.delete(String(requestId));
     });
 
-    // one entry point, two callers: the exam window's button and the phone's op
-    const requestExamCheck = (hint?: string): void => {
+    /**
+     * one entry point, two callers: the exam window's button and the phone's op.
+     * The return is a refusal code — undefined means a round really started. The
+     * desktop button ignores it (its note/turn surfaces exist), but the phone op
+     * forwards it to the bridge, so a rejected press is answered out loud instead
+     * of being a button that does nothing with no explanation.
+     */
+    type ExamCheckRefusal = 'exam_check_no_context' | 'exam_check_busy';
+    const requestExamCheck = (hint?: string): ExamCheckRefusal | undefined => {
       const requestId = lastExam?.requestId;
       if (!requestId) {
         // no requestId of its own: the window and the phone both surface this
         // before their request filter, so it reads as a global caveat
         examSend({ requestId: '', kind: 'note', text: T().examCheckNoContext });
-        return;
+        return 'exam_check_no_context';
       }
       // one round at a time, and asked before the counter moves: pressing
       // 再检查一遍 while the auto round is still streaming must not spend a second
       // LLM call, and must not advance checkTurns to a number no round ever ran
       if (checkRunning.has(requestId)) {
         console.log(`[exam] manual check ignored — round ${checkTurns.get(requestId) ?? 1} for ${requestId} is still running`);
-        return;
+        return 'exam_check_busy';
       }
       // a manual round is user-requested: it runs ungated — even on a
       // bank-direct answer, which only the auto round skips
       const turn = (checkTurns.get(requestId) ?? 1) + 1;
       checkTurns.set(requestId, turn);
       void runExamCheck(requestId, turn, hint?.trim().slice(0, 500));
+      return undefined;
     };
     ipcMain.on(IPC.examCheck, (_e, p: { hint?: string }) => requestExamCheck(p?.hint));
 
@@ -2359,12 +2367,13 @@ function bootstrap(): void {
 
     /**
      * Apply one command the bridge has already authorized, validated and
-     * budgeted. Two style ladders are main's own business (settings + a cold
-     * prompt prefix); the rest belong to the renderer, which is the only place
-     * that can start a capture, flip 连续回答, or ask a question with the live
-     * transcript and material attached.
+     * budgeted. Two style ladders and the exam pair are main's own business
+     * (settings + the check pipeline); the rest belong to the renderer, which is
+     * the only place that can start a capture, flip 连续回答, or ask a question
+     * with the live transcript and material attached. A returned code is a
+     * refusal the phone must be told about — undefined means the work ran.
      */
-    function runCompanionControl(cmd: ControlCommand): void {
+    function runCompanionControl(cmd: ControlCommand): string | undefined {
       // `server.ts` ran parseControlArg before this, so the value's shape is
       // already pinned by the op
       const value = cmd.value;
@@ -2377,6 +2386,17 @@ function bootstrap(): void {
         markPromptPrefixCold('companion');
         console.log(`[companion-ctl] ${cmd.op}=${String(value)} applied`);
         return;
+      }
+      // both exam ops are main-process concerns: 双屏做题时 the main window may
+      // never be open, and they must work anyway — hence before that guard
+      if (cmd.op === 'examSubMode') {
+        settings.applyPatch({ exam: { subMode: value as ExamSubMode } });
+        examSend({ requestId: '', kind: 'subMode', subMode: value as ExamSubMode });
+        console.log(`[companion-ctl] exam sub-mode -> ${String(value)}`);
+        return;
+      }
+      if (cmd.op === 'examCheck') {
+        return requestExamCheck(typeof value === 'string' ? value : undefined);
       }
       if (!win || win.isDestroyed()) {
         console.log(`[companion-ctl] ${cmd.op} dropped: no main window`);
@@ -2396,6 +2416,9 @@ function bootstrap(): void {
           continuous: ctlContinuous,
           richness: settings.data.llm.answerRichness ?? DEFAULT_RICHNESS,
           expertise: settings.data.llm.answerExpertise ?? DEFAULT_EXPERTISE,
+          // canonical default, same as getPublic: a legacy file without the key
+          // must still echo a settled value or the phone's segment never lands
+          examSubMode: settings.data.exam?.subMode ?? 'aptitude',
           session: s ? { id: s.id, name: s.name, answers: s.turns.length } : null,
         };
       },
@@ -2472,6 +2495,9 @@ function bootstrap(): void {
       // still-open desktop window must converge on the same sub-mode, and runExamAsk
       // now reads settings — the event keeps the open picker honest too
       examSend({ requestId: '', kind: 'subMode', subMode });
+      // and the phone's segment: it colours itself from `st` only, so without
+      // this a desktop-side change leaves the phone showing the old mode
+      companion.publishState();
       return true;
     });
     ipcMain.handle(IPC.examStatus, () => examStatusView());

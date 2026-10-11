@@ -6,6 +6,7 @@ import {
   ASK_MAX_CHARS,
   CMD_LIMIT,
   CmdRateLimiter,
+  EXAM_SUB_MODES,
   HISTORY_ITEMS,
   HISTORY_TEXT_CHARS,
   acceptCommand,
@@ -17,7 +18,7 @@ import {
   type ControlGrants,
 } from '../electron/companion/control';
 
-const OPS = ['richness', 'expertise', 'capture', 'continuous', 'ask', 'history'] as const;
+const OPS = ['richness', 'expertise', 'capture', 'continuous', 'ask', 'history', 'examSubMode', 'examCheck'] as const;
 
 const grants = (over: Partial<ControlGrants> = {}): ControlGrants => ({
   allowControl: true,
@@ -46,7 +47,7 @@ const turn = (over: Partial<StoredTurn> = {}): StoredTurn => ({
 });
 
 describe('authorizeControl (master switch, then per-item grant)', () => {
-  it('lets a fresh profile use all six', () => {
+  it('lets a fresh profile use all eight', () => {
     for (const op of OPS) expect(authorizeControl(op, grants())).toBe('ok');
   });
 
@@ -74,6 +75,11 @@ describe('authorizeControl (master switch, then per-item grant)', () => {
     expect(authorizeControl('pushExam', grants())).toBe('unknown_op');
     expect(authorizeControl('', grants())).toBe('unknown_op');
     expect(authorizeControl(undefined as unknown as string, grants())).toBe('unknown_op');
+  });
+
+  it('treats the two exam ops as grantable items like the other six', () => {
+    expect(authorizeControl('examCheck', grants({ allowItems: off('examCheck') }))).toBe('item_disabled');
+    expect(authorizeControl('examSubMode', grants({ allowItems: off('examSubMode') }))).toBe('item_disabled');
   });
 });
 
@@ -127,6 +133,24 @@ describe('parseControlArg (nothing but the named values reaches settings)', () =
   it('history takes no argument at all', () => {
     expect(parseControlArg('history', undefined)).toEqual({ ok: true, value: undefined });
     expect(parseControlArg('history', 'junk')).toEqual({ ok: false });
+  });
+
+  it('refuses a sub-mode the ladder does not have', () => {
+    expect(parseControlArg('examSubMode', 'math')).toEqual({ ok: false });
+    expect(parseControlArg('examSubMode', 'technical')).toEqual({ ok: true, value: 'technical' });
+  });
+
+  it('accepts a re-check with no hint, and with one, but not an empty string', () => {
+    expect(parseControlArg('examCheck', undefined)).toEqual({ ok: true, value: undefined });
+    expect(parseControlArg('examCheck', '越界了')).toEqual({ ok: true, value: '越界了' });
+    expect(parseControlArg('examCheck', '   ')).toEqual({ ok: false });
+    expect(parseControlArg('examCheck', 'x'.repeat(ASK_MAX_CHARS + 1)).ok).toBe(false);
+  });
+
+  it('keeps the exam sub-mode ladder identical to the four documented modes', () => {
+    // ExamSubMode in shared/bankStore is a TS type — the runtime contract here
+    // is this literal list, so it is pinned as data against the same four modes
+    expect(EXAM_SUB_MODES).toEqual(['aptitude', 'technical', 'personality', 'open']);
   });
 });
 
@@ -247,6 +271,9 @@ describe('buildStatePayload (the phone colours controls from this, never from it
     expect(sameState(a, buildStatePayload({ ...base, richness: 'detailed' }))).toBe(false);
     expect(sameState(a, buildStatePayload({ ...base, expertise: 'casual' }))).toBe(false);
     expect(sameState(a, buildStatePayload({ ...base, session: null }))).toBe(false);
+    // st only fires on change: if this field were missing from sameState, the
+    // phone's exam sub-mode segment would sit pending forever after a tap
+    expect(sameState(a, buildStatePayload({ ...base, examSubMode: 'technical' }))).toBe(false);
     // another interview that happens to answer the same number of questions
     expect(
       sameState(a, buildStatePayload({ ...base, session: { id: 's2', name: '某厂二面', answers: 3 } })),

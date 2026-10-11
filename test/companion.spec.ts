@@ -206,7 +206,7 @@ describe('handleControlMessage: cmd', () => {
       session(),
       pairing,
       CAPS,
-      { limiter: limiter(true), onCmd: () => {} },
+      { limiter: limiter(true), onCmd: () => undefined },
     );
     expect(res.closeCode).toBe(CLOSE_INVALID_TOKEN);
     expect(res.reply).toBeUndefined();
@@ -219,10 +219,24 @@ describe('handleControlMessage: cmd', () => {
       authed(),
       pairing,
       CAPS,
-      { limiter: limiter(true), onCmd: (c) => seen.push(c) },
+      { limiter: limiter(true), onCmd: (c) => void seen.push(c) },
     );
     expect(res.reply).toEqual({ type: 'ack', id: 'c1', op: 'richness' });
     expect(seen).toEqual([{ id: 'c1', op: 'richness', value: 'detailed' }]);
+  });
+
+  it('turns a desktop-side refusal code into an error keyed to the press', () => {
+    // the exam re-check refuses outright (nothing answered yet, a round still
+    // running); an ack for work that never started is the lie the phone's
+    // note line exists to correct
+    const res = handleControlMessage(
+      { type: 'cmd', id: 'c9', op: 'examCheck', arg: '越界了' },
+      authed(),
+      pairing,
+      CAPS,
+      { limiter: limiter(true), onCmd: () => 'exam_check_busy' },
+    );
+    expect(res.reply).toEqual({ type: 'error', id: 'c9', reason: 'exam_check_busy' });
   });
 
   it('refuses by name when the desktop has control turned off', () => {
@@ -232,14 +246,14 @@ describe('handleControlMessage: cmd', () => {
       authed(),
       pairing,
       { ...CAPS, control: false },
-      { limiter: limiter(true), onCmd: (c) => seen.push(c) },
+      { limiter: limiter(true), onCmd: (c) => void seen.push(c) },
     );
     expect(res.reply).toEqual({ type: 'error', id: 'c2', reason: 'control_disabled' });
     expect(seen).toEqual([]);
   });
 
   it('refuses a bad argument and an exhausted budget without running anything', () => {
-    const onCmd = (): void => {
+    const onCmd = (): never => {
       throw new Error('must not run');
     };
     expect(
@@ -281,7 +295,7 @@ describe('handleControlMessage: cmd', () => {
       authed(),
       pairing,
       CAPS,
-      { limiter: limiter(true), onCmd: () => {} },
+      { limiter: limiter(true), onCmd: () => undefined },
     );
     expect(res.reply).toEqual({ type: 'error', reason: 'unknown_type:bogus' });
   });

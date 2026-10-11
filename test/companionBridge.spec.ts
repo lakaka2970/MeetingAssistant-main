@@ -98,7 +98,7 @@ beforeAll(async () => {
     katexDir: KATEX,
     port: PORT,
     portFallback: 8,
-    onControl: (cmd) => received.push(cmd),
+    onControl: (cmd) => void received.push(cmd),
   });
   await server.start();
 });

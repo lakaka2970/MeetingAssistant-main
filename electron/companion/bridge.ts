@@ -61,7 +61,7 @@ export interface CompanionSettings {
   useHttps: boolean;
   jpegQuality: number;
   maxDim: number;
-  /** ⑦ remote control: master switch plus the six per-item grants */
+  /** ⑦ remote control: master switch plus the eight per-item grants */
   allowControl: boolean;
   allowItems: CompanionControlItems;
 }
@@ -77,8 +77,13 @@ export interface CompanionControlDeps {
   state(): Omit<StateMessage, 'type'>;
   /** this session's turns, oldest first — `hx` caps and reverses them */
   turns(): StoredTurn[];
-  /** one command the server has already authorized, validated and budgeted */
-  run(cmd: ControlCommand): void;
+  /**
+   * one command the server has already authorized, validated and budgeted.
+   * A returned refusal code means the desktop declined the work itself (a
+   * re-check with nothing to re-check, one already in flight): it travels back
+   * as an `error` keyed to this press, so the phone can say so out loud.
+   */
+  run(cmd: ControlCommand): string | undefined;
 }
 
 export class CompanionBridge {
@@ -460,20 +465,22 @@ export class CompanionBridge {
    * commands are not atomic, so the state echo afterwards — not a retry — is
    * what reports how far the desktop actually got.
    */
-  private runControl(cmd: ControlCommand): void {
+  private runControl(cmd: ControlCommand): string | undefined {
     const deps = this.control;
     if (!deps) return;
+    let refusal: string | undefined;
     try {
       if (cmd.op === 'history') {
         // a panel the phone asked for by name must not be dropped for being slow
         this.push(buildHistoryPayload(deps.turns()));
         return;
       }
-      deps.run(cmd);
+      refusal = deps.run(cmd);
     } catch (e) {
       console.error(`[companion-ctl] ${cmd.op} failed on the desktop:`, (e as Error).message);
     }
     this.publishState();
+    return refusal;
   }
 
   // ---- coalescing ----
