@@ -31,6 +31,9 @@ export type ProviderId =
   | 'aliyun-dashscope-intl'
   | 'mimo'
   | 'zhipu'
+  | 'kimi'
+  | 'siliconflow'
+  | 'volcengine-ark'
   | 'ollama'
   | 'groq'
   | 'gemini'
@@ -114,6 +117,16 @@ export const EXTERNAL_LINK_ALLOWED_HOSTS: readonly string[] = [
   'open.bigmodel.cn',
   'bigmodel.cn',
   'docs.bigmodel.cn',
+  // Kimi / Moonshot — console and docs live on two hosts since the rebrand
+  'platform.moonshot.cn',
+  'platform.kimi.com',
+  // SiliconFlow — aggregator: the key page and the docs are separate hosts
+  'cloud.siliconflow.cn',
+  'docs.siliconflow.cn',
+  // Volcengine Ark — console, API-key page, and the docs tree
+  'ark.volcengine.com',
+  'console.volcengine.com',
+  'www.volcengine.com',
   'console.groq.com',
   'ollama.com',
   'aistudio.google.com',
@@ -408,6 +421,110 @@ const groqHelp: ProviderHelp = {
   billingHintEn: 'Groq bills you by usage (free tier available). MeetingAssistant never collects any fee.',
 };
 
+const kimiHelp: ProviderHelp = {
+  platformUrl: 'https://platform.kimi.com/',
+  keyUrl: 'https://platform.moonshot.cn/console/api-keys',
+  docsUrl: 'https://platform.kimi.com/docs/models',
+  keyFormatHint: 'sk-',
+  stepsZh: [
+    '打开 Kimi（月之暗面）开放平台。',
+    '手机号验证码登录；首次使用需要完成实名认证后才能拿到 API 额度。',
+    '进入「API Keys」页面（platform.moonshot.cn/console/api-keys）。',
+    '点击「创建 API Key」，起一个能认出来的名字（例如 MeetingAssistant）。',
+    '立刻复制 —— 完整密钥只显示一次，刷新后就只剩后几位。',
+    '回到 MeetingAssistant 粘贴到下方输入框，模型名保持默认或改成 kimi-k3。',
+    '点「测试连接」；返回 401 通常是 Key 复制或账号未实名。',
+  ],
+  stepsEn: [
+    'Open the Kimi (Moonshot AI) platform.',
+    'Sign in with a phone verification code; account verification is required before API calls work.',
+    'Go to the "API Keys" page (platform.moonshot.cn/console/api-keys).',
+    'Click "Create API Key" and give it a recognisable name (e.g. MeetingAssistant).',
+    'Copy it immediately — the full key is shown once, afterwards only the tail remains.',
+    'Paste it into the field below; keep the default model or set it to kimi-k3.',
+    'Click "Test connection". A 401 usually means a truncated key or an unverified account.',
+  ],
+  faqZh: [
+    'moonshot-v1 全系列、kimi-k2 全系列与 kimi-latest 均已下线，填这些名字会直接报模型不存在；当前可用的是 kimi-k3、kimi-k2.6、kimi-k2.7-code。',
+    'kimi-k3 原生读图，所以「视觉」里可以复用同一个模型，不必再填一个视觉模型名。',
+  ],
+  faqEn: [
+    'The whole moonshot-v1 line, the kimi-k2 line and kimi-latest are retired and will be rejected by the API; current names are kimi-k3, kimi-k2.6 and kimi-k2.7-code.',
+    'kimi-k3 reads images natively, so the vision slot can reuse the same model instead of naming a second one.',
+  ],
+  billingHintZh: '费用由 Kimi 按 token 收取，MeetingAssistant 不代收任何费用。',
+  billingHintEn: 'Kimi bills you by tokens. MeetingAssistant never collects any fee.',
+};
+
+const siliconflowHelp: ProviderHelp = {
+  platformUrl: 'https://cloud.siliconflow.cn/',
+  keyUrl: 'https://cloud.siliconflow.cn/account/ak',
+  docsUrl: 'https://docs.siliconflow.cn/cn/userguide/quickstart',
+  keyFormatHint: 'sk-',
+  stepsZh: [
+    '打开硅基流动（SiliconFlow）控制台。',
+    '邮箱或手机号注册后完成实名认证。',
+    '进入「账户设置 → API 密钥」，点「新建 API 密钥」。',
+    '复制生成的密钥（sk- 开头的一长串）。',
+    '到「模型广场」找到要用的模型，复制它的**完整模型 ID**（形如 deepseek-ai/DeepSeek-V3，带组织前缀）。',
+    '回到 MeetingAssistant 粘贴 Key、把模型 ID 填进「模型」一栏。',
+    '点「测试连接」；提示模型不存在几乎都是漏了组织前缀或大小写不一致。',
+  ],
+  stepsEn: [
+    'Open the SiliconFlow console.',
+    'Register with an email or phone number and complete identity verification.',
+    'Go to "Account → API Keys" and click "New API Key".',
+    'Copy the generated key (a long sk- string).',
+    'In the Model Hub, find the model you want and copy its FULL model ID (e.g. deepseek-ai/DeepSeek-V3, including the organisation prefix).',
+    'Paste the key here and put that model ID in the "Model" field.',
+    'Click "Test connection"; "model not found" almost always means a missing prefix or a case mismatch.',
+  ],
+  faqZh: [
+    '硅基流动是聚合站：模型名必须是「组织/模型名」的完整形式，且大小写与斜杠要和模型广场里一字不差。',
+    'Base URL 末尾保留 /v1，不要写成 /v1/，也不要漏掉 v1。',
+  ],
+  faqEn: [
+    'SiliconFlow aggregates many vendors: the model name must be the full "organisation/model" form, byte-identical to the Model Hub entry.',
+    'Keep the base URL ending in /v1 — not /v1/, and never without the version segment.',
+  ],
+  billingHintZh: '费用由硅基流动按各家模型的 token 单价收取，MeetingAssistant 不代收任何费用。',
+  billingHintEn: 'SiliconFlow bills per vendor token prices. MeetingAssistant never collects any fee.',
+};
+
+const arkHelp: ProviderHelp = {
+  platformUrl: 'https://console.volcengine.com/ark',
+  keyUrl: 'https://ark.volcengine.com/region:cn-beijing/apikey',
+  docsUrl: 'https://www.volcengine.com/docs/82379/1399009',
+  stepsZh: [
+    '打开火山方舟控制台（火山引擎账号）。',
+    '首次进入需开通方舟服务并同意模型协议。',
+    '在「API Key 管理」页创建 API Key（北京地域）。',
+    '复制密钥，它只在创建后完整显示一次。',
+    '在「模型广场」开通要用的模型，记下它的 Model Name（形如 doubao-seed-2-1-pro-260628）。',
+    '回到 MeetingAssistant 粘贴 Key 并填上这个 Model Name。',
+    '点「测试连接」；模型未开通会报权限错误，而不是密钥错误。',
+  ],
+  stepsEn: [
+    'Open the Volcano Ark console (a Volcengine account).',
+    'On first use, activate Ark and accept the model terms.',
+    'Create an API Key under "API Key Management" (Beijing region).',
+    'Copy it right away — the full key is displayed once at creation.',
+    'Enable the model in the Model Market and note its Model Name (e.g. doubao-seed-2-1-pro-260628).',
+    'Paste the key here and enter that Model Name in the model field.',
+    'Click "Test connection"; an unenabled model reports a permission error, not an invalid key.',
+  ],
+  faqZh: [
+    '方舟的模型名带日期版本号（如 -260628），版本被替换后旧名字会失效；报模型不存在时请回模型广场复制当前 Model Name。',
+    '接入点（endpoint）形式 ep-xxxxx 也能填，但那是你自建推理接入点的 ID，不是模型名。',
+  ],
+  faqEn: [
+    'Ark model names carry a dated suffix (e.g. -260628) and stop resolving once superseded; copy the current Model Name from the Model Market when the API rejects it.',
+    'An ep-xxxxx value is also accepted, but that is the id of an inference endpoint you created, not a model name.',
+  ],
+  billingHintZh: '费用由火山方舟按 token 收取，MeetingAssistant 不代收任何费用。',
+  billingHintEn: 'Volcano Ark bills you by tokens. MeetingAssistant never collects any fee.',
+};
+
 /** help metadata by provider — exported so the UI can show INTL guidance
  * even though no INTL preset ships yet. */
 export const PROVIDER_HELP: Record<ProviderId, ProviderHelp> = {
@@ -416,6 +533,9 @@ export const PROVIDER_HELP: Record<ProviderId, ProviderHelp> = {
   'aliyun-dashscope-intl': aliyunIntlHelp,
   mimo: mimoHelp,
   zhipu: zhipuHelp,
+  kimi: kimiHelp,
+  siliconflow: siliconflowHelp,
+  'volcengine-ark': arkHelp,
   ollama: ollamaHelp,
   groq: groqHelp,
   gemini: geminiHelp,
@@ -558,6 +678,79 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     region: 'intl',
     beta: true,
     help: groqHelp,
+  },
+  {
+    id: 'kimi.text.k3',
+    providerId: 'kimi',
+    capability: 'text-llm',
+    // Kimi's pre-2026 names (moonshot-v1-*, kimi-k2-*, kimi-latest) are all
+    // retired and the API rejects them, so only current names ship here.
+    // A profile that stored an old one keeps it verbatim and fails loudly at
+    // the provider rather than being silently rewritten.
+    nameZh: 'Kimi k3（可读图）',
+    nameEn: 'Kimi k3 (reads images)',
+    descriptionZh: 'Kimi 当前旗舰，原生读图，长上下文；一个 Key 同时管回答与看截图。',
+    descriptionEn: "Kimi's current flagship with native image input and a long context — one key covers answering and screenshots.",
+    baseUrl: 'https://api.moonshot.cn/v1',
+    model: 'kimi-k3',
+    region: 'cn',
+    visionCapable: true,
+    help: kimiHelp,
+  },
+  {
+    id: 'kimi.text.code-fast',
+    providerId: 'kimi',
+    capability: 'text-llm',
+    nameZh: 'Kimi k2.7 代码·高速',
+    nameEn: 'Kimi k2.7 code · high speed',
+    descriptionZh: '出字更快的编程向模型，抢答和现场写代码时体感最明显。',
+    descriptionEn: 'The faster coding model — the difference shows up when you are answering live.',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    model: 'kimi-k2.7-code-highspeed',
+    region: 'cn',
+    help: kimiHelp,
+  },
+  {
+    id: 'siliconflow.text.deepseek-v3',
+    providerId: 'siliconflow',
+    capability: 'text-llm',
+    nameZh: '硅基流动 · DeepSeek-V3',
+    nameEn: 'SiliconFlow · DeepSeek-V3',
+    descriptionZh: '聚合站上的 DeepSeek 满血版，模型名保留「组织/模型名」形式。',
+    descriptionEn: "DeepSeek-V3 through an aggregator; the id keeps the 'organisation/model' form.",
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    model: 'deepseek-ai/DeepSeek-V3',
+    region: 'cn',
+    help: siliconflowHelp,
+  },
+  {
+    id: 'siliconflow.text.pro-r1',
+    providerId: 'siliconflow',
+    capability: 'text-llm',
+    nameZh: '硅基流动 · DeepSeek-R1（推理）',
+    nameEn: 'SiliconFlow · DeepSeek-R1 (reasoning)',
+    descriptionZh: '先思考再答，适合复盘与难题；抢答太慢，思考过程会单独显示。',
+    descriptionEn: 'Thinks before answering — good for review, too slow to answer live; its reasoning stream is shown separately.',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    model: 'Pro/deepseek-ai/DeepSeek-R1',
+    region: 'cn',
+    help: siliconflowHelp,
+  },
+  {
+    id: 'ark.text.doubao-seed',
+    providerId: 'volcengine-ark',
+    capability: 'text-llm',
+    // Ark model names are dated; when this one is retired the API says so and
+    // the user copies the current Model Name from the Model Market (see faq).
+    nameZh: '火山方舟 · 豆包 Seed（可读图）',
+    nameEn: 'Volcano Ark · Doubao Seed (reads images)',
+    descriptionZh: '豆包旗舰对话模型，支持图片输入；模型名带日期版本。',
+    descriptionEn: "Doubao's flagship chat model with image input; the model name carries a dated version.",
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    model: 'doubao-seed-2-1-pro-260628',
+    region: 'cn',
+    visionCapable: true,
+    help: arkHelp,
   },
   // ---- realtime (streaming) ASR ----
   {

@@ -56,6 +56,58 @@ MeetingAssistant 采用 **BYOK（Bring Your Own Key，自带 Key）**：
 > DeepSeek 只接受这两个模型名。旧的 `deepseek-chat` / `deepseek-v4-flash` / `deepseek-v4.1-flash` 会直接报 400
 > （`The supported API model names are deepseek-flash, deepseek-v4-pro`）；升级后应用会把你存过的旧名字自动改成 `deepseek-flash`。
 
+### Kimi · 月之暗面
+
+用途：AI 回答（`kimi-k3` 也能直接读截图，所以「视觉」可以复用同一个 Key）。默认模型 `kimi-k3`。
+
+1. 打开 [Kimi 开放平台](https://platform.kimi.com/)。
+2. 手机号验证码登录；首次使用需要完成实名认证后才能拿到 API 额度。
+3. 进入 [API Keys 页面](https://platform.moonshot.cn/console/api-keys)。
+4. 点击「创建 API Key」，起一个能认出来的名字（例如 MeetingAssistant）。
+5. 立刻复制 —— 完整密钥只显示一次，刷新后就只剩后几位。
+6. 回到 MeetingAssistant 粘贴到下方输入框，模型名保持默认或改成 `kimi-k3`。
+7. 点「测试连接」；返回 401 通常是 Key 复制或账号未实名。
+
+常见问题：
+
+- `moonshot-v1` 全系列、`kimi-k2` 全系列与 `kimi-latest` **均已下线**，填这些名字会直接报模型不存在；当前可用的是 `kimi-k3`、`kimi-k2.6`、`kimi-k2.7-code`。
+- 现场抢答嫌慢可以换 `kimi-k2.7-code-highspeed`（出字更快），代价是深度不如 `k3`。
+
+### 硅基流动 SiliconFlow
+
+用途：一个 Key 调用多家模型（DeepSeek、Qwen、GLM 等）。默认示例 `deepseek-ai/DeepSeek-V3`。
+
+1. 打开 [硅基流动控制台](https://cloud.siliconflow.cn/)。
+2. 邮箱或手机号注册后完成实名认证。
+3. 进入「账户设置 → API 密钥」，点「新建 API 密钥」。
+4. 复制生成的密钥（`sk-` 开头的一长串）。
+5. 到「模型广场」找到要用的模型，复制它的**完整模型 ID**（形如 `deepseek-ai/DeepSeek-V3`，带组织前缀）。
+6. 回到 MeetingAssistant 粘贴 Key、把模型 ID 填进「模型」一栏。
+7. 点「测试连接」；提示模型不存在几乎都是漏了组织前缀或大小写不一致。
+
+常见问题：
+
+- 它是聚合站，模型名必须是「组织/模型名」的完整形式，和模型广场里一字不差；只写 `DeepSeek-V3` 会失败。
+- Base URL 末尾保留 `/v1`，不要写成 `/v1/`，也不要漏掉版本段。
+- 推理档 `Pro/deepseek-ai/DeepSeek-R1` 会先思考再答，适合复盘，不适合抢答。
+
+### 火山方舟 · 豆包
+
+用途：AI 回答（豆包 Seed 支持图片输入）。默认模型 `doubao-seed-2-1-pro-260628`。
+
+1. 打开 [火山方舟控制台](https://console.volcengine.com/ark)（火山引擎账号）。
+2. 首次进入需开通方舟服务并同意模型协议。
+3. 在 [API Key 管理（北京地域）](https://ark.volcengine.com/region:cn-beijing/apikey) 创建 API Key。
+4. 复制密钥，它只在创建后完整显示一次。
+5. 在「模型广场」开通要用的模型，记下它的 Model Name（形如 `doubao-seed-2-1-pro-260628`）。
+6. 回到 MeetingAssistant 粘贴 Key 并填上这个 Model Name。
+7. 点「测试连接」；模型未开通会报权限错误，而不是密钥错误。
+
+常见问题：
+
+- 方舟的模型名带日期版本号（如 `-260628`），版本被替换后旧名字会失效；报模型不存在时回模型广场复制当前 Model Name。
+- `ep-xxxxx` 形式也能填，但那是你自建推理接入点的 ID，不是模型名。
+
 ### 阿里云百炼 · 中国大陆站（推荐用于实时语音识别）
 
 用途：云端流式语音识别，模型 `fun-asr-realtime`（默认）或 `paraformer-realtime-v2`，接入地址 `wss://dashscope.aliyuncs.com/api-ws/v1/inference`。

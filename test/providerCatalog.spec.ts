@@ -170,4 +170,55 @@ describe('providerCatalog', () => {
       findPresetByEndpoint('https://api.xiaomimimo.com/v1', 'mimo-v2.5-asr', 'text-llm'),
     ).toBeUndefined();
   });
+
+  // The mainland aggregators are the ones most likely to be mis-typed: their
+  // model ids carry slashes and dated suffixes, and `providerId` is never
+  // stored from the dropdown — it is re-derived from the saved baseUrl+model,
+  // so a pair that does not match exactly reads back as 自定义 and the
+  // per-provider tutorial silently disappears.
+  describe('mainland platform presets round-trip through endpoint lookup', () => {
+    const pairs = [
+      { id: 'kimi.text.k3', providerId: 'kimi', baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-k3' },
+      { id: 'kimi.text.code-fast', providerId: 'kimi', baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-k2.7-code-highspeed' },
+      { id: 'siliconflow.text.deepseek-v3', providerId: 'siliconflow', baseUrl: 'https://api.siliconflow.cn/v1', model: 'deepseek-ai/DeepSeek-V3' },
+      { id: 'siliconflow.text.pro-r1', providerId: 'siliconflow', baseUrl: 'https://api.siliconflow.cn/v1', model: 'Pro/deepseek-ai/DeepSeek-R1' },
+      { id: 'ark.text.doubao-seed', providerId: 'volcengine-ark', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-2-1-pro-260628' },
+    ];
+
+    for (const p of pairs) {
+      it(`${p.id} resolves back to itself`, () => {
+        expect(findPresetByEndpoint(p.baseUrl, p.model, 'text-llm')?.id).toBe(p.id);
+        expect(providerIdForEndpoint(p.baseUrl, p.model, 'text-llm')).toBe(p.providerId);
+      });
+    }
+
+    it('does not resolve a half-typed aggregator id to a preset', () => {
+      // the failure mode a user actually hits: dropping the organisation prefix
+      expect(
+        findPresetByEndpoint('https://api.siliconflow.cn/v1', 'DeepSeek-V3', 'text-llm'),
+      ).toBeUndefined();
+      expect(
+        providerIdForEndpoint('https://api.siliconflow.cn/v1', 'DeepSeek-V3', 'text-llm'),
+      ).toBe('custom');
+    });
+
+    it('ships no retired Kimi name', () => {
+      // moonshot-v1-*, kimi-k2-* and kimi-latest were all retired by 2026-08-31
+      const retired = /moonshot-v1|kimi-k2(?:\.5)?-|kimi-k2-thinking|kimi-latest/;
+      for (const preset of PROVIDER_PRESETS.filter((p) => p.providerId === 'kimi')) {
+        expect(preset.model).not.toMatch(retired);
+      }
+      expect(PROVIDER_PRESETS.filter((p) => p.providerId === 'kimi').length).toBeGreaterThan(0);
+    });
+
+    it('lets Kimi and Ark reuse their text model for screenshots, and never guesses one for SiliconFlow', () => {
+      // getVisionConfig falls back to the provider's own vision preset and
+      // returns undefined rather than inventing a model name
+      expect(findPresetByEndpoint('https://api.moonshot.cn/v1', 'kimi-k3', 'text-llm')?.visionCapable).toBe(true);
+      expect(
+        findPresetByEndpoint('https://ark.cn-beijing.volces.com/api/v3', 'doubao-seed-2-1-pro-260628', 'text-llm')?.visionCapable,
+      ).toBe(true);
+      expect(presetsForCapability('vision').some((p) => p.providerId === 'siliconflow')).toBe(false);
+    });
+  });
 });

@@ -57,6 +57,58 @@ Model options: `deepseek-flash` (fast, default, reads images), `deepseek-v4-pro`
 > fail with HTTP 400 (`The supported API model names are deepseek-flash, deepseek-v4-pro`); after upgrading, the app
 > rewrites a stored old name to `deepseek-flash` for you.
 
+### Kimi · Moonshot
+
+Used for: AI answers. `kimi-k3` also reads screenshots, so the vision slot can reuse the same key. Default model `kimi-k3`.
+
+1. Open the [Kimi platform](https://platform.kimi.com/).
+2. Sign in with a phone verification code; account verification is required before API calls work.
+3. Go to the [API Keys page](https://platform.moonshot.cn/console/api-keys).
+4. Click "Create API Key" and give it a recognisable name (e.g. MeetingAssistant).
+5. Copy it immediately — the full key is shown once, afterwards only the tail remains.
+6. Come back to MeetingAssistant, paste the key, and keep the default model or set it to `kimi-k3`.
+7. Click "Test connection". A 401 usually means a truncated key or an unverified account.
+
+Notes:
+
+- The whole `moonshot-v1` line, the `kimi-k2` line and `kimi-latest` are **retired** and will be rejected; current names are `kimi-k3`, `kimi-k2.6` and `kimi-k2.7-code`.
+- If answering live feels slow, `kimi-k2.7-code-highspeed` outputs faster at the cost of depth.
+
+### SiliconFlow
+
+Used for: one key across many vendors (DeepSeek, Qwen, GLM, …). Example model `deepseek-ai/DeepSeek-V3`.
+
+1. Open the [SiliconFlow console](https://cloud.siliconflow.cn/).
+2. Register with an email or phone number and complete identity verification.
+3. Go to "Account → API Keys" and click "New API Key".
+4. Copy the generated key (a long `sk-` string).
+5. In the Model Hub, find the model and copy its FULL model ID (e.g. `deepseek-ai/DeepSeek-V3`, including the organisation prefix).
+6. Paste the key here and put that model ID in the "Model" field.
+7. Click "Test connection"; "model not found" almost always means a missing prefix or a case mismatch.
+
+Notes:
+
+- It is an aggregator: the model name must be the full "organisation/model" form, byte-identical to the Model Hub entry — `DeepSeek-V3` alone will fail.
+- Keep the base URL ending in `/v1` — not `/v1/`, and never without the version segment.
+- `Pro/deepseek-ai/DeepSeek-R1` thinks before answering: good for review, too slow to answer live.
+
+### Volcano Ark · Doubao
+
+Used for: AI answers (Doubao Seed accepts images). Default model `doubao-seed-2-1-pro-260628`.
+
+1. Open the [Volcano Ark console](https://console.volcengine.com/ark) with a Volcengine account.
+2. On first use, activate Ark and accept the model terms.
+3. Create an API Key under [API Key Management (Beijing region)](https://ark.volcengine.com/region:cn-beijing/apikey).
+4. Copy it right away — the full key is displayed once at creation.
+5. Enable the model in the Model Market and note its Model Name (e.g. `doubao-seed-2-1-pro-260628`).
+6. Paste the key here and enter that Model Name in the model field.
+7. Click "Test connection"; an unenabled model reports a permission error, not an invalid key.
+
+Notes:
+
+- Ark model names carry a dated suffix (`-260628`) and stop resolving once superseded; copy the current Model Name when the API rejects it.
+- An `ep-xxxxx` value is also accepted, but that is the id of an inference endpoint you created, not a model name.
+
 ### Alibaba Cloud Model Studio · mainland (recommended for live ASR)
 
 Used for: cloud streaming speech recognition with `fun-asr-realtime` (default) or `paraformer-realtime-v2`, endpoint `wss://dashscope.aliyuncs.com/api-ws/v1/inference`.

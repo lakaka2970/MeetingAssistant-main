@@ -32,6 +32,28 @@ describe('targetFromPreset', () => {
     expect(targetFromPreset(rtPreset, 'asr-realtime')).not.toHaveProperty('proxyUrl');
   });
 
+  it('makes every mainland preset directly testable without a proxy', () => {
+    // These three are reachable straight from a mainland network (verified by
+    // HTTP probe, not by assumption), so a default proxy would be a bug —
+    // and each must be testable from the settings row the moment it is picked.
+    const ids = [
+      'kimi.text.k3',
+      'kimi.text.code-fast',
+      'siliconflow.text.deepseek-v3',
+      'siliconflow.text.pro-r1',
+      'ark.text.doubao-seed',
+    ];
+    for (const id of ids) {
+      const preset = findPresetById(id);
+      expect(preset, id).toBeDefined();
+      const target = targetFromPreset(preset!, 'llm');
+      expect(target.presetId).toBe(id);
+      expect(target.slot).toBe('llm');
+      expect(isTestableTarget(target)).toBe(true);
+      expect(target).not.toHaveProperty('proxyUrl');
+    }
+  });
+
   it('keeps the wss endpoint of the verified realtime default untouched', () => {
     const target = targetFromPreset(rtPreset, 'asr-realtime');
     expect(target.baseUrl).toBe('wss://dashscope.aliyuncs.com/api-ws/v1/inference');

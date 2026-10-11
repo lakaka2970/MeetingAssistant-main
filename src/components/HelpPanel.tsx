@@ -25,7 +25,15 @@ import { OverlayShell } from './OverlayShell';
  * the ids double as keys into the help dictionary, so adding one here without
  * writing zh + en copy for it is a compile error.
  */
-const TUTORIAL_PROVIDERS = ['deepseek', 'aliyun-dashscope-cn', 'mimo', 'gemini'] as const;
+const TUTORIAL_PROVIDERS = [
+  'deepseek',
+  'aliyun-dashscope-cn',
+  'mimo',
+  'kimi',
+  'siliconflow',
+  'volcengine-ark',
+  'gemini',
+] as const;
 
 export function HelpPanel({
   onClose,

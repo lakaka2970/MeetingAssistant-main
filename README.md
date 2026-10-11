@@ -241,8 +241,8 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 | 流式语音识别（云端） | 阿里云百炼实时识别（推荐）· MiMo（Beta） |
 | 分段语音识别 | MiMo · 自定义 OpenAI 兼容服务 |
 | 本地语音识别 | FunASR（默认）· MOSS-Transcribe-Diarize（实验）· Whisper（离线兜底） |
-| 文本大模型 | DeepSeek（推荐）· 智谱 · Groq · Gemini · Ollama（本地）· 自定义 OpenAI 兼容 |
-| 多模态大模型 | Gemini（默认经本地代理）· 自定义视觉模型 |
+| 文本大模型 | DeepSeek（推荐）· 智谱 · Kimi · 硅基流动 · 火山方舟 · Groq · Gemini · Ollama（本地）· 自定义 OpenAI 兼容 |
+| 多模态大模型 | DeepSeek flash · Kimi k3 · 火山方舟豆包 Seed（三者可直接复用文本 Key）· Gemini（默认经本地代理）· 自定义视觉模型 |
 
 语音识别与 AI 回答通常各需要一个 Key，同一服务商可复用；
 「极简配置」方案只需注册一个平台（MiMo，语音识别与回答共用 1 个 Key）。Key 领取教程见 [API_KEYS.zh-CN.md](docs/user/API_KEYS.zh-CN.md)。
@@ -280,6 +280,12 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 **MiMo · 小米（一个 Key 兼顾转写与回答，Beta）** — [platform.xiaomimimo.com](https://platform.xiaomimimo.com/)：小米账号登录 → 控制台「API Keys」→ 新建 → 复制以 `sk-` 开头的 Key。同一 Key 同时填给语音识别与 AI 回答（极简配置方案）。注意它是**分段识别**，按整句返回、字幕跟随性弱于流式方案——这是方案特性，不是故障。
 
 **智谱 GLM（国内直连，有免费档）** — [open.bigmodel.cn](https://open.bigmodel.cn/)：手机号登录（首次需注册+实名）→ 头像菜单「API 密钥」→「新建 API Key」→ 复制。`GLM-4-Flash` 免费额度充足、首字极快，适合低延迟兜底；`GLM-4.6` 是中文质量档，适合行为面与复杂问答；同一账号同一 Key。
+
+**Kimi · 月之暗面（国内直连，k3 可读截图）** — [platform.kimi.com](https://platform.kimi.com/)：手机号验证码登录 → **完成实名认证**（未实名拿不到额度）→ [API Keys 页面](https://platform.moonshot.cn/console/api-keys) →「创建 API Key」→ 立即复制（只显示一次）。默认模型 `kimi-k3`（原生读图，所以「视觉」里可复用同一个 Key）；现场抢答可换 `kimi-k2.7-code-highspeed`（出字更快）。**旧的 `moonshot-v1-*` / `kimi-k2-*` / `kimi-latest` 已全部下线**，填这些名字会被 API 直接拒绝。
+
+**硅基流动 SiliconFlow（聚合站，一个 Key 用多家模型）** — [cloud.siliconflow.cn](https://cloud.siliconflow.cn/)：注册并实名认证 → [账户设置 → API 密钥](https://cloud.siliconflow.cn/account/ak) →「新建 API 密钥」→ 复制 `sk-` 开头的密钥。模型名**必须**是模型广场里的完整 ID（形如 `deepseek-ai/DeepSeek-V3`，带组织前缀、大小写一字不差）；只填 `DeepSeek-V3` 会报模型不存在。Base URL 末尾保留 `/v1`，不要写成 `/v1/`。
+
+**火山方舟 · 豆包（字节跳动）** — [console.volcengine.com/ark](https://console.volcengine.com/ark)：火山引擎账号登录 → 开通方舟并接受模型协议 → [API Key 管理（北京地域）](https://ark.volcengine.com/region:cn-beijing/apikey) → 创建并复制 → 在「模型广场」开通要用的模型并记下 Model Name（形如 `doubao-seed-2-1-pro-260628`，可读图）。方舟的模型名**带日期版本**，版本被替换后旧名字会失效——报模型不存在时回模型广场复制当前的即可；`ep-xxxxx` 那种是你自建推理接入点的 ID，不是模型名。
 
 **Groq（英文编码题极速档）** — [console.groq.com](https://console.groq.com/)：注册登录 →「API Keys」创建并复制（以 `gsk_` 开头）。服务器在海外，中国大陆网络通常需要本机代理。免费档有速率限制。
 
@@ -700,7 +706,8 @@ walkthrough: [QUICK_START.en.md](docs/user/QUICK_START.en.md). Key guides:
 [API_KEYS.en.md](docs/user/API_KEYS.en.md). Troubleshooting:
 [TROUBLESHOOTING.en.md](docs/user/TROUBLESHOOTING.en.md).
 
-**Supported providers**: DeepSeek, Alibaba Cloud DashScope (CN/INTL), MiMo, Zhipu, Groq, Gemini,
+**Supported providers**: DeepSeek, Alibaba Cloud DashScope (CN/INTL), MiMo, Zhipu, Kimi, SiliconFlow,
+Volcano Ark, Groq, Gemini,
 Ollama, plus any OpenAI-compatible endpoint — see `shared/providerCatalog.ts` (single source of truth).
 
 **Disclaimer**: (1) *experimental by nature* — this repository is a personal technical experiment and
