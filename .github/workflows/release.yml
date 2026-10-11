@@ -114,11 +114,16 @@ jobs:
       - name: List collected files
         run: find artifacts -type f -printf '%10s  %p\n'
 
-      # draft, never auto-published: a human checks the binaries and writes the
-      # notes before anyone can download them
+      # draft, never auto-published: a human checks the binaries and clicks Publish.
+      # The notes come from the repo, not from whoever is releasing: docs/user/
+      # RELEASE_NOTES_<tag>.md becomes the draft body (the auto changelog is appended
+      # under it), so a release cannot go out with only a compare link. If a future
+      # tag has no notes file the action fails here — that is the forcing function,
+      # not a bug; write the file (or pass an empty one) before tagging.
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
           generate_release_notes: true
+          body_path: docs/user/RELEASE_NOTES_${{ github.ref_name }}.md
           fail_on_unmatched_files: true
           files: artifacts/**/*
