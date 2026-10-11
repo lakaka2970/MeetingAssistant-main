@@ -41,7 +41,32 @@ describe('parseCheckOutput', () => {
 
   it('clips a runaway note instead of pasting the whole reply into a badge', () => {
     const r = parseCheckOutput(`VERDICT: FIX\n${'错'.repeat(2000)}\n【修订】\nx`);
-    expect(r.note.length).toBeLessThanOrEqual(301);
+    expect(r.note.length).toBeLessThanOrEqual(300);
     expect(r.revision).toBe('x');
+  });
+
+  it('keeps indentation and blank lines inside the revised code intact', () => {
+    const body = '```cpp\nint main() {\n    int x = 0;\n\n    if (!x) return 1;\n    return 0;\n}\n```';
+    const r = parseCheckOutput(`VERDICT: FIX\n空数组越界\n【修订】\n${body}`);
+    expect(r.revision).toBe(body);
+  });
+
+  it('takes only the next non-empty line as the cause', () => {
+    const r = parseCheckOutput('VERDICT: FIX\n第一行\n第二行\n【修订】\nx');
+    expect(r.note).toBe('第一行');
+    expect(r.revision).toBe('x');
+  });
+
+  it('collapses an unparseable multi-line reply into a single-line note', () => {
+    const r = parseCheckOutput('这段代码\n看了几行\n应该没问题');
+    expect(r.verdict).toBe('unknown');
+    expect(r.note).toBe('这段代码 看了几行 应该没问题');
+  });
+
+  it('does not eat the revision when the marker sits on the cause line', () => {
+    const r = parseCheckOutput('VERDICT: FIX\n【修订】\ndef f():\n    return 1');
+    expect(r.verdict).toBe('fix');
+    expect(r.note).toBe('');
+    expect(r.revision).toBe('def f():\n    return 1');
   });
 });

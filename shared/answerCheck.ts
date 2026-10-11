@@ -21,34 +21,44 @@ export interface CheckResult {
 const NOTE_MAX = 300;
 /** models like to clear their throat first; three lines is the grace period */
 const VERDICT_SCAN_LINES = 3;
+const MARKER = '【修订】';
 
-const nonEmptyLines = (text: string): string[] =>
-  text.split('\n').map((l) => l.trim()).filter(Boolean);
+/** the note is a badge, not a paragraph — collapse and clip */
+const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim().slice(0, NOTE_MAX);
 
 export function parseCheckOutput(raw: string): CheckResult {
   const text = (raw ?? '').trim();
   if (!text) return { verdict: 'unknown', note: '', revision: '' };
 
-  const lines = nonEmptyLines(text);
-  let at = -1;
-  let verdict: 'ok' | 'fix' | undefined;
-  for (let i = 0; i < Math.min(lines.length, VERDICT_SCAN_LINES); i++) {
-    const m = /^VERDICT:\s*(OK|FIX)\b/i.exec(lines[i].replace(/^[>*#\s]+/, ''));
+  // Detection reads trimmed, non-empty lines. Extraction slices the RAW text:
+  // the revision is code destined for the code-block renderer, and rebuilding it
+  // from trimmed lines would strip every indent and delete every blank line
+  // inside a fence (breaking Python outright).
+  const lines = text.split('\n');
+  const probes = lines.map((line, idx) => ({ idx, t: line.trim() })).filter((p) => p.t);
+
+  let hit = -1;
+  let verdict: CheckVerdict | undefined;
+  for (let i = 0; i < Math.min(probes.length, VERDICT_SCAN_LINES); i++) {
+    const m = /^VERDICT:\s*(OK|FIX)\b/i.exec(probes[i].t.replace(/^[>*#]+/, ''));
     if (m) {
-      at = i;
+      hit = i;
       verdict = m[1].toUpperCase() === 'OK' ? 'ok' : 'fix';
       break;
     }
   }
-  if (!verdict) return { verdict: 'unknown', note: text.slice(0, NOTE_MAX), revision: '' };
+  if (!verdict) return { verdict: 'unknown', note: oneLine(text), revision: '' };
   if (verdict === 'ok') return { verdict: 'ok', note: '', revision: '' };
 
-  const note = (lines[at + 1] ?? '').replace(/^[-•*]\s*/, '').slice(0, NOTE_MAX);
-  const rest = lines.slice(at + 2).join('\n');
-  const marker = /【修订】[ \t]*/.exec(rest);
-  const revision = marker ? rest.slice(marker.index + marker[0].length).trim() : '';
+  const cause = probes[hit + 1];
+  const causeIsMarker = !!cause && cause.t.startsWith(MARKER);
+  const note = cause && !causeIsMarker ? oneLine(cause.t.replace(/^[-•*]+/, '')) : '';
+  const start = cause ? (causeIsMarker ? cause.idx : cause.idx + 1) : probes[hit].idx + 1;
+  const body = lines.slice(start).join('\n');
+  const at = body.indexOf(MARKER);
+  const revision = at === -1 ? '' : body.slice(at + MARKER.length).replace(/^[ \t]*\r?\n?/, '').trimEnd();
   // a FIX that produced no corrected answer is not a fix — say what is wrong and
   // leave the original answer standing alone
-  if (!revision) return { verdict: 'unknown', note: note || rest.slice(0, NOTE_MAX), revision: '' };
+  if (!revision) return { verdict: 'unknown', note: note || oneLine(body), revision: '' };
   return { verdict: 'fix', note, revision };
 }
