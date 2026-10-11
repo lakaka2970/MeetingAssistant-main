@@ -533,15 +533,17 @@ git commit -m "feat(exam): tiny in-house tokenizer for answer code blocks
 **Files:**
 - Create: `src/components/CodeBlock.tsx`
 - Create: `src/components/codeblock.css`
+- Modify: `shared/highlight.ts`（新增纯函数 `splitTokensIntoLines`）
 - Modify: `src/components/MathText.tsx:33-48`
-- Test: 无新增单测（逻辑已在 Task 1/2）；靠 `typecheck` + `build` + Step 5 真机
+- Test: `test/highlight.spec.ts` 补 `splitTokensIntoLines` 的无损与跨行 token 用例；组件本身无新增单测（仓库无 DOM 测试框架），靠 `typecheck` + `build` + Step 5 真机
 
 **Interfaces:**
 - Consumes: `splitCodeFences` / `codeFileExt`（Task 1）、`tokenizeCode`（Task 2）
 - Produces: `CodeBlock({ lang, code, labels })`；`interface CodeBlockLabels { wrap: string; copy: string; copied: string; download: string }`（默认中文，由调用方按界面语言覆盖）；DOM 契约（Task 4 手机端与验收脚本按它选择器）：
   - `.code-block[data-lang]` > `.code-bar` > `.code-lang` + `button.code-ctrl.code-wrap[aria-pressed]` + `button.code-ctrl.code-copy` + `button.code-ctrl.code-dl`
-  - `.code-block > pre.code-pre > code > span.tok-kw|.tok-str|.tok-num|.tok-cmt|.tok-pre`
-  - 换行态：`.code-block.wrap`
+  - `.code-block > pre.code-pre > code > span.code-line`（**每个源行一个 `code-line`，`display:block`**）> `span.tok-kw|.tok-str|.tok-num|.tok-cmt|.tok-pre`
+  - 换行态：`.code-block.wrap`。逐行块是换行态能做出真悬挂缩进的前提：`text-indent` 只作用于块容器的首行，整块一个 `<code>` 时续行无法与新的源行区分
+  - 新增纯函数（本任务在 `shared/highlight.ts` 内补）：`splitTokensIntoLines(tokens): Token[][]` —— 按 `\n` 切开 token 文本，跨行的 token（块注释、三引号串）拆成多段但**不丢字符**，行内不含 `\n`
 
 - [ ] **Step 1: 写组件**
 
@@ -550,7 +552,7 @@ git commit -m "feat(exam): tiny in-house tokenizer for answer code blocks
 ```tsx
 import { useMemo, useState } from 'react';
 import { codeFileExt } from '../../shared/codeFences';
-import { tokenizeCode } from '../../shared/highlight';
+import { splitTokensIntoLines, tokenizeCode } from '../../shared/highlight';
 import './codeblock.css';
 
 /**
@@ -594,7 +596,7 @@ const ZH: CodeBlockLabels = { wrap: '换行', copy: '复制', copied: '已复制
 export function CodeBlock({ lang, code, labels = ZH }: { lang?: string; code: string; labels?: CodeBlockLabels }) {
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
-  const tokens = useMemo(() => tokenizeCode(code, lang), [code, lang]);
+  const lines = useMemo(() => splitTokensIntoLines(tokenizeCode(code, lang)), [code, lang]);
 
   const copy = (): void => {
     void navigator.clipboard.writeText(code).then(() => {
@@ -628,9 +630,13 @@ export function CodeBlock({ lang, code, labels = ZH }: { lang?: string; code: st
       </div>
       <pre className="code-pre">
         <code>
-          {tokens.map((t, i) =>
-            TOK_CLASS[t.kind] ? <span key={i} className={TOK_CLASS[t.kind]}>{t.text}</span> : <span key={i}>{t.text}</span>,
-          )}
+          {lines.map((line, i) => (
+            <span className="code-line" key={i}>
+              {line.map((t, j) =>
+                TOK_CLASS[t.kind] ? <span key={j} className={TOK_CLASS[t.kind]}>{t.text}</span> : <span key={j}>{t.text}</span>,
+              )}
+            </span>
+          ))}
         </code>
       </pre>
     </div>
@@ -753,12 +759,18 @@ html[data-theme='light'] {
 .code-block.wrap .code-pre code {
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  padding-left: 1.4em;
-  text-indent: -1.4em;
 }
 
-.code-block.wrap .code-pre code > span:first-child {
-  text-indent: 0;
+.code-line {
+  display: block;
+  /* an empty source line has no content to give the block height — without this
+     the blank lines that make code readable collapse in both surfaces */
+  min-height: 1.6em;
+}
+
+.code-block.wrap .code-line {
+  padding-left: 1.4em;
+  text-indent: -1.4em;
 }
 
 .tok-kw { color: var(--code-kw); }
@@ -898,7 +910,7 @@ function codeBlockHtml(lang, bodyLines) {
     '<button type="button" class="code-ctrl code-copy">复制</button>' +
     '<button type="button" class="code-ctrl code-dl">下载</button>' +
     '</div>' +
-    `<pre class="code-pre"><code>${code}</code></pre></div>`
+    `<pre class="code-pre"><code>${code.split('\n').map((l) => `<span class="code-line">${l}</span>`).join('')}</code></pre></div>`
   );
 }
 
@@ -932,9 +944,9 @@ function trimBlankEdges(lines) {
                       -webkit-overflow-scrolling:touch}
   #heroBody .code-pre code{display:block;background:none;padding:0;
                            font:.86rem/1.6 var(--mono);white-space:pre;tab-size:4}
-  #heroBody .code-block.wrap .code-pre code{white-space:pre-wrap;overflow-wrap:break-word;
-                                            padding-left:1.4em;text-indent:-1.4em}
-  #heroBody .code-block.wrap .code-pre code > span:first-child{text-indent:0}
+  #heroBody .code-line{display:block;min-height:1.6em}
+  #heroBody .code-block.wrap .code-line{padding-left:1.4em;text-indent:-1.4em}
+  #heroBody .code-block.wrap .code-pre code{white-space:pre-wrap;overflow-wrap:break-word}
   #heroBody .tok-kw{color:#c586c0}#heroBody .tok-str{color:#ce9178}
   #heroBody .tok-num{color:#b5cea8}#heroBody .tok-cmt{color:#7d8794;font-style:italic}
   #heroBody .tok-pre{color:#d69d85}
