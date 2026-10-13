@@ -86,6 +86,45 @@ describe('interpretRelease', () => {
     const r = interpretRelease({ tag_name: 'v9.9.9', html_url: 'http://evil/1' }, '1.0.2', at);
     expect(r.state).toBe('failed');
   });
+
+  /**
+   * `createRelease` with `tag: ''` produces a real release whose `tag_name` is
+   * `untagged-<sha>` and whose version lives only in `name`. That is how this
+   * repo's v1.0.3 shipped, and reading only `tag_name` made every installed
+   * app answer 检查失败：响应里没有可识别的版本号 — which is the channel a
+   * hotfix notification has to travel on, so it must read the name too.
+   */
+  it('falls back to the release name when the tag is not a version', () => {
+    const page = 'https://github.com/o/r/releases/tag/untagged-80a09d0fbd742b197601';
+    expect(
+      interpretRelease(
+        { tag_name: 'untagged-80a09d0fbd742b197601', name: 'v1.1.0', html_url: page },
+        '1.0.2',
+        at,
+      ),
+    ).toEqual({ at, state: 'available', version: '1.1.0', url: page });
+  });
+
+  it('still refuses to guess when neither the tag nor the name is a version', () => {
+    expect(
+      interpretRelease(
+        { tag_name: 'untagged-80a09d0fbd742b197601', name: '本周构建', html_url: page },
+        '1.0.2',
+        at,
+      ),
+    ).toEqual({ at, state: 'failed', reason: expect.any(String) });
+  });
+
+  it('does not let the name override a real tag', () => {
+    // a properly tagged release names itself however it likes; the tag is the
+    // thing that was cut, so it stays the authority
+    const r = interpretRelease(
+      { tag_name: 'v1.0.2', name: 'v9.9.9', html_url: 'https://github.com/o/r/releases/tag/v1.0.2' },
+      '1.0.2',
+      at,
+    );
+    expect(r).toEqual({ at, state: 'latest', version: '1.0.2' });
+  });
 });
 
 describe('updateApiUrl', () => {

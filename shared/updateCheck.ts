@@ -50,9 +50,10 @@ export function isNewerVersion(local: string, remote: string): boolean {
   return false;
 }
 
-/** the two fields of a GitHub release we act on; anything else is ignored */
+/** the fields of a GitHub release we act on; anything else is ignored */
 export interface ReleasePayload {
   tag_name?: unknown;
+  name?: unknown;
   html_url?: unknown;
 }
 
@@ -62,13 +63,22 @@ export interface ReleasePayload {
  * The url is checked rather than trusted: this string is what a click hands to
  * the operating system, and a release object from an unexpected mirror could
  * carry anything. Only https gets through.
+ *
+ * `tag_name` is the authority, but a release published without a tag (this
+ * repo's v1.0.3 was, by `createRelease` with `tag: ''`) carries
+ * `untagged-<sha>` there and the version only in `name`. Reading the tag alone
+ * made every installed app answer 检查失败 on a release that was perfectly
+ * readable in the browser, so the name is the fallback — still only ever
+ * accepted when it parses as a plain version, never as a guess.
  */
 export function interpretRelease(
   payload: ReleasePayload,
   currentVersion: string,
   at: number,
 ): UpdateCheck {
-  const tag = typeof payload.tag_name === 'string' ? parseReleaseTag(payload.tag_name) : null;
+  const tag =
+    (typeof payload.tag_name === 'string' ? parseReleaseTag(payload.tag_name) : null) ??
+    (typeof payload.name === 'string' ? parseReleaseTag(payload.name) : null);
   if (!tag) return { at, state: 'failed', reason: '响应里没有可识别的版本号' };
   if (!isNewerVersion(currentVersion, tag)) return { at, state: 'latest', version: tag };
   const url = payload.html_url;
