@@ -308,7 +308,8 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 全程不需要安装 Node.js / Python，也不需要敲命令（本地转写才需要自备 Python，见下文）。
 
 1. 从 [Releases 页面](https://github.com/lakaka2970/MeetingAssistant-main/releases/latest) 下载
-   `MeetingAssistant-<版本>-win-x64.exe`（安装版）或 `...-portable.exe`（免安装版）；
+   `MeetingAssistant-<版本>-win-x64.exe`（安装版，当前用户安装、无需管理员）；
+   v1.0.4 起不再发布免安装版（portable）；手上还有旧 portable 的人见「版本与更新检查」一节。
    Linux 下是 `...-linux-amd64.deb`（Ubuntu / Debian 首选）或 `...-linux-x86_64.AppImage`；
    建议核对每个产物旁边的 `.sha256` 校验文件。
 2. 启动后跟着 **5 步配置向导**走：欢迎 → 选择方案 → 配置服务（粘贴 Key 并「保存并测试连接」）→ 连接测试（检测电脑声音）→ 完成。
@@ -492,7 +493,7 @@ start.bat          # Windows 一键启动：首次运行自动自检并装配环
 | `npm run typecheck` | TypeScript 全量类型检查 |
 | `npm test` / `npm run test:python` | 单元测试 / Python sidecar 测试 |
 | `npm run verify` | 类型检查 + 测试 + 构建（提交前推荐） |
-| `npm run dist:win` | 打包 Windows 安装包（NSIS + portable） |
+| `npm run dist:win` | 打包 Windows 安装包（仅 NSIS；portable 自 v1.0.4 起不再发布） |
 | `npm run smoke:*` | 各能力冒烟测试（ASR / LLM / RAG / E2E） |
 | `npm run smoke:companion` | 手机显示冒烟：真启动主进程，验证端口监听与页面/脚本/证书/KaTeX 均可取 |
 | `npm run qa:inventory -- <目录>` | 干跑面试知识库：看某目录能被识别出多少条「准备的答案」 |
@@ -570,7 +571,7 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 | 下载 | **你点「下载并安装 v1.0.4」** | 才开始下载约 118 MiB；浮层显示真实百分比，中途可取消 |
 | 安装 | **你在浮层里再确认一次** | 应用退出 → 静默覆盖安装 → 自动重新打开；设置、会话、题库都不丢 |
 
-它**不会**自己下载、不会自己安装、更不会自己重启——这三条不是口头承诺，是被测试钉住的（electron-updater 的 `autoDownload`、`autoInstallOnAppQuit` 默认都是"会"，本版显式关掉并有对照测试）。**只有 Windows 安装版（NSIS）能这样更新**：免安装版（portable）与 Linux 包不行，设置里会直接说明原因而不是给你一个点不动的按钮。
+它**不会**自己下载、不会自己安装、更不会自己重启——这三条不是口头承诺，是被测试钉住的（electron-updater 的 `autoDownload`、`autoInstallOnAppQuit` 默认都是"会"，本版显式关掉并有对照测试）。**只有 Windows 安装版（NSIS）能这样更新**：Linux 包不行；v1.0.4 起也不再发布免安装版（portable），手上还有旧 portable 的人升级请直接用安装版覆盖，设置里会说明为什么那个开关在这台机器上不生效，而不是给你一个点不动的按钮。
 
 - ⚠️ **安装包未做代码签名**，所以这条链路的完整性来自 `latest.yml` 里的 SHA-512、来源真实性只剩"到 github.com 的 https 没被中间人换包"。这也是本版**没有**开放"更新源镜像"的原因：清单和安装包同源分发时，哈希不构成第二道防线。连不上 GitHub 请继续用 **打开下载页面** 自己下。
 
@@ -699,7 +700,7 @@ reports a normalized error code on failure. Keys are encrypted via DPAPI (Window
 (macOS), live only in the main process, and the UI only ever shows the last 4 characters. Step-by-step
 per-provider instructions: [API_KEYS.en.md](docs/user/API_KEYS.en.md).
 
-**Install**: Windows — the NSIS installer or the portable `.exe`; Linux — the `.deb` (preferred: it
+**Install**: Windows — the NSIS installer (portable exes are no longer published as of v1.0.4); Linux — the `.deb` (preferred: it
 configures Chromium's sandbox for you) or the `.AppImage`. Verify the `.sha256` sidecar file each
 artifact ships with. macOS: run from source (needs a virtual audio device such as BlackHole) — see
 [INSTALL_MACOS.en.md](docs/user/INSTALL_MACOS.en.md).
@@ -751,7 +752,7 @@ To let it install for you, turn on **Offer to download and install a newer relea
 | Download | **you click Download and install v1.0.4** | only then does ~118 MiB start moving; the overlay shows real progress and you can cancel |
 | Install | **you confirm once more in the overlay** | the app quits, the installer runs silently, the app reopens; settings, sessions and question banks are kept |
 
-It does not download unasked, does not install unasked and never restarts itself — enforced in code, not in prose: electron-updater ships with `autoDownload` and `autoInstallOnAppQuit` both `true`, and this version turns them off under test. **Only the Windows installer (NSIS) can update this way**; the portable exe and the Linux packages cannot, and Settings says which one you are looking at instead of showing a dead button.
+It does not download unasked, does not install unasked and never restarts itself — enforced in code, not in prose: electron-updater ships with `autoDownload` and `autoInstallOnAppQuit` both `true`, and this version turns them off under test. **Only the Windows installer (NSIS) can update this way**; the Linux packages cannot, and as of v1.0.4 the portable exe is no longer published at all — anyone still running one should install the NSIS build over it. Settings names which case you are in instead of showing a dead button.
 
 - ⚠️ **The installers are not code-signed.** Integrity comes from the SHA-512 in `latest.yml`; provenance rests on https to github.com not being swapped. That is also why no "mirror update source" is offered: when the manifest and the payload come from the same host, the checksum is one layer, not two. If GitHub is unreachable, keep using **Open download page**.
 - The launch-time check is **off by default** and, once enabled, runs at most once a day; that single request reveals only this machine's IP, the version in use and an app User-Agent — no files, paths or session content. A mirror base URL (https only) can be set where api.github.com is unreachable, and a failed check says so in the menu plus `[update] check failed: …` in the log. The mirror covers the *check* only: the installer's manifest and payload always come from GitHub itself.

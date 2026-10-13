@@ -68,6 +68,21 @@ function uploadArtifactPath(source: string, artifactName: string): string[] {
   return out;
 }
 
+/** The `- target: <name>` entries of the `win:` block, in order. */
+function winTargetNames(source: string): string[] {
+  const lines = source.split(/\r?\n/);
+  const start = lines.findIndex((l) => l.startsWith('win:'));
+  if (start === -1) return [];
+  const out: string[] = [];
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^[^\s#]/.test(line)) break; // next top-level block
+    const m = line.trim().match(/^- target: (\S+)$/);
+    if (m) out.push(m[1]);
+  }
+  return out;
+}
+
 describe('electron-builder publish', () => {
   /**
    * The feed lives on the nsis block. That is both the shape electron-builder
@@ -86,24 +101,30 @@ describe('electron-builder publish', () => {
 
   it('does not put a global feed on every target', () => {
     // a top-level publish would make the Linux job emit a latest-linux.yml for
-    // an updater the app never runs, and would apply to portable too
+    // an updater the app never runs
     expect(builder).not.toMatch(/^publish:/m);
   });
 
   /**
-   * portable cannot be updated by electron-updater at all, so a publish block
-   * there would generate a latest.yml for an artifact no client can install —
-   * a file in the release that promises something the app will never do.
+   * portable was dropped for v1.0.4: 2 downloads against the installer's 5
+   * across v1.0.0-v1.0.3, 118 MB per release, no capability the per-user NSIS
+   * install does not already cover, and the one Windows shape electron-updater
+   * cannot update. A second Windows artifact needs a reason, not a habit.
    */
-  it('leaves the portable target without a publish block', () => {
-    expect(text(builder, 'portable')).not.toMatch(/publish:/);
+  it('builds exactly one Windows artifact', () => {
+    expect(winTargetNames(builder)).toEqual(['nsis']);
+    // the scanner has to be able to see a second target, or this is decoration
+    expect(
+      winTargetNames(builder.replace('    - target: nsis', '    - target: portable\n    - target: nsis')),
+    ).toEqual(['portable', 'nsis']);
   });
 
   /**
-   * Proof the three assertions above can actually fail: the feed is moved from
-   * nsis to portable in memory — the file on disk is untouched — and each test
-   * must flip. Without this a scanner that simply read nothing would pass
-   * forever, which is the same trap as an always-green check.
+   * Proof the publish-placement assertion can actually fail: the feed is moved
+   * from the nsis block to the linux block in memory — the file on disk is
+   * untouched — and both halves must flip. Without this a scanner that simply
+   * read nothing would pass forever, which is the same trap as an always-green
+   * check.
    */
   it('tells the two blocks apart (in-memory mutation, the real file is untouched)', () => {
     const feed = `  publish:
@@ -112,10 +133,10 @@ describe('electron-builder publish', () => {
     repo: MeetingAssistant-main
 `;
     expect(builder).toContain(feed);
-    const moved = builder.replace(feed, '').replace('portable:\n', `portable:\n${feed}`);
+    const moved = builder.replace(feed, '').replace('linux:\n', `linux:\n${feed}`);
     expect(moved).not.toBe(builder);
     expect(text(moved, 'nsis')).not.toMatch(/publish:/);
-    expect(text(moved, 'portable')).toMatch(/publish:/);
+    expect(text(moved, 'linux')).toMatch(/publish:/);
   });
 });
 

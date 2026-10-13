@@ -16,12 +16,11 @@
 | 文件 | 类型 | 能不能自己更新 |
 |---|---|---|
 | `MeetingAssistant-1.0.4-win-x64.exe` | 安装版（NSIS，当前用户，无需管理员） | **能**，本版的新功能就是这个 |
-| `MeetingAssistant-1.0.4-win-x64-portable.exe` | 免安装版 | 不能。electron-builder 对 portable 的说明就是"自动更新需要自己实现"，本版没有做 |
 | `MeetingAssistant-1.0.4-linux-amd64.deb` | Debian 包 | 不能（本版范围外，仍用「打开下载页面」） |
 | `MeetingAssistant-1.0.4-linux-x86_64.AppImage` | 免安装单文件 | 不能（同上） |
 
 从 v1.0.3 / v1.0.2 直接覆盖安装即可，设置与会话数据不会被删除（`%APPDATA%\MeetingAssistant\`，卸载也不清）。
-Windows 两个包功能一致；Linux 配置目录是 `~/.config/MeetingAssistant/`；macOS 本次**仍然没有**安装包。
+Windows 只有一个包。**本版起不再发布免安装版（portable）**：v1.0.0–v1.0.3 期间它一共被下载 2 次，安装版是 5 次；它每个 Release 多占 118 MB，"没有管理员权限也能装"这点当前用户的 NSIS 安装版本来就覆盖了（静默、不弹 UAC），而它又是唯一一种 electron-updater 装不了的 Windows 形态——继续发它，等于继续发一个用不上本次新功能的包。手上还有旧 portable 的人：直接用安装版覆盖安装即可，设置与数据都在 `%APPDATA%\MeetingAssistant\`，不会丢。Linux 配置目录是 `~/.config/MeetingAssistant/`；macOS 本次**仍然没有**安装包。
 
 ### 这个版本做两件事
 
@@ -59,7 +58,7 @@ Windows 两个包功能一致；Linux 配置目录是 `~/.config/MeetingAssistan
 
 三条它**不会**做：不会自己下载（没点第 2 步就不动网络）、不会自己安装（没点第 4 步就不动）、不会自己重启。这三条不是承诺在注释里，是被测试钉住的：库的三个默认值（`autoDownload`、`autoInstallOnAppQuit`、`disableWebInstaller` 在 electron-updater 6.8.10 里前两个默认是 `true`）都被显式覆盖，并有对照测试防止以后被改回去。
 
-**这台机器能不能用，应用会直接告诉你**：免安装版、Linux 包、开发环境都不会出现那个开关可用的样子——设置里会写明原因（例如"当前是免安装版（portable），只有安装版能自己更新"），而不是给你一个点不动的按钮。
+**这台机器能不能用，应用会直接告诉你**：Linux 包、开发环境、以及 v1.0.4 之前留下的旧 portable 文件都不会出现那个开关可用的样子——设置里会写明具体是哪一种（例如"当前是免安装版（portable），只有安装版能自己更新"），而不是给你一个点不动的按钮。识别逻辑保留着，正是为了给还在用旧文件的人一个说法。
 
 **未签名这件事在自动更新里意味着什么**，说清楚不藏：
 
@@ -89,7 +88,7 @@ Windows 两个包功能一致；Linux 配置目录是 `~/.config/MeetingAssistan
   - `npm run smoke:updater` 用打包后的应用真的走到了库那一层：读完 feed、发出请求、把结果如实报出来。当前报的是
     `Cannot find latest.yml in the latest release artifacts … 404`，因为线上最新那个 Release（v1.0.3）是 untagged 的、也没有 `latest.yml` 产物。这条链路要能用，需要 CI 按本版改过的发布步骤产出**带 tag、带 latest.yml** 的 Release。
   - **第一个能用上"应用内安装"的是下一个版本的安装者**：v1.0.4 装不了比自己更新的版本，而线上还没有比自己新的、带清单的 Release。所以下一次发版（v1.0.5）才是这条链路的真正验收点。
-- portable / Linux / macOS 的自动安装：本版不做，已在设置里说明。
+- Linux / macOS 的自动安装：本版不做，已在设置里说明。portable 自本版起不再是发布产物，但识别与提示逻辑保留——专门给还在用旧文件的人。
 - 未签名、本地转写需自备 Python 环境、macOS 无安装包、阿里云国际站与 MiMo 方案为 Beta、手机显示用自签证书、读题依赖本地 OCR 或视觉模型：与之前版本相同，逐条见 [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md)。
 
 ---
@@ -102,7 +101,7 @@ Windows 两个包功能一致；Linux 配置目录是 `~/.config/MeetingAssistan
 
 **2. It can install the update for you — on Windows, only after two clicks, never by itself.** Settings → General gains **Offer to download and install a newer release**, off by default. With it on: a check that finds a newer release adds **Download and install v1.0.4** to the tray menu and a status strip in the overlay; the download (≈118 MiB) starts only on that click and shows real progress; when it finishes the strip asks for **Install and restart**, which opens a confirmation spelling out that the app will quit and reopen and that a transcription in progress is interrupted. Only then does the installer run. It does not download unasked, does not install unasked, and does not restart unasked — those are enforced in code with a test over a stand-in updater, because electron-updater's own defaults for `autoDownload` and `autoInstallOnAppQuit` are `true`.
 
-Machines that cannot self-update say so instead of showing a dead button: the portable exe, the Linux packages and a dev run each get their own reason in Settings.
+Machines that cannot self-update say so instead of showing a dead button: the Linux packages, a dev run and the portable exes left over from earlier releases each get their own reason in Settings.
 
 Unsigned builds, stated plainly: integrity comes from the SHA-512 in the install manifest, transport is https to GitHub, and there is no Authenticode to verify because there is no signing. That is also why no "mirror update source" is exposed in this version — a third-party-hosted manifest plus a same-origin checksum is one layer, not two. Users who cannot reach GitHub keep **Open download page**.
 
@@ -113,5 +112,5 @@ Unsigned builds, stated plainly: integrity comes from the SHA-512 in the install
   - a real `npm run dist:win` produced `latest.yml` (SHA-512 + size) and the packaged `resources/app-update.yml`, both read back; the manifest carries **no `publisherName`**, which is what "unsigned" actually means in code here — electron-updater performs no Authenticode check.
   - `npm run smoke:updater` drives the packaged app all the way into the library: it reads the feed, makes the request and reports the answer. Today that answer is `Cannot find latest.yml in the latest release artifacts … 404`, because the newest published release (v1.0.3) is untagged and carries no `latest.yml`. The path works only once CI publishes a tagged release with the manifest, which is what this version's workflow change does.
   - **the first installer of this feature is the next release's**: v1.0.4 cannot install anything newer than itself, and nothing newer exists yet. v1.0.5 is where the live round trip gets its real acceptance.
-- No self-update for portable / Linux / macOS in this version, as stated in Settings.
+- No self-update for Linux / macOS in this version, as stated in Settings. The portable exe is no longer published at all — 2 downloads across four releases, 118 MB per release, nothing the per-user NSIS build does not already cover, and the one Windows shape electron-updater cannot install. Anyone still running one: install the NSIS build over it, settings and sessions are kept.
 - Unsigned installers, local ASR needs its own Python environment, no macOS package, Alibaba Cloud International and MiMo are Beta, the phone display uses a self-signed certificate, reading questions needs local OCR or a vision model — unchanged from earlier versions; see [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md).

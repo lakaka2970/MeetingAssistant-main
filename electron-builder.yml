@@ -239,10 +239,15 @@ win:
     - '!node_modules/onnxruntime-node/bin/napi-v3/linux/**'
     - '!node_modules/onnxruntime-node/bin/napi-v3/win32/arm64/**'
   target:
+    # nsis only. The portable exe was dropped for v1.0.4: measured across
+    # v1.0.0-v1.0.3 it drew 2 downloads against the installer's 5, it costs
+    # 118 MB per release, and its no-admin story is already covered by the
+    # per-user NSIS install below (oneClick, perMachine false, no UAC). It is
+    # also the one Windows shape electron-updater cannot update, so shipping it
+    # meant shipping a build that could never take this version's feature.
+    # `detectCapability` still recognises 'portable' — the copies already in
+    # circulation are exactly who that explanation is for.
     - target: nsis
-      arch:
-        - x64
-    - target: portable
       arch:
         - x64
 
@@ -352,9 +357,10 @@ nsis:
   # on win.target because that is the shape electron-builder 26.15.3's schema
   # accepts (a publish block under win.target[n] is rejected outright:
   # "configuration.win.target.0 should be one of these: string"), and because
-  # nsis is the only artifact on this app that electron-updater can install —
-  # the portable exe is documented as needing manual update handling, so it must
-  # not generate a latest.yml that promises something no client will ever read.
+  # nsis is the only artifact on this app that electron-updater can install, so
+  # the feed is declared here rather than globally: a top-level publish would
+  # also make the Linux job emit latest-linux.yml for an updater the app never
+  # runs on this platform.
   #
   # GitHubProvider resolves /releases/download/<tag>/latest.yml, which is what
   # makes an untagged release unusable: see .github/workflows/release.yml.
@@ -371,6 +377,3 @@ nsis:
   # meeting notes, sessions and API keys live in %APPDATA%\MeetingAssistant --
   # an uninstall (or an upgrade, which uninstalls first) must never wipe them
   deleteAppDataOnUninstall: false
-
-portable:
-  artifactName: ${productName}-${version}-win-${arch}-portable.${ext}
