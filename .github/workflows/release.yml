@@ -45,12 +45,17 @@ jobs:
             Write-Host $line
           }
 
+      # `latest.yml` is the manifest electron-updater reads; without it the
+      # in-app installer has nothing to check against. It is listed below, and
+      # NOT as a comment inside `path: |` — a block scalar has no comments, so a
+      # `#` line there becomes a search pattern instead of documentation.
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installers
           path: |
             release/*.exe
             release/*.exe.sha256
+            release/latest.yml
           if-no-files-found: error
           retention-days: 14
 
@@ -118,6 +123,15 @@ jobs:
       # notes before anyone can download them
       - uses: softprops/action-gh-release@v2
         with:
+          # tag_name and name are NOT optional here. Without them the action
+          # published v1.0.3 as an *untagged* release — tag_name came back as
+          # `untagged-80a09d0fbd742b197601`, which made the app's update check
+          # answer 检查失败：响应里没有可识别的版本号 for every installed user,
+          # and there is no /releases/download/<tag>/latest.yml for the in-app
+          # installer to read. This run is triggered by a tag push, so the tag
+          # is already the right answer; say so explicitly.
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           draft: true
           generate_release_notes: true
           fail_on_unmatched_files: true

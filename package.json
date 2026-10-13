@@ -1,6 +1,6 @@
 {
   "name": "meeting-assistant",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Real-time meeting/interview assistant for Windows and Linux: streaming ASR (local FunASR / cloud) and first-person answers via BYOK LLM",
   "main": "./out/main/index.js",
   "author": "lakaka2970",
@@ -41,10 +41,12 @@
     "smoke:packaged": "node tools/packaged-smoke.mjs",
     "latency:provider": "bash tools/latency-provider.sh",
     "latency:spec": "bash tools/latency-spec-live.sh",
-    "latency:asr": "bash tools/latency-asr-local.sh"
+    "latency:asr": "bash tools/latency-asr-local.sh",
+    "smoke:updater": "node tools/updater-packaged-smoke.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
+    "electron-updater": "6.8.10",
     "jszip": "^3.10.1",
     "katex": "^0.18.5",
     "mammoth": "^1.12.0",

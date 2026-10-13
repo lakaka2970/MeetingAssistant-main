@@ -348,6 +348,20 @@ linux:
       StartupWMClass: meetingassistant
 
 nsis:
+  # The in-app installer's feed. It lives HERE rather than at the top level or
+  # on win.target because that is the shape electron-builder 26.15.3's schema
+  # accepts (a publish block under win.target[n] is rejected outright:
+  # "configuration.win.target.0 should be one of these: string"), and because
+  # nsis is the only artifact on this app that electron-updater can install —
+  # the portable exe is documented as needing manual update handling, so it must
+  # not generate a latest.yml that promises something no client will ever read.
+  #
+  # GitHubProvider resolves /releases/download/<tag>/latest.yml, which is what
+  # makes an untagged release unusable: see .github/workflows/release.yml.
+  publish:
+    provider: github
+    owner: lakaka2970
+    repo: MeetingAssistant-main
   oneClick: true
   perMachine: false
   allowToChangeInstallationDirectory: false
