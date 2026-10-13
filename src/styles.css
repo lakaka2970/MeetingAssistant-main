@@ -758,6 +758,61 @@ body {
   margin-right: auto;
 }
 
+/* v1.0.4 in-app install strip. Same accent family as the notice above it, and
+   the app's existing error tone for a failed step — a new colour here would be
+   a new meaning nobody has learned yet. */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+}
+
+.update-banner .update-text {
+  margin-right: auto;
+}
+
+.update-track {
+  flex: 0 0 120px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.update-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.update-confirm {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.update-title {
+  font-weight: 600;
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.update-failed {
+  color: var(--tag-err-text);
+  background: var(--tag-err-bg);
+}
+
 /* transient KB parse warning (e.g. scanned PDF with no text layer) */
 .kb-notice {
   padding: 4px 10px;

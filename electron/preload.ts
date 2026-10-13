@@ -28,6 +28,8 @@ import {
   type SettingsPatch,
   type SkillView,
   type TrayCommandPayload,
+  type UpdaterAction,
+  type UpdaterView,
 } from '../shared/protocol';
 
 export interface McApi {
@@ -58,6 +60,12 @@ export interface McApi {
   /** drop a deleted session's vector material (resume/JD/facts) in main */
   deleteSession(sessionId: string): Promise<{ dropped: number }>;
   setStealth(on: boolean): Promise<boolean>;
+  /** v1.0.4: what this machine can do about a newer release, and why not */
+  updaterGet(): Promise<UpdaterView>;
+  /** the two clicks the overlay may ask for; main re-checks its own gate */
+  updaterAct(action: UpdaterAction): Promise<UpdaterView>;
+  /** main -> renderer on every install-state change */
+  onUpdaterState(cb: (view: UpdaterView) => void): () => void;
   sendPcm(buf: ArrayBuffer, captureTs: number, channel: 'them' | 'me'): void;
   captureStarted(): void;
   captureStopped(): void;
@@ -202,6 +210,13 @@ const api: McApi = {
   saveSessions: (data) => ipcRenderer.send(IPC.sessionsSave, data),
   deleteSession: (sessionId) => ipcRenderer.invoke(IPC.sessionDelete, sessionId),
   setStealth: (on) => ipcRenderer.invoke(IPC.stealthSet, on),
+  updaterGet: () => ipcRenderer.invoke(IPC.updaterGet),
+  updaterAct: (action) => ipcRenderer.invoke(IPC.updaterAct, action),
+  onUpdaterState: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, view: UpdaterView) => cb(view);
+    ipcRenderer.on(IPC.updaterState, listener);
+    return () => ipcRenderer.removeListener(IPC.updaterState, listener);
+  },
   sendPcm: (buf, captureTs, channel) => ipcRenderer.send(IPC.capturePcm, buf, captureTs, channel),
   captureStarted: () => ipcRenderer.send(IPC.captureStarted),
   captureStopped: () => ipcRenderer.send(IPC.captureStopped),

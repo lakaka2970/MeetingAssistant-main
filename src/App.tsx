@@ -8,6 +8,7 @@ import type {
   LlmAskPayload,
   PublicSettings,
   StoredSession,
+  UpdaterView,
 } from '../shared/protocol';
 import {
   appendSegment,
@@ -35,6 +36,7 @@ import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 import { HelpPanel } from './components/HelpPanel';
 import type { SettingsTab } from './components/settings/types';
 import { StatusBar } from './components/StatusBar';
+import { UpdateBanner } from './components/UpdateBanner';
 import { PromptFocus, type AnswerTurn } from './components/prompt/PromptFocus';
 import { TranscriptRail } from './components/prompt/TranscriptRail';
 import type { AnswerStylePick } from './components/prompt/AnswerStylePopover';
@@ -95,6 +97,10 @@ function deriveName(text: string, fallback: string): string {
 
 export function App() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
+  /** v1.0.4: what main says this machine can do about a newer release */
+  const [updaterView, setUpdaterView] = useState<UpdaterView | null>(null);
+  /** the restart confirmation is open — raised by the banner or by the tray */
+  const [installConfirm, setInstallConfirm] = useState(false);
   const [asr, setAsr] = useState<AsrUiState>({ phase: 'loading', workerState: 'loading' });
   const [capturing, setCapturing] = useState(false);
   /**
@@ -551,6 +557,7 @@ export function App() {
     window.__mcOpenSettings = () => setOpenPanel({ view: 'settings', tab: 'model' });
     window.__mcOpenHelp = () => setOpenPanel({ view: 'help' });
     window.__mcOpenKnowledge = () => setOpenPanel({ view: 'settings', tab: 'knowledge' });
+    window.__mcOpenGeneral = () => setOpenPanel({ view: 'settings', tab: 'general' });
     return () => {
       off();
       offLlm();
@@ -1040,6 +1047,25 @@ export function App() {
   );
 
   /**
+   * The install state is main's, never inferred here: read it once on mount and
+   * keep it from every publish. A machine that cannot self-update gets an
+   * `allowed: false` view, and the strip stays out of the layout entirely.
+   */
+  useEffect(() => {
+    let alive = true;
+    void window.mc.updaterGet().then((v) => {
+      if (alive) setUpdaterView(v);
+    });
+    const off = window.mc.onUpdaterState((v) => {
+      if (alive) setUpdaterView(v);
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
+
+  /**
    * Tray menu -> renderer (Phase 4 §A). Main only forwards what it cannot do
    * itself, and it has already made the window visible. 开始/停止转写
    * deliberately runs the SAME code path as the title-bar button, readiness
@@ -1064,6 +1090,11 @@ export function App() {
           return;
         case 'open-help':
           setOpenPanel({ view: 'help' });
+          return;
+        case 'update-install':
+          // main already made the window visible; the ask still needs the
+          // in-window confirmation, which is the only thing that can install
+          setInstallConfirm(true);
           return;
       }
     });
@@ -1224,6 +1255,19 @@ export function App() {
         </div>
       )}
 
+      {updaterView && (
+        <UpdateBanner
+          view={updaterView}
+          confirming={installConfirm}
+          onAskConfirm={() => setInstallConfirm(true)}
+          onCancelConfirm={() => setInstallConfirm(false)}
+          onDownload={() => void window.mc.updaterAct('download')}
+          onInstall={() => void window.mc.updaterAct('install')}
+          onCheck={() => void window.mc.updaterAct('check')}
+          onCancel={() => void window.mc.updaterAct('cancel')}
+        />
+      )}
+
       {openPanel?.view === 'diagnostics' && (
         <DiagnosticsPanel onClose={() => setOpenPanel(null)} />
       )}
@@ -1244,6 +1288,7 @@ export function App() {
           initialSection={openPanel.section}
           health={health ?? undefined}
           sessionId={currentId}
+          updater={updaterView ?? undefined}
           onSettingsRefreshed={setSettings}
           onSaved={(s) => {
             setSettings(s);

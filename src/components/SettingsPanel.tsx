@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { PublicSettings } from '../../shared/protocol';
+import type { PublicSettings, UpdaterView } from '../../shared/protocol';
 import type { ServiceHealthReport } from '../../shared/healthState';
 import { OverlayShell } from './OverlayShell';
 import { AsrTab } from './settings/AsrTab';
@@ -40,6 +40,7 @@ export function SettingsPanel({
   onSettingsRefreshed,
   initialTab = 'model',
   initialSection,
+  updater,
 }: {
   settings: PublicSettings;
   onSaved: (s: PublicSettings) => void;
@@ -58,6 +59,8 @@ export function SettingsPanel({
   onSettingsRefreshed?: (s: PublicSettings) => void;
   /** which tab to land on (📚 → knowledge, status chip → health, ⚙ → model) */
   initialTab?: SettingsTab;
+  /** v1.0.4: what this machine can do about installing an update (通用 tab) */
+  updater?: UpdaterView;
   /** open straight into a 高级设置 view (🎚 管理人设… → personas) */
   initialSection?: SettingsSection;
 }) {
@@ -132,6 +135,7 @@ export function SettingsPanel({
           onOpenHelp={onOpenHelp}
           onOpenPersonas={() => setSection('personas')}
           onOpenPrompt={() => setSection('prompt')}
+          updater={updater}
         />
       )}
 

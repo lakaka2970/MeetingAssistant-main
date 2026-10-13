@@ -10,6 +10,8 @@ import type { LinuxDisplayBackend } from './platform';
 export type { LinuxDisplayBackend } from './platform';
 import type { ThinkingLevel } from './thinking';
 export type { ThinkingLevel } from './thinking';
+import type { Capability, GateReason, UpdaterState } from './updateInstall';
+export type { Capability, GateReason, UpdaterEvent, UpdaterState } from './updateInstall';
 import type { QuestionKind } from './textHeuristics';
 export type { QuestionKind } from './textHeuristics';
 import type { TrayRendererCommand } from './trayMenu';
@@ -502,6 +504,12 @@ export interface SettingsFile {
     apiBase?: string;
     /** when a check last ran, so the daily cap survives a restart */
     lastCheckedAt?: number;
+    /**
+     * v1.0.4: offer to download and install a newer release. Off by default —
+     * the app has promised never to download or install anything unasked, and
+     * turning that promise down is something the user must do on purpose.
+     */
+    autoUpdate?: boolean;
   };
 }
 
@@ -696,6 +704,8 @@ export interface PublicSettings {
     autoCheck: boolean;
     /** '' means the GitHub API default; a mirror base URL replaces it */
     apiBase: string;
+    /** whether this install may download and install a newer release */
+    autoUpdate: boolean;
   };
 }
 
@@ -822,11 +832,31 @@ export interface SettingsPatch {
   update?: {
     autoCheck?: boolean;
     apiBase?: string;
+    autoUpdate?: boolean;
   };
 }
 
-// ---------- ASR events (main -> renderer) ----------
+/**
+ * Everything the overlay and the settings panel need to show about installing.
+ * `capability` and `reason` are what let a portable exe say 免安装版不能自动更新
+ * instead of rendering a button that cannot work.
+ */
+export interface UpdaterView {
+  capability: Capability;
+  allowed: boolean;
+  reason?: GateReason;
+  state: UpdaterState;
+}
 
+/**
+ * The clicks the UI may make. `install` means "the user has already confirmed in
+ * the overlay"; `check` is the retry a failed lookup needs (a failure before any
+ * version was learned cannot be retried as a download); `cancel` is the user
+ * changing their mind while the bytes are still arriving.
+ */
+export type UpdaterAction = 'check' | 'download' | 'install' | 'cancel';
+
+// ---------- ASR events (main -> renderer) ----------
 /**
  * Why the VAD closed a segment. It decides whether the line can still grow:
  * `silence` is a pause that may be mid-sentence, `maxlen` is a forced close on a
@@ -1434,6 +1464,12 @@ export const IPC = {
   regionCancel: 'region:cancel',
   /** invoke: (boolean) => boolean — toggles content protection live */
   stealthSet: 'stealth:set',
+  /** invoke: () => UpdaterView — read the install state on first paint */
+  updaterGet: 'updater:get',
+  /** invoke: ('download' | 'install') => UpdaterView — the two user actions */
+  updaterAct: 'updater:act',
+  /** main -> renderer: UpdaterView on every state change */
+  updaterState: 'updater:state',
   /** send: hide window */
   winHide: 'win:hide',
   /** send: quit app (clean) */

@@ -16,6 +16,8 @@ declare global {
     __mcAutoStart?: () => void;
     /** visual-QA hooks: main calls these when MC_MAIN_SHOT=<dir> */
     __mcOpenSettings?: () => void;
+    /** 通用 tab, where the update-install switch lives */
+    __mcOpenGeneral?: () => void;
     __mcOpenHelp?: () => void;
     __mcOpenKnowledge?: () => void;
   }

@@ -1,11 +1,20 @@
-import type { FontScale, ThemeMode, UiLang } from '../../../shared/protocol';
+import type { FontScale, ThemeMode, UpdaterView, UiLang } from '../../../shared/protocol';
 import { PANEL_ALPHA_MAX, PANEL_ALPHA_MIN } from '../../../shared/protocol';
 import type { SettingsDraft } from './useSettingsDraft';
 
 /** everything that is not a model: appearance, hotkeys, audio, companion, help */
+const WHY_FALLBACK = {
+  portable: 'whyPortable',
+  dev: 'whyDev',
+  appimage: 'whyAppImage',
+  deb: 'whyDeb',
+  unsupported: 'whyOther',
+} as const;
+
 export function GeneralTab({
   d,
   overlayAlpha,
+  updater,
   onRerunWizard,
   onOpenDiagnostics,
   onOpenHelp,
@@ -15,6 +24,8 @@ export function GeneralTab({
   d: SettingsDraft;
   /** false on Linux, where the overlay window is opaque by construction */
   overlayAlpha: boolean;
+  /** what this machine can do about installing an update, from main's gate */
+  updater?: UpdaterView;
   onRerunWizard?: () => void;
   onOpenDiagnostics?: () => void;
   onOpenHelp?: () => void;
@@ -480,6 +491,26 @@ export function GeneralTab({
         </label>
         <span className="settings-inline-hint">{t.settings.updateAutoHint}</span>
       </div>
+      <div className="settings-row">
+        <label>
+          <input
+            type="checkbox"
+            checked={d.uInstall}
+            onChange={(e) => d.setUInstall(e.target.checked)}
+          />{' '}
+          {t.settings.updateInstall}
+        </label>
+        <span className="settings-inline-hint">{t.settings.updateInstallHint}</span>
+      </div>
+      {d.uInstall && updater && !updater.allowed && updater.reason !== 'off' && (
+        // the switch is on and this machine still cannot install: say which of
+        // the two it is, instead of leaving a box that never does anything
+        <div className="settings-row">
+          <span className="settings-inline-hint">
+            {t.updater.notAvailable(t.updater[WHY_FALLBACK[updater.reason ?? 'unsupported']])}
+          </span>
+        </div>
+      )}
       <div className="settings-row">
         <label>{t.settings.updateMirror}</label>
         <input

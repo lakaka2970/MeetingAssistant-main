@@ -13,6 +13,7 @@
  * but the Menu.buildFromTemplate plumbing (electron/tray.ts).
  */
 
+import type { UpdaterState } from './updateInstall';
 import type { UpdateCheck } from './updateCheck';
 
 /** every action the tray menu can trigger */
@@ -25,16 +26,22 @@ export type TrayCommand =
   | 'open-help'
   | 'check-updates'
   | 'open-release-page'
+  | 'update-download'
+  | 'update-install'
   | 'quit';
 
 /**
  * The subset the MAIN process cannot perform on its own: capture, sessions and
  * every panel live in the renderer, so these are forwarded over
  * `IPC.trayCommand` after the window has been made visible.
+ *
+ * `update-install` is one of them because installing means restarting the app,
+ * and that ask has to be confirmed in the overlay — where the user can see what
+ * they are agreeing to — not from a menu that closes on click.
  */
 export type TrayRendererCommand = Extract<
   TrayCommand,
-  'toggle-capture' | 'new-session' | 'open-settings' | 'open-health' | 'open-help'
+  'toggle-capture' | 'new-session' | 'open-settings' | 'open-health' | 'open-help' | 'update-install'
 >;
 
 const RENDERER_COMMANDS: readonly TrayCommand[] = [
@@ -43,6 +50,7 @@ const RENDERER_COMMANDS: readonly TrayCommand[] = [
   'open-settings',
   'open-health',
   'open-help',
+  'update-install',
 ];
 
 /** true when the command has to be handled by the renderer, not by main */
@@ -68,6 +76,11 @@ export interface TrayMenuLabels {
   updateFailed: string;
   /** only in the menu while a newer release is known */
   openReleasePage: string;
+  /** v1.0.4 install entries; the download line doubles as the progress line */
+  updateDownload: (version: string) => string;
+  updateDownloading: (percent: number) => string;
+  updateReady: (version: string) => string;
+  updateInstalling: string;
   quit: string;
   /** tooltip suffix while transcription is running */
   capturing: string;
@@ -79,6 +92,11 @@ export interface TrayMenuState {
   capturing: boolean;
   /** the last update check, or nothing until one has run this session */
   update?: UpdateCheck | null;
+  /**
+   * The install state, and ONLY set when `updaterGate` said this machine may
+   * install — a portable exe or a dev run never gets a dead menu entry.
+   */
+  updater?: UpdaterState | null;
 }
 
 export interface TrayMenuEntry {
@@ -104,6 +122,29 @@ function checkUpdatesLabel(labels: TrayMenuLabels, update?: UpdateCheck | null):
         ? labels.updateLatest
         : labels.updateFailed;
   return `${labels.checkUpdates} · ${suffix}`;
+}
+
+/**
+ * The install entries. Only `available` and `ready` are clickable: a progress
+ * line and the handover line are `kind: 'label'`, which the tray renders
+ * disabled — a second click on a running download would start a second
+ * download, and a click during the handover races the installer.
+ */
+function updaterEntries(state: TrayMenuState, labels: TrayMenuLabels): TrayMenuEntry[] {
+  const u = state.updater;
+  if (!u) return [];
+  switch (u.kind) {
+    case 'available':
+      return [{ id: 'update-download', label: labels.updateDownload(u.version), kind: 'command' }];
+    case 'downloading':
+      return [{ id: 'update-download', label: labels.updateDownloading(u.percent), kind: 'label' }];
+    case 'ready':
+      return [{ id: 'update-install', label: labels.updateReady(u.version), kind: 'command' }];
+    case 'installing':
+      return [{ id: 'update-install', label: labels.updateInstalling, kind: 'label' }];
+    default:
+      return [];
+  }
 }
 
 /**
@@ -144,6 +185,9 @@ export function buildTrayMenu(state: TrayMenuState, labels: TrayMenuLabels): Tra
           },
         ]
       : []),
+    // the automatic route, below the manual one it replaces rather than
+    // removes: when the download fails the page is still how anyone updates
+    ...updaterEntries(state, labels),
     SEPARATOR,
     { id: 'quit', label: labels.quit, kind: 'command' },
   ];

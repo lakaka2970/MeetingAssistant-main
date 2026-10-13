@@ -219,7 +219,7 @@ your meeting — it just listens to your system audio. 中文文档为主，Engl
 - **30% 是下限**：再低就透到看不清字了，所以滑块不允许；拉到 100% 即默认观感（深色底 80% 不透明 / 浅色底 93%）。
 - **会记住**：设置存在本机，重启后保持。主题（深色 / 浅色）与字号互不影响。
 - **不管做题窗口和手机连接小窗**：那两个窗口有自己的外观，这颗滑块只管主窗口。
-- ⚠️ 透明度只影响**你这台电脑上看到的画面**。如果对方看的是你的**整个屏幕共享**，共享里同样能看到变透的背景——它不是隐身手段，要防被拍到请用 🕶 隐身（`setContentProtection`，对方屏幕录制 / 截屏里窗口会变黑）。
+- ⚠️ 透明度只影响**你这台电脑上看到的画面**。如果对方看的是你的**整个屏幕共享**，共享里同样能看到变透的背景——它不是隐身手段，要防被拍到请用 🕶 隐身（`setContentProtection`：Windows 10 2004 及以后，窗口是**从共享里整个消失**；只有捕获那侧退化成 `WDA_MONITOR` 语义时才会变成黑块）。
 
 ## 📸 界面预览
 
@@ -341,7 +341,7 @@ macOS 暂无安装包，需从源码运行（系统声音需 BlackHole 虚拟音
 
 其余新增（气泡导轨、可折叠历史回答、🎚 回答风格与应答人设、◐ 面板透明度、逐文件导入进度与节摘要、
 做题模式）都不改变默认观感：**装完新版本什么都不设置时，发给模型的提示词与 v1.0.0 逐字节相同**（有测试钉住）。
-完整版本说明：[RELEASE_NOTES_v1.0.3.md](docs/user/RELEASE_NOTES_v1.0.3.md)（v1.0.3：Linux 原生打包发布、做题模式代码块与答后复核、新增 Kimi / 硅基流动 / 火山方舟，包体与链路延迟都有实测数字）。
+完整版本说明：[RELEASE_NOTES_v1.0.4.md](docs/user/RELEASE_NOTES_v1.0.4.md)（v1.0.4：修好被 untagged 发布打断的「检查更新」，并新增应用内下载并安装——默认关闭、两次点击、永不自动重启）。上一版：[RELEASE_NOTES_v1.0.3.md](docs/user/RELEASE_NOTES_v1.0.3.md)（Linux 原生打包发布、做题模式代码块与答后复核、新增 Kimi / 硅基流动 / 火山方舟）。
 
 ## 📱 单屏 / 双屏
 
@@ -539,7 +539,8 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 | [docs/windows/SETUP.md](docs/windows/SETUP.md) / [zh-CN](docs/windows/SETUP.zh-CN.md) | Windows 平台完整配置（Python / 本地 ASR） |
 | [docs/macos/SETUP.md](docs/macos/SETUP.md) | macOS 平台完整配置 |
 | [docs/linux/SETUP.md](docs/linux/SETUP.md) / [zh-CN](docs/linux/SETUP.zh-CN.md) | Linux 平台完整配置（PipeWire 环回采集、X11 后端与快捷键、XDG 开机自启） |
-| [RELEASE_NOTES_v1.0.3.md](docs/user/RELEASE_NOTES_v1.0.3.md) | **当前版本**说明：Linux 原生打包、做题模式代码块与答后复核、三家国内平台、包体与延迟实测 |
+| [RELEASE_NOTES_v1.0.4.md](docs/user/RELEASE_NOTES_v1.0.4.md) | **当前版本**说明：「检查更新」修复 + 应用内下载并安装（默认关、两次点击、只装 Windows 安装版）；含隐身黑块的实测边界 |
+| [RELEASE_NOTES_v1.0.3.md](docs/user/RELEASE_NOTES_v1.0.3.md) | 上一版说明：Linux 原生打包、做题模式代码块与答后复核、三家国内平台、包体与延迟实测 |
 | [RELEASE_NOTES_v1.0.2.md](docs/user/RELEASE_NOTES_v1.0.2.md) | 上一版说明：换台机器就连不上的四类修复（虚拟网卡配对地址、证书重签、系统保留端口、出站请求挂起） |
 | [RELEASE_NOTES_v1.0.1.md](docs/user/RELEASE_NOTES_v1.0.1.md) | 上一版说明：升级必读的三个默认行为变更、新增内容、已知问题 |
 | [RELEASE_NOTES_v1.0.0.md](docs/user/RELEASE_NOTES_v1.0.0.md) | 首个正式版说明与已知问题 |
@@ -559,10 +560,22 @@ CI（`.github/workflows/ci.yml`）在 Windows 上自动执行：`typecheck` → 
 
 ## 🔄 版本与更新检查
 
-托盘菜单里的 **检查更新** 会向 GitHub 查一次最新版本，结果**直接写在那一行菜单上**：`检查更新 · 已是最新` / `检查更新 · 发现新版本 v1.0.3`（此时下面多一行 **打开下载页面**）。**本程序不会自己下载、安装或重启任何东西**——它只告诉你有没有新版，页面由你自己点、安装包由你自己装。
+托盘菜单里的 **检查更新** 会向 GitHub 查一次最新版本，结果**直接写在那一行菜单上**：`检查更新 · 已是最新` / `检查更新 · 发现新版本 v1.0.4`（此时下面多一行 **打开下载页面**）。
+
+**默认它只告诉你，不动你的机器。** 想让它自己装，要你在 设置 → 通用 → 更新检查 里显式打开 **发现新版本时提示我下载并安装**（v1.0.4 起，**默认关闭**）。打开后的每一步仍然都要你点：
+
+| 步骤 | 谁触发 | 会发生什么 |
+|---|---|---|
+| 检查 | 你点托盘「检查更新」，或开了「启动后自动检查一次」 | 向 GitHub 查询；开了安装开关时会多问一次安装清单 `latest.yml`（同样只暴露 IP 与版本号） |
+| 下载 | **你点「下载并安装 v1.0.4」** | 才开始下载约 118 MiB；浮层显示真实百分比，中途可取消 |
+| 安装 | **你在浮层里再确认一次** | 应用退出 → 静默覆盖安装 → 自动重新打开；设置、会话、题库都不丢 |
+
+它**不会**自己下载、不会自己安装、更不会自己重启——这三条不是口头承诺，是被测试钉住的（electron-updater 的 `autoDownload`、`autoInstallOnAppQuit` 默认都是"会"，本版显式关掉并有对照测试）。**只有 Windows 安装版（NSIS）能这样更新**：免安装版（portable）与 Linux 包不行，设置里会直接说明原因而不是给你一个点不动的按钮。
+
+- ⚠️ **安装包未做代码签名**，所以这条链路的完整性来自 `latest.yml` 里的 SHA-512、来源真实性只剩"到 github.com 的 https 没被中间人换包"。这也是本版**没有**开放"更新源镜像"的原因：清单和安装包同源分发时，哈希不构成第二道防线。连不上 GitHub 请继续用 **打开下载页面** 自己下。
 
 - **默认不联网检查**。可选的「启动后自动检查一次」在 设置 → 通用 → 更新检查，**默认关闭**，打开后也是每天最多一次。这个请求会暴露给 GitHub 的信息只有：你这台机器的 IP、当前版本号、以及一个标识本应用的 User-Agent；不发送任何文件、路径或会话内容。
-- 连不上 `api.github.com` 时，同一个设置页可以填一个 **https** 开头的镜像基址；检查失败会在托盘上显示 `检查更新 · 检查失败`，日志里是 `[update] 检查失败：<原因>`。
+- 连不上 `api.github.com` 时，同一个设置页可以填一个 **https** 开头的镜像基址；检查失败会在托盘上显示 `检查更新 · 检查失败`，日志里是 `[update] 检查失败：<原因>`。**镜像只覆盖"检查"这一步**：安装清单 `latest.yml` 与安装包本身永远从 GitHub 直接取。
 - 未发布的 **draft** release 查不到，只有你 Publish 之后才会出现在结果里。
 - **从 v1.0.1 升上来的人**：更新检查这个功能本身要随新版本发出去才生效，所以 v1.0.1 用户第一次仍需**手动**下载覆盖安装（设置与会话都在 `%APPDATA%\MeetingAssistant\`，不会被清掉）。
 
@@ -728,7 +741,21 @@ step.
 
 **Acknowledgements**: this tool was **developed and improved with reference to** [JWM0203/MeetingCopilot](https://github.com/JWM0203/MeetingCopilot) — "Real-time meeting & interview copilot for Windows and macOS" (TypeScript, Apache License 2.0), which is where the overall shape of a meeting / interview copilot comes from; this repository continues from there. The v1.0.1 work listed above — the bubble transcript rail with hover-to-answer, mainstream-format knowledge import with local section summaries, resume / JD personas and the prompt editor, phone-side remote control, and panel transparency — is this repository's own implementation. Thanks to the upstream project.
 
-**Updates**: **Check for updates** in the tray menu asks GitHub for the latest release and writes the answer into that same menu line — `Check for updates · up to date` or `… · v1.0.3 available`, which then adds **Open download page**. The app never downloads, installs or restarts itself; you open the page and install it yourself. The launch-time check is **off by default** (Settings → General → Update checks) and, once enabled, runs at most once a day; that single request reveals only this machine's IP, the version in use and an app User-Agent — no files, paths or session content. A mirror base URL (https only) can be set where api.github.com is unreachable, and a failed check says so in the menu plus `[update] check failed: …` in the log. Draft releases are invisible until published, and anyone on v1.0.1 must still install the next version by hand once, because the checker only exists from the release that ships it.
+**Updates**: **Check for updates** in the tray menu asks GitHub for the latest release and writes the answer into that same menu line — `Check for updates · up to date` or `… · v1.0.4 available`, which then adds **Open download page**. By default that is all it does: it tells you, it does not touch your machine.
+
+To let it install for you, turn on **Offer to download and install a newer release** in Settings → General → Update checks (v1.0.4+, **off by default**). Even then every step is a click:
+
+| Step | Triggered by | What happens |
+|---|---|---|
+| Check | you click 检查更新, or the once-a-day launch check | a query to GitHub; with installing enabled, one extra request for the `latest.yml` manifest (same exposure: IP and version only) |
+| Download | **you click Download and install v1.0.4** | only then does ~118 MiB start moving; the overlay shows real progress and you can cancel |
+| Install | **you confirm once more in the overlay** | the app quits, the installer runs silently, the app reopens; settings, sessions and question banks are kept |
+
+It does not download unasked, does not install unasked and never restarts itself — enforced in code, not in prose: electron-updater ships with `autoDownload` and `autoInstallOnAppQuit` both `true`, and this version turns them off under test. **Only the Windows installer (NSIS) can update this way**; the portable exe and the Linux packages cannot, and Settings says which one you are looking at instead of showing a dead button.
+
+- ⚠️ **The installers are not code-signed.** Integrity comes from the SHA-512 in `latest.yml`; provenance rests on https to github.com not being swapped. That is also why no "mirror update source" is offered: when the manifest and the payload come from the same host, the checksum is one layer, not two. If GitHub is unreachable, keep using **Open download page**.
+- The launch-time check is **off by default** and, once enabled, runs at most once a day; that single request reveals only this machine's IP, the version in use and an app User-Agent — no files, paths or session content. A mirror base URL (https only) can be set where api.github.com is unreachable, and a failed check says so in the menu plus `[update] check failed: …` in the log. The mirror covers the *check* only: the installer's manifest and payload always come from GitHub itself.
+- Releases are published as **drafts** and stay invisible to `releases/latest` and to `/releases/download/<tag>/latest.yml` until a human publishes them, so publishing is part of shipping an update, not paperwork after it. Anyone on v1.0.1 must still install the next version by hand once, because the checker only exists from the release that ships it.
 
 **License**: [Apache-2.0](LICENSE). The installers are not code-signed (`v1.0.2`) — download only from
 this project's Releases page.

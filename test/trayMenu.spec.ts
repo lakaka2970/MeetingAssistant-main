@@ -26,6 +26,10 @@ const labels: TrayMenuLabels = {
   updateAvailable: (v: string) => `v${v} available`,
   updateFailed: 'check failed',
   openReleasePage: 'download',
+  updateDownload: (v: string) => `install v${v}`,
+  updateDownloading: (pct: number) => `downloading ${pct}%`,
+  updateReady: (v: string) => `restart to install v${v}`,
+  updateInstalling: 'installing',
   quit: 'quit',
   capturing: 'transcribing',
 };
@@ -138,6 +142,76 @@ describe('tray update state', () => {
 
   it('is handled by main, not the renderer', () => {
     expect(isRendererCommand('open-release-page')).toBe(false);
+  });
+});
+
+/**
+ * The install half of v1.0.4 has to live in the same menu as 检查更新, because
+ * the menu is the one surface that is guaranteed to exist even when the overlay
+ * is hidden and the hotkey did not register.
+ */
+describe('tray updater entries', () => {
+  const entries = (s: ReturnType<typeof state>) => buildTrayMenu(s, labels);
+  const byId = (s: ReturnType<typeof state>, id: string) =>
+    entries(s).find((e) => e.id === id);
+
+  const up = (updater: Record<string, unknown>) => state({ updater: updater as never });
+
+  it('offers the download once a newer release is confirmed', () => {
+    const menu = byId(up({ kind: 'available', version: '1.9.0' }), 'update-download');
+    expect(menu).toEqual({
+      id: 'update-download',
+      label: 'install v1.9.0',
+      kind: 'command',
+    });
+  });
+
+  it('shows progress as a dead line, not a clickable entry', () => {
+    // a clickable 下载中 would let a second click start a second download
+    const menu = byId(up({ kind: 'downloading', version: '1.9.0', percent: 42 }), 'update-download');
+    expect(menu?.kind).toBe('label');
+    expect(menu?.label).toBe('downloading 42%');
+  });
+
+  it('switches to the install entry when the file is on disk', () => {
+    const ready = up({ kind: 'ready', version: '1.9.0' });
+    expect(byId(ready, 'update-download')).toBeUndefined();
+    expect(byId(ready, 'update-install')?.label).toBe('restart to install v1.9.0');
+    // and the restart confirmation belongs to the overlay, so the renderer gets it
+    expect(isRendererCommand('update-install')).toBe(true);
+    expect(isRendererCommand('update-download')).toBe(false);
+  });
+
+  it('offers nothing when there is nothing to install', () => {
+    for (const updater of [
+      { kind: 'idle' },
+      { kind: 'checking' },
+      { kind: 'upToDate', version: '1.0.2' },
+      { kind: 'failed', reason: 'network' },
+    ]) {
+      const menu = buildTrayMenu(up(updater), labels).map((e) => e.id);
+      expect(menu).not.toContain('update-download');
+      expect(menu).not.toContain('update-install');
+    }
+  });
+
+  it('stops answering clicks once the handover to the installer began', () => {
+    const menu = byId(up({ kind: 'installing', version: '1.9.0' }), 'update-install');
+    expect(menu?.kind).toBe('label');
+    expect(menu?.label).toBe('installing');
+  });
+
+  it('keeps the manual fallback next to the automatic one', () => {
+    // the automatic path can fail for reasons that have nothing to do with the
+    // release existing, so 打开下载页面 must not disappear with it
+    const s = state({
+      update: { at: 1, state: 'available', version: '1.9.0', url: 'https://example/1' },
+      updater: { kind: 'available', version: '1.9.0' } as never,
+    });
+    const ids = buildTrayMenu(s, labels).map((e) => e.id);
+    expect(ids).toContain('open-release-page');
+    expect(ids).toContain('update-download');
+    expect(ids.indexOf('open-release-page')).toBeLessThan(ids.indexOf('update-download'));
   });
 });
 

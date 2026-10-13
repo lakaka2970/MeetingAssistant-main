@@ -84,6 +84,24 @@ describe('SettingsStore', () => {
     expect(s2.data.llm.baseUrl).toBe('https://api.deepseek.com/v1');
   });
 
+  /**
+   * v1.0.4: the update switch that lets the app download and install. Default
+   * off, and only a literal `true` survives — a hand-edited settings.json or an
+   * old patch body must not be able to turn "installs an exe" on by accident.
+   */
+  it('keeps update.autoUpdate off unless it is exactly true', () => {
+    expect(defaultSettings().update?.autoUpdate).toBe(false);
+
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.getPublic().update.autoUpdate).toBe(false);
+
+    s.applyPatch({ update: { autoUpdate: true } });
+    expect(new SettingsStore(file, fakeCipher).getPublic().update.autoUpdate).toBe(true);
+
+    writeFileSync(file, JSON.stringify({ version: 2, update: { autoUpdate: 'yes please' } }), 'utf8');
+    expect(new SettingsStore(file, fakeCipher).getPublic().update.autoUpdate).toBe(false);
+  });
+
   it('clamps webSearch.maxResults in the public view', () => {
     // settings.json is user-editable; the renderer echo must not show 999
     // or NaN, matching how the companion port is clamped at the same line

@@ -207,6 +207,9 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       autoCheck: false,
       apiBase: '',
       lastCheckedAt: 0,
+      // v1.0.4: the switch that lets the app download and install a release.
+      // Off — see shared/updateInstall.ts for what it takes to turn it on.
+      autoUpdate: false,
     },
   };
 }
@@ -339,7 +342,11 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
       // revoke the ones it never mentions
       allowItems: { ...COMPANION_CONTROL_GRANTS, ...raw.companion?.allowItems },
     },
-    update: { ...defaults.update, ...raw.update },
+    // `autoUpdate` is the one setting that ends with the app running an
+    // installer, so a hand-edited file has to say exactly `true` — anything
+    // else, including "yes"/1/"on", lands back off rather than being coerced on
+    // by JS truthiness.
+    update: { ...defaults.update, ...raw.update, autoUpdate: raw.update?.autoUpdate === true },
   };
 }
 
@@ -676,6 +683,11 @@ export class SettingsStore {
     }
     if (patch.update) {
       this.data.update = { ...this.data.update, ...stripUndefined(patch.update) };
+      // same strict rule as the file merge above: this is the path that turns
+      // the installer on, so only a literal true counts
+      if (patch.update.autoUpdate !== undefined) {
+        this.data.update.autoUpdate = patch.update.autoUpdate === true;
+      }
     }
     this.save();
   }
@@ -898,6 +910,7 @@ export class SettingsStore {
       update: {
         autoCheck: !!d.update?.autoCheck,
         apiBase: (d.update?.apiBase ?? '').trim(),
+        autoUpdate: d.update?.autoUpdate === true,
       },
     };
   }

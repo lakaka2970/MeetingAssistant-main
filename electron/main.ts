@@ -41,6 +41,7 @@ import { SettingsStore, plainCipher, type SecretCipher } from './settings';
 import { SETUP_READY_MARKER, createSetupWindow } from './setupWindow';
 import { AppTray, trayIconPath } from './tray';
 import { isRendererCommand, type TrayCommand, type TrayMenuState } from '../shared/trayMenu';
+import type { UpdaterAction, UpdaterView } from '../shared/protocol';
 import { KnowledgeStore } from './knowledge';
 import { KnowledgeFileStore } from './knowledgeFiles';
 import { SessionStore, asSessionsFile } from './sessions';
@@ -144,6 +145,8 @@ import {
 import { mainStrings } from './uiStrings';
 import { checkForUpdate } from './updateCheck';
 import { shouldAutoCheck, type UpdateCheck } from '../shared/updateCheck';
+import { detectCapability, updaterGate, type UpdaterState } from '../shared/updateInstall';
+import { createUpdater, type Updater } from './updateInstall';
 
 const MODEL_ID = 'onnx-community/whisper-large-v3-turbo-ONNX';
 
@@ -348,6 +351,8 @@ function bootstrap(): void {
   const asr = new AsrHost();
   const sidecar = new FunasrSidecar();
   const tray = new AppTray();
+  /** v1.0.4 install state; null on every machine that cannot self-update */
+  let updater: Updater | null = null;
   /**
    * LAN companion: phones on the same network show the transcript and the
    * answers. Taps the event streams at their source in this process, so the
@@ -616,13 +621,23 @@ function bootstrap(): void {
   }
 
   function trayState(): TrayMenuState {
-    return { windowVisible: !!win?.isVisible(), capturing, update: lastUpdateCheck };
+    // the install entries appear only where they can do something
+    const view = updaterView();
+    return {
+      windowVisible: !!win?.isVisible(),
+      capturing,
+      update: lastUpdateCheck,
+      updater: view.allowed ? view.state : null,
+    };
   }
 
   /**
    * Ask GitHub for the latest release and let the tray show what came back.
-   * Nothing is downloaded and nothing is run — this is a notice, and the click
-   * that follows opens a page in the browser like every other link here.
+   * This request downloads nothing and runs nothing; the click that follows
+   * opens a page in the browser like every other link here. With installing
+   * turned ON it also asks the installer's own manifest, so the tray and the
+   * overlay can offer a real download — that second request is what the 设置
+   * hint discloses, and it is the only extra traffic this function can cause.
    */
   async function runUpdateCheck(): Promise<void> {
     const result = await checkForUpdate(app.getVersion(), settings.data.update?.apiBase ?? '');
@@ -635,6 +650,11 @@ function bootstrap(): void {
     else if (result.state === 'latest') console.log(`[update] 已是最新（v${result.version}）`);
     else console.warn(`[update] 检查失败：${result.reason}`);
     refreshTray();
+    // v1.0.4: the releases API answers "is there something newer" and works
+    // through a mirror; installing needs the installer's own manifest, so the
+    // second request goes out ONLY when a newer release exists and the user
+    // turned installing on. No update, no extra call.
+    if (result.state === 'available' && updater && updaterView().allowed) void updater.check();
   }
 
   /** the opt-in path: only ever fires once a day, and only when asked for */
@@ -644,6 +664,81 @@ function bootstrap(): void {
       return;
     }
     void runUpdateCheck();
+  }
+
+  /**
+   * Dev-only visual QA state (MC_UPDATER_DEMO=available|downloading|ready|
+   * installing|failed). Whether a machine can install is a fact about the
+   * installed app, so a dev run can never show the strip for real — and a strip
+   * that has never been rendered is a strip nobody has checked. Ignored in a
+   * packaged build, so no user is ever shown a state that is not real.
+   */
+  function demoUpdaterView(): UpdaterView | null {
+    if (app.isPackaged) return null;
+    const kind = (process.env.MC_UPDATER_DEMO ?? '').trim();
+    if (!kind) return null;
+    const version = '9.9.9';
+    const states: Record<string, UpdaterState> = {
+      available: { kind: 'available', version },
+      downloading: { kind: 'downloading', version, percent: 42 },
+      ready: { kind: 'ready', version },
+      installing: { kind: 'installing', version },
+      failed: { kind: 'failed', version, reason: '示例失败原因' },
+    };
+    const s = states[kind];
+    if (!s) return null;
+    return { capability: 'nsis', allowed: true, state: s };
+  }
+
+  /** the last update check this session, as the tray and the overlay show it */
+  function updaterView(): UpdaterView {
+    const demo = demoUpdaterView();
+    if (demo) return demo;
+    // capability is recomputed per call: it is cheap, and a dev build that
+    // pretends to be packaged must not be trusted with an installer
+    const capability = detectCapability({
+      platform: process.platform,
+      packaged: app.isPackaged,
+      env: process.env,
+    });
+    const gate = updaterGate({
+      enabled: settings.data.update?.autoUpdate === true,
+      capability,
+    });
+    return {
+      capability,
+      allowed: gate.allowed,
+      reason: gate.reason,
+      state: gate.allowed ? (updater?.state ?? { kind: 'idle' }) : { kind: 'idle' },
+    };
+  }
+
+  /** every state change lands in both places that show it: tray menu and overlay */
+  function publishUpdaterState(): void {
+    const view = updaterView();
+    refreshTray();
+    if (win && !win.isDestroyed()) win.webContents.send(IPC.updaterState, view);
+  }
+
+  /**
+   * Build the updater once the profile is loaded. Nothing here reaches the
+   * network: electron-updater is only asked to check when the user turns the
+   * setting on, and it is not even required on a machine that cannot install.
+   */
+  function initUpdater(): void {
+    updater = createUpdater({ onReason: (why) => console.log(`[updater] not available here: ${why}`) });
+    if (!updater) return;
+    updater.onChange(publishUpdaterState);
+    if (process.env.MC_UPDATER_CHECK) {
+      // dev/QA hook, in the same spirit as MC_PANES_SHOT: the ordinary path
+      // cannot reach electron-updater during testing, because the newest release
+      // on GitHub is OLDER than the build under test, so 检查更新 answers
+      // 已是最新 and never asks the installer's manifest. This forces that one
+      // call so a packaged run can show the real feed working or failing, and
+      // it is env-gated precisely because it reaches the network unasked.
+      console.log('[updater] MC_UPDATER_CHECK: asking the install manifest');
+      void updater.check();
+    }
   }
 
   /** rebuild the tray menu — call after anything the menu shows has changed */
@@ -675,6 +770,12 @@ function bootstrap(): void {
     }
     if (command === 'check-updates') {
       void runUpdateCheck();
+      return;
+    }
+    if (command === 'update-download') {
+      // the menu only carries this entry while the gate allows it, but a menu
+      // is a snapshot — the click is re-checked, not trusted
+      if (updater && updaterView().allowed) void updater.download();
       return;
     }
     if (command === 'open-release-page') {
@@ -982,6 +1083,26 @@ function bootstrap(): void {
             await shoot('main-settings-advanced');
             // the knowledge panel carries the pre-chunked knowledge-base row
             await win?.webContents.executeJavaScript(
+              'window.__mcOpenGeneral && window.__mcOpenGeneral()',
+              true,
+            );
+            await wait(1200);
+            await shoot('main-settings-general');
+            // the 更新检查 section is the last thing on that tab, and the install
+            // strip's confirmation panel only exists after a click — so click it
+            // through the DOM, the same way the panes shot drives 收起
+            await win?.webContents.executeJavaScript(
+              `(()=>{const p=document.querySelector('.settings');if(p){p.scrollTop=p.scrollHeight;}return p?p.scrollHeight:0;})()`,
+            );
+            await wait(500);
+            await shoot('main-settings-general-bottom');
+            await win?.webContents.executeJavaScript(
+              `(()=>{const b=document.querySelector('.update-banner .btn');if(!b)return 'NO-BUTTON';b.click();return 'clicked';})()`,
+              true,
+            );
+            await wait(700);
+            await shoot('main-update-confirm');
+            await win?.webContents.executeJavaScript(
               'window.__mcOpenKnowledge && window.__mcOpenKnowledge()',
               true,
             );
@@ -1105,6 +1226,7 @@ function bootstrap(): void {
 
     // the tray belongs to the running app, not to the first-run wizard: an
     // unconfigured machine that closes the wizard must still quit (Phase 2)
+    initUpdater();
     ensureTray();
     maybeAutoCheckForUpdate();
   }
@@ -1455,6 +1577,17 @@ function bootstrap(): void {
       }
       if (patch.ui?.stealth !== undefined) {
         applyStealth();
+      }
+      // turning installing on or off changes which menu entries and which banner
+      // exist, so the two surfaces that show them have to be re-read
+      if (patch.update?.autoUpdate !== undefined) {
+        const on = settings.data.update?.autoUpdate === true;
+        console.log(`[updater] autoUpdate=${on}`);
+        // turning the switch off is how a user aborts a download they just
+        // started; hiding the strip while 118 MB keeps arriving would be the
+        // worst kind of quiet
+        if (!on) updater?.cancel();
+        publishUpdaterState();
       }
       // A prompt-layer change makes the cached prefix cold the moment it lands.
       if (patch.llm && PROMPT_PREFIX_KEYS.some((k) => patch.llm![k] !== undefined)) {
@@ -2793,6 +2926,33 @@ function bootstrap(): void {
       settings.applyPatch({ ui: { stealth: on } });
       applyStealth();
       return on;
+    });
+    // ---- v1.0.4 in-app install ----
+    ipcMain.handle(IPC.updaterGet, () => updaterView());
+    /**
+     * The only two actions the overlay may ask for. 'install' is what the
+     * confirmation panel's button means — nothing else can reach
+     * quitAndInstall(), and the gate + canInstall() are re-checked here rather
+     * than trusted from the menu that produced the click.
+     */
+    ipcMain.handle(IPC.updaterAct, (_e, action: UpdaterAction) => {
+      // only the overlay may ask: the region-picker window is created with this
+      // same preload, and a window that exists for 300 ms to drag a rectangle
+      // over the screen has no business starting a download
+      if (_e.sender !== win?.webContents) {
+        console.warn('[updater] install action from an unexpected window; ignored');
+        return updaterView();
+      }
+      const view = updaterView();
+      if (!view.allowed || !updater) return view;
+      if (action === 'check') void updater.check();
+      if (action === 'download') void updater.download();
+      if (action === 'cancel') updater.cancel();
+      if (action === 'install') {
+        if (updater.confirmInstall()) console.log('[updater] handing over to the installer');
+        else console.warn('[updater] install refused by the state machine');
+      }
+      return updaterView();
     });
     ipcMain.on(IPC.winHide, () => win?.hide());
     ipcMain.on(IPC.appQuit, () => app.quit());
