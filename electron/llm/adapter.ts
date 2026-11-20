@@ -24,6 +24,18 @@ export interface ChatMessage {
   content: string | ChatContentPart[];
 }
 
+/**
+ * True when any message carries an image part. The answer path uses this to
+ * decide whether the non-streaming vision transport is justified: a text-only
+ * prompt must stream from the text endpoint, or the user waits for the whole
+ * completion with no first token.
+ */
+export function hasImageContent(messages: ChatMessage[]): boolean {
+  return messages.some(
+    (m) => Array.isArray(m.content) && m.content.some((p) => p.type === 'image_url'),
+  );
+}
+
 export interface ChatStreamCallbacks {
   onDelta(text: string): void;
   /** streamed reasoning_content from thinking models; separate so the answer
@@ -40,6 +52,8 @@ export interface ChatThinkingOption {
 export interface ChatStreamOpts {
   temperature?: number;
   thinking?: ChatThinkingOption;
+  /** hard output backstop; the style ladder's char budget is the soft guide */
+  maxTokens?: number;
 }
 
 export interface ChatResult {
@@ -191,6 +205,7 @@ export async function chatStream(
           messages,
           stream: true,
           ...(omitsTemperature(config.baseUrl) ? {} : { temperature: opts?.temperature ?? 0.5 }),
+          ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
           ...(opts?.thinking
             ? buildThinkingParams(opts.thinking.style, opts.thinking.level)
             : {}),

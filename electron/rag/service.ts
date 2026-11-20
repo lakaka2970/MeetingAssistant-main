@@ -607,8 +607,80 @@ export class RagService {
     }
   }
 
-  // ---- reindex (model switch / dimension change) ----
+  /**
+   * Embed the bound pre-chunked KB into the dense vector store so retrieval
+   * fuses lexical + semantic (RRF). The lexical channel alone mis-ranks
+   * cross-domain term collisions (costmap↔C++ map, 观察者↔工厂); dense cosine
+   * disambiguates them. One record per KB chunk — boundaries preserved, no
+   * re-chunking. Idempotent: store.add dedups by hash+source+ref.
+   */
+  async seedVectorsFromKb(
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<{ records: number; failed: boolean }> {
+    this.ensureKb();
+    const chunks = this.kb.allChunks();
+    if (!chunks.length) return { records: 0, failed: false };
+    if (!(await this.ensureReady())) return { records: 0, failed: true };
+    const store = this.ensureStore();
+    const refOf = (c: { docId: string; section: string }): string => `${c.docId} §${c.section}`.trim();
+    // resume-safe: skip chunks already embedded (a prior crash/restart left them)
+    const existing = new Set(store.allRecords().filter((r) => r.source === 'doc').map((r) => r.ref));
+    const pending = chunks.filter((c) => !existing.has(refOf(c)));
+    const batch = 4;
+    let done = chunks.length - pending.length;
+    let failed = false;
+    let skipped = 0;
+    // embed a set of chunks, recycling the worker on the ONNX trap (exit 133);
+    // returns null only when every attempt died
+    const embedResilient = async (texts: string[]): Promise<Float32Array[] | null> => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          return await this.embedder.embed(texts, 180_000);
+        } catch (e) {
+          console.warn(`[rag] seed embed attempt ${attempt} failed: ${(e as Error).message}; recycling worker`);
+          await this.embedder.dispose();
+          if (!(await this.ensureReady())) return null;
+        }
+      }
+      return null;
+    };
+    const addChunk = (c: (typeof chunks)[number], v: Float32Array): void => {
+      store.add({
+        source: 'doc',
+        ref: refOf(c),
+        text: c.text,
+        metadata: { kb_chunk: c.chunkId, doc_id: c.docId, section: c.section },
+        embedding: v,
+      });
+    };
+    for (let i = 0; i < pending.length; i += batch) {
+      const slice = pending.slice(i, i + batch);
+      const heads = slice.map((c) => c.text.slice(0, 2000));
+      let vectors = await embedResilient(heads);
+      if (vectors) {
+        slice.forEach((c, j) => addChunk(c, vectors![j]));
+      } else {
+        // a poison chunk can trap the session deterministically — bisect to
+        // single chunks and skip the one that keeps dying (lexical still covers it)
+        for (let j = 0; j < slice.length; j++) {
+          const one = await embedResilient([heads[j]]);
+          if (one) addChunk(slice[j], one[0]);
+          else {
+            skipped++;
+            console.warn(`[rag] seed skipping poison chunk ${refOf(slice[j])}`);
+          }
+        }
+      }
+      done += slice.length;
+      onProgress?.(done, chunks.length);
+      this.writer.flush(); // persist each batch so a hard crash resumes here
+    }
+    this.writer.flush();
+    if (skipped) console.warn(`[rag] seed skipped ${skipped} poison chunks (lexical channel still covers them)`);
+    return { records: done, failed };
+  }
 
+  // ---- reindex (model switch / dimension change) ----
   /** Re-embed every stored chunk with the CURRENT model. Texts survive a
    * dimension change because the index file keeps them; only vectors drop. */
   async reindex(): Promise<{ records: number; failed: boolean }> {
@@ -637,7 +709,7 @@ export class RagService {
           r.source === 'qa' && typeof r.metadata?.question === 'string' && r.metadata.question
             ? (r.metadata.question as string)
             : r.text;
-        const vectors = await this.embedder.embed(slice.map(embedText));
+        const vectors = await this.embedder.embed(slice.map((r) => embedText(r).slice(0, 2000)));
         for (let j = 0; j < slice.length; j++) {
           const r: RagRecord = slice[j];
           fresh.add({

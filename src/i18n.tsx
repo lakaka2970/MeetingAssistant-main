@@ -278,6 +278,21 @@ const zh = {
       `已加载 ${chunks} 个语块 / ${docs} 篇 / ${aliases} 组术语别名`,
     kbNotLoaded: '已绑定路径，但还没读到内容（提问时会再试一次）',
     kbError: (msg: string) => `读取失败：${msg}`,
+    autoKbHint:
+      '批量选择文件或文件夹，软件自动提取文本、按小节/题号切分，并用已配置的对话 key 生成检索关键词与别名，产出词法知识库后自动绑定。无需下载嵌入模型；想切回原有知识库，用上方"选择知识库目录"。',
+    autoKbBtn: '批量构建知识库…',
+    autoKbStageExtract: '提取切分',
+    autoKbStageLlm: 'LLM 关键词',
+    autoKbStageWrite: '写入索引',
+    autoKbDone: (chunks: number, docs: number, assisted: boolean) =>
+      `构建完成：${chunks} 个语块 / ${docs} 篇${assisted ? '（LLM 关键词已启用）' : ''}，已自动绑定。`,
+    autoKbFailed: (msg: string) => `构建失败：${msg}`,
+    seedHint:
+      '为已绑定的知识库建立向量索引，启用"词法+语义"融合检索——纠正 costmap↔C++ map、观察者↔工厂 这类跨域词撞车，提升回答准确性。用本地嵌入模型一次性建立，之后离线可用。',
+    seedBtn: '建立语义索引（提升准确性）',
+    seedProgress: (done: number, total: number) => `向量化 ${done}/${total}`,
+    seedDone: (n: number) => `语义索引完成：${n} 个语块已入库，检索现为词法+语义融合。`,
+    seedFailed: '语义索引建立失败（嵌入模型未就绪），可稍后重试。',
     // document library (multi-file import)
     libraryTitle: '文档库（语义召回）',
     libraryHint: '导入多个文件或整个文件夹，回答时按问题语义召回相关片段。支持 .md / .txt / .docx / .pdf / .pptx；旧版 .doc / .ppt 请先转成 .docx / .pptx。',
@@ -1068,6 +1083,21 @@ const en: Dict = {
       `Loaded ${chunks} blocks / ${docs} documents / ${aliases} term aliases`,
     kbNotLoaded: 'Path bound but nothing read yet (retried when a question arrives)',
     kbError: (msg: string) => `Read failed: ${msg}`,
+    autoKbHint:
+      'Batch-select files or folders: the app extracts text, chunks on section/question boundaries, generates retrieval keywords and aliases with your configured chat key, then binds the produced lexical KB. No embedding model download; use "Choose knowledge base folder" above to switch back.',
+    autoKbBtn: 'Build knowledge base…',
+    autoKbStageExtract: 'Extract & chunk',
+    autoKbStageLlm: 'LLM keywords',
+    autoKbStageWrite: 'Write index',
+    autoKbDone: (chunks: number, docs: number, assisted: boolean) =>
+      `Built ${chunks} chunks / ${docs} docs${assisted ? ' (LLM keywords on)' : ''} and bound automatically.`,
+    autoKbFailed: (msg: string) => `Build failed: ${msg}`,
+    seedHint:
+      'Build a vector index over the bound KB to enable lexical+semantic fused retrieval — fixes cross-domain term collisions (costmap↔C++ map, observer↔factory) and improves answer accuracy. Uses the local embedding model once, then works offline.',
+    seedBtn: 'Build semantic index (accuracy)',
+    seedProgress: (done: number, total: number) => `Embedding ${done}/${total}`,
+    seedDone: (n: number) => `Semantic index done: ${n} chunks stored; retrieval now fuses lexical+semantic.`,
+    seedFailed: 'Semantic indexing failed (embedder not ready); retry later.',
     // document library (multi-file import)
     libraryTitle: 'Document library (semantic recall)',
     libraryHint: 'Import several files or a whole folder; answers recall relevant passages per question. Supports .md / .txt / .docx / .pdf / .pptx; convert legacy .doc / .ppt to .docx / .pptx first.',

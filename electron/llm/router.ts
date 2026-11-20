@@ -235,6 +235,8 @@ export async function streamWithFallback(args: {
   signal?: AbortSignal;
   /** 0 / undefined = no first-token timeout */
   firstTokenTimeoutMs?: number;
+  /** hard output backstop forwarded to every attempt (richness ladder) */
+  maxTokens?: number;
   attempt?: FailoverAttempt;
   onAttemptError?(ep: Endpoint, err: Error, hadDelta: boolean): void;
 }): Promise<FailoverResult> {
@@ -271,8 +273,10 @@ export async function streamWithFallback(args: {
             { onDelta, onReasoning: args.onReasoning },
             signal,
             ep.thinking && ep.thinkingLevel
-              ? { thinking: { style: ep.thinking.style, level: ep.thinkingLevel } }
-              : undefined,
+              ? { thinking: { style: ep.thinking.style, level: ep.thinkingLevel }, ...(args.maxTokens ? { maxTokens: args.maxTokens } : {}) }
+              : args.maxTokens
+                ? { maxTokens: args.maxTokens }
+                : undefined,
           ));
       const r = await attempt(ep, link.signal, trackDelta);
       if (args.signal?.aborted) throw abortError();

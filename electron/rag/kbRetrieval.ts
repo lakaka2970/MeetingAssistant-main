@@ -131,6 +131,11 @@ export class KbRetrieval {
     return this.status;
   }
 
+  /** all loaded chunks — used to seed the dense vector store for fusion */
+  allChunks(): KbChunk[] {
+    return [...this.byId.values()];
+  }
+
   /**
    * Accepts either the index file itself or any directory inside the KB — the
    * layout (`99_元数据与检索/991_index.jsonl`) is a convention of this KB, not a

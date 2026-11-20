@@ -12,7 +12,9 @@
  */
 import { execSync } from 'child_process';
 import { existsSync, mkdirSync } from 'fs';
-import { join, resolve } from 'path';
+import { createRequire } from 'module';
+import { dirname, join, resolve } from 'path';
+import { pathToFileURL } from 'url';
 
 const args = process.argv.slice(2);
 const flag = (name, def) => {
@@ -45,8 +47,14 @@ for (const key of models) {
     continue;
   }
   console.log(`[fetch-models] ${key} (${t.hfId}) via ${remoteHost} -> ${outDir}`);
+  // same resolution as rag/embedWorker.ts: the patched ESM bundle lives in
+  // dist/, and a POSIX absolute path needs pathToFileURL (a hand-built
+  // 'file:///' + '/abs/...' yields four slashes and ERR_MODULE_NOT_FOUND)
+  const req = createRequire(import.meta.url);
+  const cjsPath = req.resolve('@huggingface/transformers');
+  const mjsPath = join(dirname(cjsPath), 'transformers.node.mjs');
   const mod = await dynamicImport(
-    'file:///' + join(process.cwd(), 'node_modules', '@huggingface', 'transformers', 'transformers.node.mjs').replace(/\\/g, '/'),
+    existsSync(mjsPath) ? pathToFileURL(mjsPath).href : '@huggingface/transformers',
   );
   mod.env.cacheDir = outDir;
   mod.env.allowLocalModels = false;

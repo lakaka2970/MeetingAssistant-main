@@ -116,10 +116,11 @@ describe('buildAnswerMessages', () => {
       freeQuestion: '帮我总结一下刚才的对话',
       recentTranscript: [],
     });
-    // no context/KB => no system prompt at all, just the raw question
-    expect(msgs).toHaveLength(1);
-    expect(msgs[0].role).toBe('user');
-    expect(msgs[0].content).toBe('帮我总结一下刚才的对话');
+    // no context/KB => a directives-only system head plus the raw question
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0].role).toBe('system');
+    expect(msgs[1].role).toBe('user');
+    expect(msgs[1].content).toBe('帮我总结一下刚才的对话');
   });
 
   it('free mode does NOT inject the meeting-assistant persona (truthful model identity)', () => {
@@ -133,8 +134,8 @@ describe('buildAnswerMessages', () => {
     expect(joined).not.toContain('实时会议/面试助手');
     expect(joined).not.toContain('帮用户想好接下来怎么回答');
     // reference material is offered, not a persona
-    expect(joined).toContain('供参考');
-    expect(withCtx[withCtx.length - 1].content).toBe('你是什么模型');
+    expect(joined).toContain('供回答参考');
+    expect(withCtx[withCtx.length - 1].content).toContain('你是什么模型');
   });
 
   it('answerLang hook steers the reply language (default chinese)', () => {
@@ -297,13 +298,14 @@ describe('buildStablePrefix layers (v1.0.1 prompt engineering)', () => {
 
   // C-缓存 (spec §4): a v1.0.0 user who changes nothing must send the exact same
   // bytes to the provider, or every prefix cache in the wild goes cold for free.
-  it('with no layers it is the v1.0.0 prefix byte-for-byte', () => {
+  it('with no layers it is the current default prefix byte-for-byte', () => {
     const v100 = [
       '你是我的实时面试提词器。我正在参加面试，屏幕上是面试官说话的实时转录。',
       '你输出的内容就是我接下来要照着念的话，必须遵守：',
       '- 全程用第一人称「我」，口语自然，让我可以一字不改地念出来；',
-      '- 第一句先给结论或直接回应，再展开 2-3 个短要点；',
-      '- 全文控制在 30-60 秒内可念完（约 150-350 字）；',
+      '- 第一句先给结论或直接回应，再展开 1-3 个短要点，写完即停；',
+      '- 全文控制在 30-60 秒内可念完（约 150-350 字），不得超过 400 字；',
+      '- 不用多级标题、表格；不复述问题、不写结尾总结段；代码确有必要时最多 3 行；',
       '- 不用 Markdown 标题、编号、加粗等书面格式，分点直接换行；',
       '- 行为/经历类问题按 STAR 展开：情境→任务→行动→结果；',
       '- 技术类问题先一句话讲思路，再给关键点，必要时给复杂度或对比结论；',
@@ -318,6 +320,12 @@ describe('buildStablePrefix layers (v1.0.1 prompt engineering)', () => {
       jd,
       '【岗位JD结束】',
       '',
+      '- 以你本人已掌握的知识直接作答，口吻自然、自信、口语化；',
+      '- 禁止出现"知识库、资料、检索、召回、依据你项目资料、根据文档"等来源性措辞；',
+      '- 禁止请对方贴代码、承诺逐行核对、或说"需要查代码/需要确认"；不确定的细节直接省略，答案必须自洽完整。',
+      '- 若召回材料与问题相关，回答须覆盖其核心结论与关键术语，材料中的数字、口径、机制不得改写或省略；',
+      '- 不得编造材料之外的公司、项目、数字、指标；通用知识须准确，无把握时给稳妥说法而非臆测。',
+      '',
       langDirective('chinese'),
     ].join('\n');
     expect(withLayers()).toBe(v100);
@@ -325,12 +333,13 @@ describe('buildStablePrefix layers (v1.0.1 prompt engineering)', () => {
     expect(withLayers({ styleDirectives: buildStyleDirectives('standard', 'professional') })).toBe(v100);
   });
 
-  it('the richness ladder replaces exactly the two legacy directive lines', () => {
-    const std = withLayers().split('\n');
-    const dense = withLayers({ styleDirectives: buildStyleDirectives('detailed', 'professional') }).split('\n');
-    expect(dense).toHaveLength(std.length);
-    expect(std.map((l, i) => (l === dense[i] ? -1 : i)).filter((i) => i >= 0)).toEqual([3, 4]);
-    expect(dense[3]).toContain('分层展开');
+  it('the richness ladder swaps the structure/length/format block', () => {
+    const std = withLayers();
+    const dense = withLayers({ styleDirectives: buildStyleDirectives('detailed', 'professional') });
+    expect(std).toContain('不得超过 400 字');
+    expect(dense).toContain('分层展开');
+    expect(dense).toContain('400-700');
+    expect(dense).not.toContain('不得超过 400 字');
   });
 
   it('the expertise ladder inserts one diction line right after the directives', () => {
@@ -338,7 +347,7 @@ describe('buildStablePrefix layers (v1.0.1 prompt engineering)', () => {
     const tech = withLayers({ styleDirectives: buildStyleDirectives('standard', 'technical') });
     expect(tech.split('\n')).toHaveLength(std.split('\n').length + 1);
     const at = tech.indexOf('- 可以直接上术语与指标');
-    expect(at).toBeGreaterThan(std.indexOf('- 全文控制在 30-60 秒内可念完（约 150-350 字）；'));
+    expect(at).toBeGreaterThan(std.indexOf('- 全文控制在 30-60 秒内可念完（约 150-350 字），不得超过 400 字；'));
     expect(at).toBeLessThan(tech.indexOf('- 不用 Markdown'));
   });
 
@@ -373,7 +382,7 @@ describe('buildStablePrefix layers (v1.0.1 prompt engineering)', () => {
     expect(p).not.toContain('你是我的实时面试提词器');
     expect(p).not.toContain('- 不用 Markdown');
     expect(p.startsWith('我是谈判顾问，替我说话。\n保持礼貌。\n')).toBe(true);
-    expect(p).toContain('- 全文控制在 30-60 秒内可念完（约 150-350 字）；');
+    expect(p).toContain('- 全文控制在 30-60 秒内可念完（约 150-350 字），不得超过 400 字；');
   });
 
   it('promptStyle replaces the generated directives in place', () => {
@@ -834,8 +843,11 @@ describe('prompt cache safety (upgrade P0: notes / RAG / consistency layering)',
     });
     const sys = msgs[0].content as string;
     expect(sys).toContain('【个人背景】');
-    expect(sys).toContain('【知识库召回】');
-    expect(msgs[msgs.length - 1].content).toBe('帮我总结一下这个项目');
+    // per-question recall rides the user message so the system head stays cache-stable
+    expect(sys).not.toContain('【知识库召回】');
+    const last = msgs[msgs.length - 1].content as string;
+    expect(last).toContain('【知识库召回】');
+    expect(last).toContain('问题：帮我总结一下这个项目');
   });
 
   it('translate mode stays a clean pass-through (no notes/rag leakage)', () => {
@@ -900,7 +912,7 @@ describe('prepared-answer + web-fallback blocks (knowledge-first routing)', () =
     expect(last).not.toContain('【我的标准答案】');
   });
 
-  it('free mode puts the prepared answer FIRST among the reference blocks', () => {
+  it('free mode puts the prepared answer FIRST among the per-question blocks', () => {
     const msgs = buildAnswerMessages({
       mode: 'free',
       freeQuestion: '介绍一下你的项目难点',
@@ -909,10 +921,14 @@ describe('prepared-answer + web-fallback blocks (knowledge-first routing)', () =
       qaHit: { question: '介绍一下你的项目难点', answer: '难点在丢帧治理。' },
       webLines: ['1] 无关 — 不应出现 (https://b.example)'],
     });
+    // constant background rides the cache-stable system head; the per-question
+    // prepared answer leads the variable blocks in the user message
     const sys = msgs[0].content as string;
-    expect(sys.indexOf('【我的标准答案】')).toBeGreaterThan(-1);
-    expect(sys).toContain('难点在丢帧治理。');
-    expect(sys.indexOf('【我的标准答案】')).toBeLessThan(sys.indexOf('【本人资料'));
+    expect(sys).toContain('【本人资料');
+    const last = msgs[msgs.length - 1].content as string;
+    expect(last.indexOf('【我的标准答案】')).toBeGreaterThan(-1);
+    expect(last).toContain('难点在丢帧治理。');
+    expect(last.indexOf('【我的标准答案】')).toBeLessThan(last.indexOf('【网络检索】'));
   });
 
   it('free mode falls back to web lines when the knowledge base missed', () => {
@@ -922,10 +938,10 @@ describe('prepared-answer + web-fallback blocks (knowledge-first routing)', () =
       recentTranscript: [],
       webLines: ['1] Async traits in Rust — stabilized in 1.75 (https://rust.example)'],
     });
-    const sys = msgs[0].content as string;
-    expect(sys).toContain('【网络检索】');
-    expect(sys).toContain('https://rust.example');
-    expect(sys).not.toContain('【我的标准答案】');
+    const last = msgs[msgs.length - 1].content as string;
+    expect(last).toContain('【网络检索】');
+    expect(last).toContain('https://rust.example');
+    expect(last).not.toContain('【我的标准答案】');
   });
 
   it('an empty prepared answer never produces a block', () => {

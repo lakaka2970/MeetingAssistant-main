@@ -57,6 +57,12 @@ export function KnowledgeTab({
   } | null>(null);
   /** in flight: the folder dialog, the index read, or the unbind */
   const [bindingKb, setBindingKb] = useState(false);
+  const [buildingKb, setBuildingKb] = useState(false);
+  const [kbBuildProgress, setKbBuildProgress] = useState<string | null>(null);
+  const [kbBuildNotice, setKbBuildNotice] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [seedProgress, setSeedProgress] = useState<string | null>(null);
+  const [seedNotice, setSeedNotice] = useState<string | null>(null);
   const [importNotice, setImportNotice] = useState<string | null>(null);
   /** the prepared Q&A pairs the index detected (what a direct hit can serve) */
   const [qaList, setQaList] = useState<PreparedQaView[]>([]);
@@ -110,6 +116,65 @@ export function KnowledgeTab({
     });
     return off;
   }, []);
+
+  // one-click KB build pushes extract/llm/write stage progress from main
+  useEffect(() => {
+    const stageLabel = {
+      extract: t.knowledge.autoKbStageExtract,
+      llm: t.knowledge.autoKbStageLlm,
+      write: t.knowledge.autoKbStageWrite,
+    };
+    const off = window.mc.onAutoKbProgress((p) => {
+      setKbBuildProgress(`${stageLabel[p.stage]} ${p.done}/${p.total}${p.file ? ` · ${p.file}` : ''}`);
+    });
+    return off;
+  }, [t]);
+
+  const buildKb = useCallback(async () => {
+    setBuildingKb(true);
+    setKbBuildNotice(null);
+    setKbBuildProgress(null);
+    try {
+      const r = await window.mc.autoKbBuild();
+      if (r) {
+        setKbBuildNotice(
+          r.ok
+            ? t.knowledge.autoKbDone(r.chunks, r.docs, r.llmAssisted)
+            : t.knowledge.autoKbFailed(r.error ?? ''),
+        );
+        refreshStatus();
+      }
+    } catch (e) {
+      setKbBuildNotice((e as Error).message);
+    } finally {
+      setBuildingKb(false);
+      setKbBuildProgress(null);
+    }
+  }, [t, refreshStatus]);
+
+  // dense-index seeding progress (lexical+semantic fusion for accuracy)
+  useEffect(() => {
+    const off = window.mc.onRagSeedProgress((p) => {
+      setSeedProgress(t.knowledge.seedProgress(p.done, p.total));
+    });
+    return off;
+  }, [t]);
+
+  const seedVectors = useCallback(async () => {
+    setSeeding(true);
+    setSeedNotice(null);
+    setSeedProgress(null);
+    try {
+      const r = await window.mc.ragSeedVectors();
+      setSeedNotice(r.failed ? t.knowledge.seedFailed : t.knowledge.seedDone(r.records));
+      refreshStatus();
+    } catch (e) {
+      setSeedNotice((e as Error).message);
+    } finally {
+      setSeeding(false);
+      setSeedProgress(null);
+    }
+  }, [t, refreshStatus]);
 
   const search = useCallback(async () => {
     const q = query.trim();
@@ -314,6 +379,34 @@ export function KnowledgeTab({
           </button>
         ) : null}
       </div>
+
+      {/* ---- dense semantic index over the bound KB (accuracy) ---- */}
+      {status?.kb.loaded ? (
+        <>
+          <div className="settings-hint">{t.knowledge.seedHint}</div>
+          <div className="settings-actions">
+            <button className="btn" disabled={seeding || buildingKb} onClick={() => void seedVectors()}>
+              {t.knowledge.seedBtn}
+            </button>
+          </div>
+          {seeding && seedProgress ? (
+            <div className="settings-inline-hint">{seedProgress}</div>
+          ) : null}
+          {seedNotice && <div className="settings-inline-hint">{seedNotice}</div>}
+        </>
+      ) : null}
+
+      {/* ---- one-click auto build (batch → chunk → LLM keywords → bind) ---- */}
+      <div className="settings-hint">{t.knowledge.autoKbHint}</div>
+      <div className="settings-actions">
+        <button className="btn" disabled={buildingKb || bindingKb} onClick={() => void buildKb()}>
+          {t.knowledge.autoKbBtn}
+        </button>
+      </div>
+      {buildingKb && kbBuildProgress ? (
+        <div className="settings-inline-hint">{kbBuildProgress}</div>
+      ) : null}
+      {kbBuildNotice && <div className="settings-inline-hint">{kbBuildNotice}</div>}
 
       {/* ---- document library (multi-file import) ---- */}
       <div className="settings-section">{t.knowledge.libraryTitle}</div>

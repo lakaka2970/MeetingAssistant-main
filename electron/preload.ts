@@ -3,6 +3,8 @@ import {
   IPC,
   type AppInfo,
   type AsrEvent,
+  type AutoKbProgress,
+  type AutoKbResult,
   type CompanionState,
   type ExamEvent,
   type KbSlot,
@@ -121,6 +123,14 @@ export interface McApi {
   ragBindKb(): Promise<RagStatus | null>;
   /** forget the knowledge base binding */
   ragUnbindKb(): Promise<RagStatus>;
+  /** one-click build: batch files/folders → auto-chunked KB, bound on success; null = cancelled */
+  autoKbBuild(): Promise<AutoKbResult | null>;
+  /** pushed during the one-click build (extract / llm / write stages) */
+  onAutoKbProgress(cb: (p: AutoKbProgress) => void): () => void;
+  /** embed the bound KB into the dense vector store (lexical+semantic fusion) */
+  ragSeedVectors(): Promise<{ records: number; failed: boolean }>;
+  /** pushed during dense-index seeding */
+  onRagSeedProgress(cb: (p: { done: number; total: number }) => void): () => void;
   /** the prepared Q&A pairs the knowledge base auto-detected */
   ragQaList(sessionId?: string): Promise<PreparedQaView[]>;
   /** pushed whenever the embed worker state changes */
@@ -252,6 +262,18 @@ const api: McApi = {
   ragReindex: (model) => ipcRenderer.invoke(IPC.ragReindex, { model }),
   ragBindKb: () => ipcRenderer.invoke(IPC.ragBindKb),
   ragUnbindKb: () => ipcRenderer.invoke(IPC.ragUnbindKb),
+  autoKbBuild: () => ipcRenderer.invoke(IPC.autoKbBuild),
+  onAutoKbProgress: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, p: AutoKbProgress) => cb(p);
+    ipcRenderer.on(IPC.autoKbProgress, listener);
+    return () => ipcRenderer.removeListener(IPC.autoKbProgress, listener);
+  },
+  ragSeedVectors: () => ipcRenderer.invoke(IPC.ragSeedVectors),
+  onRagSeedProgress: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, p: { done: number; total: number }) => cb(p);
+    ipcRenderer.on(IPC.ragSeedProgress, listener);
+    return () => ipcRenderer.removeListener(IPC.ragSeedProgress, listener);
+  },
   ragQaList: (sessionId) => ipcRenderer.invoke(IPC.ragQaList, { sessionId }),
   onRagStatus: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, s: RagStatus) => cb(s);

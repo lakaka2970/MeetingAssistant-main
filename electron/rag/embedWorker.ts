@@ -53,8 +53,25 @@ export type EmbedWorkerOut =
   | { type: 'embedResult'; reqId: number; vectors: string[]; ms: number }
   | { type: 'error'; reqId?: number; message: string };
 
+// Electron utilityProcess exposes process.parentPort (MessageEvent-style).
+// process.on('message') / process.postMessage only exist under child_process
+// or worker_threads — using them here left the worker deaf to `init`, so the
+// knowledge base sat at "loading" forever with no error (same pattern as
+// asr/worker.ts).
+interface UtilPort {
+  on(ev: 'message', cb: (e: { data: unknown }) => void): void;
+  postMessage(m: unknown): void;
+}
+const utilPort = (process as NodeJS.Process & { parentPort?: UtilPort }).parentPort;
+
 function send(msg: EmbedWorkerOut): void {
-  (process as unknown as { postMessage: (m: EmbedWorkerOut) => void }).postMessage(msg);
+  if (utilPort) utilPort.postMessage(msg);
+  else (process as unknown as { postMessage: (m: EmbedWorkerOut) => void }).postMessage(msg);
+}
+
+function onMessage(cb: (msg: EmbedWorkerIn) => void): void {
+  if (utilPort) utilPort.on('message', (e) => cb(e.data as EmbedWorkerIn));
+  else process.on('message', cb);
 }
 
 let extractor: any = null;
@@ -126,7 +143,7 @@ async function embed(reqId: number, texts: string[]): Promise<void> {
   }
 }
 
-process.on('message', (msg: EmbedWorkerIn) => {
+onMessage((msg: EmbedWorkerIn) => {
   switch (msg.type) {
     case 'init':
       load(msg).catch((e: Error) => send({ type: 'error', message: `embed init failed: ${e.message}` }));

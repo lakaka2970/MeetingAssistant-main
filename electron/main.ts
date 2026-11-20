@@ -46,6 +46,7 @@ import { KnowledgeFileStore } from './knowledgeFiles';
 import { SessionStore, asSessionsFile } from './sessions';
 import { RagService, MIN_QUERY_CHARS, type RetrieveResult } from './rag/service';
 import { createLibraryImporter, emptyImportResult } from './rag/library';
+import { buildAutoKb } from './rag/autoKb';
 import { SpeculativeCache, after, specKey } from './rag/speculative';
 import { SkillsManager } from './skills/manager';
 import { extractMemoFacts, formatFactsHint } from './consistency/facts';
@@ -87,7 +88,7 @@ import type { RagHitView } from '../shared/protocol';
 import { DOC_EXTENSIONS, LIBRARY_EXTENSIONS, extractDocText, isLibraryExtension } from './docparse';
 import { importGlobalKnowledge } from './globalKnowledgeImport';
 import { basename } from 'path';
-import { chatOnce, chatStream, type ChatResult, type LlmConfig } from './llm/adapter';
+import { chatOnce, chatStream, hasImageContent, type ChatResult, type LlmConfig } from './llm/adapter';
 import { findPresetByEndpoint } from '../shared/providerCatalog';
 import {
   FailureBook,
@@ -107,6 +108,7 @@ import {
   buildVisionMessages,
   clampMemo,
   classifyQuestion,
+  retrievalQuery,
   type PromptLayers,
 } from './llm/prompts';
 import { buildPersonaDraftMessages, finalizePersonaDraft } from './llm/personaPrompts';
@@ -114,6 +116,7 @@ import {
   buildStyleDirectives,
   DEFAULT_EXPERTISE,
   DEFAULT_RICHNESS,
+  RICHNESS_MAX_TOKENS,
   type AnswerExpertise,
   type AnswerRichness,
 } from '../shared/answerStyle';
@@ -953,6 +956,99 @@ function bootstrap(): void {
           .then((r) => console.log('[e2e-llm]', JSON.stringify(r)))
           .catch((e) => console.log('[e2e-llm] threw', (e as Error).message));
       }
+      // RAG + streaming e2e (tools/rag-e2e.mjs drives it in a throwaway
+      // MC_USERDATA profile): notes → local embedder → index → semantic
+      // search, then a typed question proves the text answer streams even
+      // with answerWithVision on.
+      if (process.env.MC_RAG_E2E) {
+        const notes = [
+          '问：shared_ptr 是线程安全的吗？',
+          '答：引用计数的增减是线程安全的（原子操作），被管理对象的读写不是线程安全的，多线程访问对象仍需自己加锁。',
+          '',
+          '项目经历：ROS 2 自主探索建图。基于 Nav2 与 slam_toolbox 做前沿探索：8 连通 BFS 聚簇加 min_size 过滤，',
+          '4 连通 BFS 米制距离场选目标（路径距离优于欧氏距离），净空回退保证目标点安全。',
+          '关键坑：订阅 /map 必须用 transient_local + reliable 的 QoS，默认 volatile 的迟到订阅者永远收不到地图。',
+        ].join('\n');
+        const ragJs = `(async()=>{
+  const save=await window.mc.notesSet(${JSON.stringify(notes)}).catch(e=>({error:String(e)}));
+  let st=null;
+  for(let i=0;i<120;i++){
+    st=await window.mc.ragStatus().catch(()=>null);
+    if(st&&(st.state==='ready'||st.state==='error'))break;
+    await new Promise(r=>setTimeout(r,500));
+  }
+  const search=await window.mc.ragSearch({query:${JSON.stringify('为什么订阅 /map 话题收不到地图？')}}).catch(e=>({hits:[],ms:-1,error:String(e)}));
+  const qa=await window.mc.ragQaList().catch(()=>[]);
+  const inp=document.querySelector('.answer-input input');
+  let answer={ok:false,error:'answer input not found'};
+  if(inp&&!inp.disabled){
+    const d=[];let rid=null,tFirst=null;
+    const out=new Promise(r=>{const off=window.mc.onLlmEvent(e=>{
+      if(rid===null)rid=e.requestId;
+      if(e.requestId!==rid)return;
+      if(e.kind==='delta'){if(tFirst===null)tFirst=performance.now();d.push(e.text);}
+      else if(e.kind==='done'){off();r({ok:true,text:e.text||d.join('')});}
+      else if(e.kind==='error'){off();r({ok:false,error:e.message});}});});
+    const t0=performance.now();
+    inp.value=${JSON.stringify('用一句话回答：一加一等于几？答案里必须包含阿拉伯数字。')};
+    inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+    const res=await out;
+    answer={...res,firstToken:tFirst!==null?Math.round(tFirst-t0):null,done:Math.round(performance.now()-t0)};
+  }
+  return {save,rag:{state:st?.state,chunks:st?.chunks,modelKey:st?.modelKey,modelLocal:st?.modelLocal,lastError:st?.lastError},
+    hits:(search.hits||[]).slice(0,3).map(h=>({source:h.source,ref:h.ref,score:h.score,text:(h.text||'').slice(0,60)})),
+    searchMs:search.ms,qaCount:qa.length,answer};
+})()`;
+        void win?.webContents
+          .executeJavaScript(ragJs, true)
+          .then((r) => console.log('[rag-e2e]', JSON.stringify(r)))
+          .catch((e) => console.log('[rag-e2e] threw', (e as Error).message));
+      }
+      // Multi-question answer test (tools side drives it via a JSON question
+      // file): for each question, record what the KB channel retrieves and the
+      // streamed answer with its timings, one [ask-test] JSON line per turn.
+      if (process.env.MC_ASK_TEST) {
+        const qFile = process.env.MC_ASK_TEST;
+        void (async () => {
+          let qs: { tag?: string; q: string }[] = [];
+          try {
+            qs = JSON.parse(readFileSync(qFile, 'utf8')) as { tag?: string; q: string }[];
+          } catch (e) {
+            console.log('[ask-test] bad question file:', (e as Error).message);
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+          for (const item of qs) {
+            const js = `(async()=>{
+  const q=${JSON.stringify(item.q)};
+  const search=await window.mc.ragSearch({query:q}).catch(()=>({hits:[],ms:-1}));
+  const inp=document.querySelector('.answer-input input');
+  if(!inp||inp.disabled)return {q,error:'answer input unavailable'};
+  let rid=null,tFirst=null;const d=[];
+  const out=new Promise(r=>{const off=window.mc.onLlmEvent(e=>{
+    if(rid===null)rid=e.requestId;
+    if(e.requestId!==rid)return;
+    if(e.kind==='delta'){if(tFirst===null)tFirst=performance.now();d.push(e.text);}
+    else if(e.kind==='done'){off();r({ok:true,text:e.text||d.join(''),timings:e.timings});}
+    else if(e.kind==='error'){off();r({ok:false,error:e.message});}});
+    setTimeout(()=>{off();r({ok:false,error:'timeout 60s'});},60000);});
+  const t0=performance.now();
+  inp.value=q;
+  inp.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+  const res=await out;
+  return {q,ok:res.ok,error:res.error,text:res.text,timings:res.timings,
+    firstTokenMs:tFirst!==null?Math.round(tFirst-t0):null,wallMs:Math.round(performance.now()-t0),
+    hits:(search.hits||[]).slice(0,4).map(h=>({ref:h.ref,source:h.source,score:h.score})),searchMs:search.ms};
+})()`;
+            const r = await win?.webContents
+              .executeJavaScript(js, true)
+              .catch((e) => ({ q: item.q, error: (e as Error).message }));
+            console.log('[ask-test]', JSON.stringify({ tag: item.tag, ...(r as object) }));
+            await new Promise((r2) => setTimeout(r2, 800));
+          }
+          console.log('[ask-test] complete');
+        })();
+      }
       // Visual QA of the main window (same spirit as MC_SETUP_SHOT for the
       // wizard): open the settings panel, let it paint, capture a PNG.
       if (process.env.MC_MAIN_SHOT) {
@@ -1230,6 +1326,13 @@ function bootstrap(): void {
         );
       }
     }
+    // dev/test hook: seed the dense vector index over the bound KB at boot so
+    // retrieval fuses lexical+semantic without a UI click (tools/rag-e2e flow)
+    if (process.env.MC_SEED_KB) {
+      void rag
+        .seedVectorsFromKb((d, t) => console.log(`[seed] ${d}/${t}`))
+        .then((r) => console.log('[rag] KB vector seeding done:', JSON.stringify(r)));
+    }
     // upgrade P3: skills — builtin (resources/skills) + user (userData/skills);
     // the resources root trick mirrors tray icons (repo root in dev)
     skills = new SkillsManager();
@@ -1313,7 +1416,10 @@ function bootstrap(): void {
 
     async function doPrewarm(prefix: string, reason: string): Promise<void> {
       const apiKey = settings.getLlmApiKey();
-      if (!apiKey || settings.data.llm.answerWithVision) return; // vision path ≠ DeepSeek
+      // answerWithVision no longer divert text answers: only image prompts take
+      // the vision transport, so the interview stable prefix is served by the
+      // primary text endpoint and is worth warming even with the flag on.
+      if (!apiKey) return;
       lastPrefix = prefix;
       lastPrefixActivity = Date.now();
       try {
@@ -1832,6 +1938,49 @@ function bootstrap(): void {
       settings.applyPatch({ rag: { kbIndex: '' } });
       console.log('[rag] KB unbound');
       return rag.status();
+    });
+    /**
+     * One-click KB build: batch-select files/folders, extract + structural
+     * chunking in main, optional keyword/alias assist through the configured
+     * chat key (no embeddings API needed), then bind the produced index. The
+     * curated KB stays on disk — the bind button above switches back to it.
+     */
+    ipcMain.handle(IPC.autoKbBuild, async (): Promise<ReturnType<typeof buildAutoKb> | null> => {
+      const r = await dialog.showOpenDialog({
+        title: T().autoKbTitle,
+        properties: ['openFile', 'openDirectory', 'multiSelections'],
+        filters: [{ name: T().docFilter, extensions: [...LIBRARY_EXTENSIONS] }],
+      });
+      if (r.canceled || !r.filePaths.length) return null;
+      const apiKey = settings.getLlmApiKey();
+      const res = await buildAutoKb({
+        paths: r.filePaths,
+        outRoot: join(app.getPath('userData'), 'auto-kb'),
+        llm: apiKey
+          ? { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey }
+          : null,
+        onProgress: (p) => {
+          if (win && !win.isDestroyed()) win.webContents.send(IPC.autoKbProgress, p);
+        },
+      });
+      if (res.ok) {
+        settings.applyPatch({ rag: { kbIndex: res.dir } });
+        rag.bindKb(res.dir);
+        console.log(`[rag] auto KB built: ${res.chunks} chunks / ${res.docs} docs (llmAssisted=${res.llmAssisted})`);
+      } else {
+        console.warn(`[rag] auto KB build failed: ${res.error}`);
+      }
+      return res;
+    });
+    // Dense-index seeding: embed the bound KB so retrieval fuses lexical +
+    // semantic. Fixes cross-domain lexical collisions (costmap↔C++ map) that
+    // hurt answer accuracy; one record per chunk, idempotent.
+    ipcMain.handle(IPC.ragSeedVectors, async (): Promise<{ records: number; failed: boolean }> => {
+      const r = await rag.seedVectorsFromKb((done, total) => {
+        if (win && !win.isDestroyed()) win.webContents.send(IPC.ragSeedProgress, { done, total });
+      });
+      console.log(`[rag] KB vector seeding: ${r.records} records, failed=${r.failed}`);
+      return r;
     });
     // the pairs a direct hit can serve — read from the live index, no embedding
     ipcMain.handle(IPC.ragQaList, (_e, p: { sessionId?: string } = {}) =>
@@ -2901,7 +3050,9 @@ function bootstrap(): void {
           );
         } else {
           if (specP) specMisses++;
-          r = await rag.retrieve(q, payload.sessionId);
+          // anaphoric follow-ups retrieve poorly alone — expand with the prior
+          // question for the search only; the prompt keeps the original wording
+          r = await rag.retrieve(retrievalQuery(q, payload.history), payload.sessionId);
         }
         retrieveMs = r.ms;
         // read before the branch chain below: a prepared-answer direct hit skips
@@ -2961,6 +3112,8 @@ function bootstrap(): void {
         freeQuestion,
         recentTranscript: payload.recentTranscript,
         answerLang: payload.answerLang ?? settings.data.llm.answerLang,
+        richness: settings.data.llm.answerRichness,
+        expertise: settings.data.llm.answerExpertise,
         history: payload.history,
         resume: isTranslate ? undefined : payload.resume,
         jd: isTranslate ? undefined : payload.jd,
@@ -2979,6 +3132,11 @@ function bootstrap(): void {
         endpoint: primary,
         providerId: settings.data.llm.providerId,
       };
+      // The vision transport is non-streaming (one round-trip, whole completion
+      // at once). It is only worth that wait when the prompt actually carries
+      // an image — a text-only interview answer must stream from the text
+      // endpoint, or the user stares at nothing until the last token lands.
+      const visionTransport = useVision && hasImageContent(messages);
       const resolve = (presetId: string) =>
         resolveEndpointForPreset(presetId, {
           primary: primaryCtx,
@@ -2993,7 +3151,7 @@ function bootstrap(): void {
       // a real answer request refreshes the provider-side prefix cache itself —
       // but only when the primary endpoint is the one actually serving, since
       // the cache is per provider/model pair
-      if (!isTranslate && !useVision && payload.mode !== 'free' && plan[0] === primary) {
+      if (!isTranslate && !visionTransport && payload.mode !== 'free' && plan[0] === primary) {
         // Keep the remembered material in step with `lastPrefix`: a later
         // markPromptPrefixCold re-warms lastPrewarmMaterial and must produce the
         // SAME bytes this answer just cached, not the last ▶-prewarm's material.
@@ -3042,7 +3200,7 @@ function bootstrap(): void {
         text: string;
         usage?: ChatResult['usage'];
         endpoint?: Endpoint;
-      }> = useVision
+      }> = visionTransport
         ? visionChat(
             {
               baseUrl: visionCfg!.baseUrl,
@@ -3056,29 +3214,44 @@ function bootstrap(): void {
             sendEv({ requestId: payload.requestId, kind: 'delta', text });
             return { text };
           })
-        : streamWithFallback({
-            endpoints: plan,
-            messages,
-            onDelta: (text) => {
-              if (ttftMs === undefined) ttftMs = Date.now() - askT0;
-              sendEv({ requestId: payload.requestId, kind: 'delta', text });
-            },
-            onReasoning: (text) => sendEv({ requestId: payload.requestId, kind: 'reasoning', text }),
-            signal: ac.signal,
-            // a black-holed routed endpoint must not hang a live answer; only
-            // the primary alone is trusted to take as long as it needs
-            firstTokenTimeoutMs: plan.length > 1 ? 8000 : 0,
-            onAttemptError: (ep, err, hadDelta) => {
-              console.warn(
-                `[llm] endpoint failed (${ep.label}, deltas=${hadDelta}): ${err.message}`,
-              );
-              llmFailures.markFailure(ep);
-              if (!hadDelta && plan.length > 1) {
-                const next = plan[plan.indexOf(ep) + 1];
-                if (next) console.log(`[llm] falling back to ${next.label}`);
-              }
-            },
-          });
+        : (async () => {
+            const streamArgs = {
+              endpoints: plan,
+              messages,
+              // hard backstop so the standard rung cannot drift into an essay;
+              // translate stays an uncapped pass-through
+              maxTokens: isTranslate
+                ? undefined
+                : RICHNESS_MAX_TOKENS[settings.data.llm.answerRichness ?? DEFAULT_RICHNESS],
+              onDelta: (text: string) => {
+                if (ttftMs === undefined) ttftMs = Date.now() - askT0;
+                sendEv({ requestId: payload.requestId, kind: 'delta', text });
+              },
+              onReasoning: (text: string) => sendEv({ requestId: payload.requestId, kind: 'reasoning', text }),
+              signal: ac.signal,
+              // a black-holed routed endpoint must not hang a live answer; only
+              // the primary alone is trusted to take as long as it needs
+              firstTokenTimeoutMs: plan.length > 1 ? 8000 : 0,
+              onAttemptError: (ep: Endpoint, err: Error, hadDelta: boolean) => {
+                console.warn(
+                  `[llm] endpoint failed (${ep.label}, deltas=${hadDelta}): ${err.message}`,
+                );
+                llmFailures.markFailure(ep);
+                if (!hadDelta && plan.length > 1) {
+                  const next = plan[plan.indexOf(ep) + 1];
+                  if (next) console.log(`[llm] falling back to ${next.label}`);
+                }
+              },
+            };
+            let r = await streamWithFallback(streamArgs);
+            // providers occasionally complete with zero content tokens; a silent
+            // empty answer is the one failure the user cannot act on — retry once
+            if (!r.text.trim() && !ac.signal.aborted) {
+              console.warn('[llm] empty completion, retrying once');
+              r = await streamWithFallback(streamArgs);
+            }
+            return r;
+          })();
 
       work
         .then((r) => {

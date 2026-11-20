@@ -1322,6 +1322,25 @@ export interface RagStatus {
   };
 }
 
+/** one-click KB builder progress (main -> renderer, one push per file/stage) */
+export interface AutoKbProgress {
+  done: number;
+  total: number;
+  stage: 'extract' | 'llm' | 'write';
+  file?: string;
+}
+
+/** result of the one-click KB builder; null from the IPC = dialog cancelled */
+export interface AutoKbResult {
+  ok: boolean;
+  dir: string;
+  chunks: number;
+  docs: number;
+  skipped: number;
+  llmAssisted: boolean;
+  error?: string;
+}
+
 // ---------- System tray (main -> renderer) ----------
 
 /**
@@ -1515,6 +1534,16 @@ export const IPC = {
   ragBindKb: 'rag:bind-kb',
   /** invoke: () => RagStatus — forget the knowledge base binding */
   ragUnbindKb: 'rag:unbind-kb',
+  /** invoke: () => AutoKbResult|null — batch files/folders → structural chunks
+   * (+ optional LLM keywords via the configured chat key) → bind the new index */
+  autoKbBuild: 'rag:auto-kb-build',
+  /** main -> renderer: AutoKbProgress — extract/llm/write stage pushes */
+  autoKbProgress: 'rag:auto-kb-progress',
+  /** invoke: () => {records,failed} — embed the bound KB into the dense store
+   * so retrieval fuses lexical + semantic (accuracy: disambiguates collisions) */
+  ragSeedVectors: 'rag:seed-vectors',
+  /** main -> renderer: {done,total} — dense-index seeding progress */
+  ragSeedProgress: 'rag:seed-progress',
   /** invoke: ({sessionId?}) => PreparedQaView[] — the Q&A pairs the knowledge
    * base auto-detected (what a direct hit can serve), for the knowledge panel */
   ragQaList: 'rag:qa-list',

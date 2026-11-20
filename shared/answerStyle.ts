@@ -30,18 +30,19 @@ export const DEFAULT_RICHNESS: AnswerRichness = 'standard';
 export const DEFAULT_EXPERTISE: AnswerExpertise = 'professional';
 
 /** structure line + spoken-length line per richness step */
-const RICHNESS: Record<AnswerRichness, [string, string]> = {
+const RICHNESS: Record<AnswerRichness, string[]> = {
   concise: [
     '- 第一句先给结论，最多再补 1-2 个短要点；',
-    '- 全文控制在 15-25 秒内可念完（约 60-120 字）；',
+    '- 全文控制在 15-25 秒内可念完（约 60-120 字），不得超过 150 字；',
   ],
   standard: [
-    '- 第一句先给结论或直接回应，再展开 2-3 个短要点；',
-    '- 全文控制在 30-60 秒内可念完（约 150-350 字）；',
+    '- 第一句先给结论或直接回应，再展开 1-3 个短要点，写完即停；',
+    '- 全文控制在 30-60 秒内可念完（约 150-350 字），不得超过 400 字；',
+    '- 不用多级标题、表格；不复述问题、不写结尾总结段；代码确有必要时最多 3 行；',
   ],
   detailed: [
     '- 第一句先给结论，再分层展开 3-5 个要点，每层一句话说清；',
-    '- 全文控制在 90-150 秒内可念完（约 400-700 字）；',
+    '- 全文控制在 90-150 秒内可念完（约 400-700 字），不得超过 800 字；',
   ],
 };
 
@@ -62,3 +63,15 @@ export function buildStyleDirectives(
 ): string[] {
   return [...RICHNESS[richness], ...EXPERTISE[expertise]];
 }
+
+/**
+ * Hard output backstop per rung (tokens). The char budget in the directives is
+ * the soft guide the model aims at; this caps runaway generation so "standard"
+ * can never silently become a detailed-level essay. Chinese runs roughly
+ * 1 char/token, so each cap sits a little above its rung's char ceiling.
+ */
+export const RICHNESS_MAX_TOKENS: Record<AnswerRichness, number> = {
+  concise: 250,
+  standard: 600,
+  detailed: 1100,
+};

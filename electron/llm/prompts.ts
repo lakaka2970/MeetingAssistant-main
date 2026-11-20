@@ -20,10 +20,85 @@ import {
   DEFAULT_PERSONA_TAIL,
   DEFAULT_STYLE_DIRECTIVES,
 } from '../../shared/promptLayers';
+import {
+  buildStyleDirectives,
+  DEFAULT_EXPERTISE,
+  DEFAULT_RICHNESS,
+  type AnswerExpertise,
+  type AnswerRichness,
+} from '../../shared/answerStyle';
 
 export { isLikelyQuestion, classifyQuestion };
 
 export const MAX_CONTEXT_CHARS = 2400;
+
+/**
+ * 回答口吻（两种模式共用，字节稳定）：以本人掌握的知识直接作答。
+ * 面试场景里"依据你项目资料""把函数贴出来我逐行核对""需要查代码"这类话
+ * 既暴露检索机制、又把核对工作推给用户，一律禁止；不确定细节直接省略。
+ */
+export const ANSWER_VOICE_DIRECTIVES = [
+  '- 以你本人已掌握的知识直接作答，口吻自然、自信、口语化；',
+  '- 禁止出现"知识库、资料、检索、召回、依据你项目资料、根据文档"等来源性措辞；',
+  '- 禁止请对方贴代码、承诺逐行核对、或说"需要查代码/需要确认"；不确定的细节直接省略，答案必须自洽完整。',
+];
+
+/**
+ * 忠实度与真实性：召回材料相关时，核心结论与关键术语必须进入回答，数字/口径/
+ * 机制不得改写或省略；材料之外不编造经历与指标。这是回答准确性的硬约束。
+ */
+export const ANSWER_FAITHFULNESS_DIRECTIVES = [
+  '- 若召回材料与问题相关，回答须覆盖其核心结论与关键术语，材料中的数字、口径、机制不得改写或省略；',
+  '- 不得编造材料之外的公司、项目、数字、指标；通用知识须准确，无把握时给稳妥说法而非臆测。',
+];
+
+/**
+ * History is the main prefill growth source, but a blind "last N × 500 chars"
+ * cut can sever a follow-up from its antecedent. Keep a TOTAL char budget and
+ * walk newest-first so the most recent turn(s) stay intact (a follow-up almost
+ * always refers to the immediately preceding answer); older turns drop off.
+ * Any single message is capped so one essay cannot eat the whole budget.
+ */
+const HISTORY_TOTAL_CHARS = 2400;
+const HISTORY_MSG_CAP = 1500;
+export function clampHistory(history?: ChatMessage[]): ChatMessage[] {
+  const h = history ?? [];
+  const out: ChatMessage[] = [];
+  let used = 0;
+  for (let i = h.length - 1; i >= 0; i--) {
+    const m = h[i];
+    let content = m.content;
+    if (typeof content === 'string' && content.length > HISTORY_MSG_CAP) {
+      content = `${content.slice(0, HISTORY_MSG_CAP)}…（略）`;
+    }
+    const len = typeof content === 'string' ? content.length : 0;
+    if (out.length && used + len > HISTORY_TOTAL_CHARS) break;
+    out.unshift({ ...m, content });
+    used += len;
+  }
+  return out;
+}
+
+/**
+ * Conversational query expansion for retrieval. A short anaphoric follow-up
+ * ("那弱计数呢？"/"它安全吗") retrieves poorly on its own; append the previous
+ * user question so the lexical/dense channels see the real topic. Standalone
+ * questions are left untouched to avoid polluting precision. The prompt still
+ * shows the original question — only the retrieval query is expanded.
+ */
+const FOLLOW_UP_MARK = /(它|这个|那个|后者|前者|上面|刚才|上述)|^那|呢[？?]?$/;
+export function retrievalQuery(q: string, history?: ChatMessage[]): string {
+  const t = q.trim();
+  if (!FOLLOW_UP_MARK.test(t)) return t;
+  const h = history ?? [];
+  for (let i = h.length - 1; i >= 0; i--) {
+    if (h[i].role !== 'user' || typeof h[i].content !== 'string') continue;
+    // free-mode user turns may carry reference blocks before "问题：<q>"
+    const prev = (h[i].content as string).replace(/^[\s\S]*问题：/, '').trim();
+    if (prev && prev !== t) return `${t} ${prev}`.slice(0, 200);
+  }
+  return t;
+}
 
 export type AnswerLang = 'chinese' | 'english';
 
@@ -174,6 +249,8 @@ export function buildStablePrefix(input: StablePrefixInput): string {
       '【自定义指令结束】',
     );
   }
+  parts.push('', ...ANSWER_VOICE_DIRECTIVES);
+  parts.push(...ANSWER_FAITHFULNESS_DIRECTIVES);
   parts.push('', langDirective(input.lang));
   return parts.join('\n');
 }
@@ -294,6 +371,9 @@ export interface AnswerPromptInput {
   freeQuestion?: string;
   /** reply language for segment/continuous/free (default chinese) */
   answerLang?: AnswerLang;
+  /** 篇幅档位（free 模式也生效；此前 free 跳过风格层导致标准档输出详细级长文） */
+  richness?: AnswerRichness;
+  expertise?: AnswerExpertise;
   /** prior Q&A turns for a coherent session (oldest first) */
   history?: ChatMessage[];
   /** resume slot (双槽资料); falls back to `background` */
@@ -453,26 +533,38 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
   // transcript + KB are offered only as optional reference. The v1.0.1 layers
   // (style / 应答人设 / 自定义指令) are deliberately NOT applied here either.
   if (input.mode === 'free') {
-    const refs: string[] = [];
-    const qa = input.qaHit;
-    if (qa?.answer.trim()) refs.push(formatQaBlock(qa.question, qa.answer));
-    if (resume) refs.push(`【本人资料（简历）】\n${resume.slice(0, MAX_BACKGROUND_CHARS)}`);
-    if (jd) refs.push(`【岗位JD】\n${jd.slice(0, MAX_BACKGROUND_CHARS)}`);
+    // 稳定 system 头：风格档位 + 口吻约束 + 会话内不变的背景资料。
+    // 逐题变化的召回/转录/技能指令一律进 user 消息——system 跨题字节稳定，
+    // DeepSeek 前缀缓存才能从第二问开始命中（此前整段 refs 含 RAG 塞 system，
+    // 每问都变，cache_hit 恒 0）。自由模式仍不注入面试人设（身份类问题如实答）。
+    const style = buildStyleDirectives(input.richness ?? DEFAULT_RICHNESS, input.expertise ?? DEFAULT_EXPERTISE);
+    const constRefs: string[] = [];
+    if (resume) constRefs.push(`【本人资料（简历）】\n${resume.slice(0, MAX_BACKGROUND_CHARS)}`);
+    if (jd) constRefs.push(`【岗位JD】\n${jd.slice(0, MAX_BACKGROUND_CHARS)}`);
     const notes = (input.notes ?? '').trim();
-    if (notes) refs.push(`【个人背景】\n${notes.slice(0, MAX_NOTES_PROMPT_CHARS)}`);
+    if (notes) constRefs.push(`【个人背景】\n${notes.slice(0, MAX_NOTES_PROMPT_CHARS)}`);
+    const system = [
+      ...ANSWER_VOICE_DIRECTIVES,
+      ...ANSWER_FAITHFULNESS_DIRECTIVES,
+      ...style,
+      ...(constRefs.length ? ['', '【本人背景资料】（会话内不变，供回答参考）', ...constRefs] : []),
+    ].join('\n');
+
+    const varRefs: string[] = [];
+    const qa = input.qaHit;
+    if (qa?.answer.trim()) varRefs.push(formatQaBlock(qa.question, qa.answer));
     const ragBlock = formatRagContext(input.ragContext ?? [], input.ragConflicts ?? []);
-    if (ragBlock) refs.push(ragBlock);
+    if (ragBlock) varRefs.push(ragBlock);
     const webBlock = formatWebBlock(input.webLines ?? []);
-    if (webBlock) refs.push(webBlock);
+    if (webBlock) varRefs.push(webBlock);
     const skill = (input.skillInstruction ?? '').trim();
-    if (skill) refs.push(`【技能指令】（必须遵守）\n${skill}`);
-    if (context.length) refs.push(`【最近的对话转录】\n${context.join('\n')}`);
-    const msgs: ChatMessage[] = [];
-    if (refs.length) {
-      msgs.push({ role: 'system', content: `以下资料供参考（可用可不用）：\n\n${refs.join('\n\n')}` });
-    }
-    msgs.push(...(input.history ?? []));
-    msgs.push({ role: 'user', content: (input.freeQuestion ?? '').trim() });
+    if (skill) varRefs.push(`【技能指令】（必须遵守）\n${skill}`);
+    if (context.length) varRefs.push(`【最近的对话转录】\n${context.join('\n')}`);
+
+    const msgs: ChatMessage[] = [{ role: 'system', content: system }];
+    msgs.push(...clampHistory(input.history));
+    const q = (input.freeQuestion ?? '').trim();
+    msgs.push({ role: 'user', content: varRefs.length ? `${varRefs.join('\n\n')}\n\n问题：${q}` : q });
     return msgs;
   }
 
@@ -492,7 +584,7 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
     msgs.push({ role: 'assistant', content: '收到，我会保持一致。' });
   }
 
-  msgs.push(...(input.history ?? []));
+  msgs.push(...clampHistory(input.history));
 
   const contextBlock = context.length
     ? `【最近的对话转录】\n${context.join('\n')}`

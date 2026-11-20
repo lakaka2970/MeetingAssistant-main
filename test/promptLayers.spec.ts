@@ -25,8 +25,8 @@ describe('shared/promptLayers (v1.0.1 editable layer originals)', () => {
     expect(lines[0]).toContain('提词器');
   });
 
-  it('defaults the ladder to the two v1.0.0 directive lines', () => {
-    expect(DEFAULT_STYLE_DIRECTIVES).toHaveLength(2);
+  it('defaults the ladder to the current tightened directive lines', () => {
+    expect(DEFAULT_STYLE_DIRECTIVES).toHaveLength(3);
   });
 
   it('is what the prompt composer assembles its default block from', () => {
